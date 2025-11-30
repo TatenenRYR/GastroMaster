@@ -1,0 +1,465 @@
+import React, { useState, useEffect } from 'react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getFirestore, collection, addDoc, deleteDoc, doc, setDoc, updateDoc,
+  onSnapshot, query, orderBy, limit, serverTimestamp, where 
+} from 'firebase/firestore';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+import { 
+  Thermometer, Droplet, ClipboardList, Settings, LogOut, 
+  Plus, Trash2, User, CheckCircle, AlertOctagon, Snowflake, 
+  Loader2, Save, ShoppingCart, Wrench, Truck, 
+  Menu, X, Sparkles, ChefHat, Coffee, AlertTriangle, Siren, Ban
+} from 'lucide-react';
+
+/* --- 1. CONFIG & UTILS --- */
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyDkmhRTKaRI2qPcnSvkiH4CETnrOu98zyk",
+  authDomain: "gastromaster-209db.firebaseapp.com",
+  projectId: "gastromaster-209db",
+  storageBucket: "gastromaster-209db.firebasestorage.app",
+  messagingSenderId: "128839756122",
+  appId: "1:128839756122:web:c717afecc8bf6f0b8ceb63",
+  measurementId: "G-FZ2F4CZGR8"
+};
+/*let firebaseConfig;
+try {
+  firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+} catch (e) {
+  console.error("Config Error", e);
+  firebaseConfig = {};
+}*/
+
+const app = Object.keys(firebaseConfig).length > 0 ? initializeApp(firebaseConfig) : null;
+const auth = app ? getAuth(app) : null;
+const db = app ? getFirestore(app) : null;
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'gastro-platinum-v20';
+
+const getTodayStr = () => new Date().toISOString().slice(0, 10);
+const getWeekdayShort = () => ['So','Mo','Di','Mi','Do','Fr','Sa'][new Date().getDay()];
+const formatTime = (ts) => ts ? new Date(ts.seconds * 1000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'}) : '';
+
+// --- 2. HILFS-KOMPONENTEN (OBEN DEFINIERT) ---
+
+// Das neue Warn-Popup für Fritteusen
+const CriticalAlert = ({ type, message, onClose }) => (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+    <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border-4 border-red-500 animate-in zoom-in-95 duration-300">
+      <div className="flex justify-center mb-4">
+        <div className="bg-red-100 p-4 rounded-full animate-pulse">
+          <Siren size={48} className="text-red-600" />
+        </div>
+      </div>
+      <h3 className="text-2xl font-black text-center text-slate-900 mb-2 uppercase tracking-tight">Achtung!</h3>
+      <div className="bg-red-50 border border-red-100 p-3 rounded-xl mb-4 text-center">
+        <p className="text-red-700 font-bold text-lg leading-tight">{message}</p>
+      </div>
+      <p className="text-center text-slate-500 text-sm mb-6">
+        {type === 'temp' ? 'Hitze sofort reduzieren! Acrylamid-Gefahr.' : 'Das Öl darf nicht mehr verwendet werden.'}
+      </p>
+      <button onClick={onClose} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-red-200 active:scale-95 transition-all">
+        Verstanden & Bestätigen
+      </button>
+    </div>
+  </div>
+);
+
+const Header = ({ title, sub }) => (
+  <div className="mb-4 bg-white/80 backdrop-blur-sm p-3 rounded-2xl border border-white/50 shadow-sm flex justify-between items-center">
+    <div>
+      <h2 className="text-xl font-black text-slate-800 tracking-tight leading-none">{title}</h2>
+      {sub && <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mt-1">{sub}</p>}
+    </div>
+  </div>
+);
+
+const MenuCard = ({ title, sub, icon, color, onClick, badge }) => (
+  <button onClick={onClick} className={`bg-gradient-to-br ${color} p-4 rounded-2xl shadow-lg text-white text-left relative overflow-hidden active:scale-95 transition-all w-full group`}>
+    <div className="absolute right-[-10px] top-[-10px] opacity-20 scale-150 rotate-12 group-hover:rotate-0 transition-transform">{icon}</div>
+    <div className="relative z-10">
+      <div className="flex justify-between items-start mb-2">
+        <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">{icon}</div>
+        {badge > 0 && <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow animate-pulse">{badge}</span>}
+      </div>
+      <div className="font-black text-lg leading-none mb-1">{title}</div>
+      <div className="text-[10px] opacity-80 font-bold uppercase tracking-wide">{sub}</div>
+    </div>
+  </button>
+);
+
+const NavBtn = ({ icon, label, active, onClick }) => (
+  <button onClick={onClick} className={`flex flex-col items-center gap-1 px-2 py-2 rounded-xl transition-all duration-300 ${active ? 'text-indigo-600 bg-indigo-50 scale-110 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+    {React.cloneElement(icon, { size: 22, strokeWidth: active ? 2.5 : 2 })}
+    <span className="text-[9px] font-bold tracking-tight">{label}</span>
+  </button>
+);
+
+const LoginScreen = ({ staff, onLogin, onSeed, isSeeding }) => (
+  <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 relative overflow-hidden">
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_#4f46e5_0%,_transparent_40%)] opacity-30"></div>
+    <div className="z-10 w-full max-w-sm">
+      <div className="text-center mb-10">
+        <h1 className="text-5xl font-black text-white mb-2 tracking-tighter italic">GASTRO<span className="text-indigo-500">.PLATINUM</span></h1>
+        <p className="text-slate-400 text-xs font-bold uppercase tracking-[0.3em]">Quality Management System</p>
+      </div>
+      <div className="space-y-3">
+        {staff.map(s => {
+          const depts = s.departments || [];
+          return (
+            <button key={s.id} onClick={() => onLogin(s)} className="w-full bg-white/5 hover:bg-indigo-600 hover:shadow-indigo-500/50 hover:shadow-lg backdrop-blur border border-white/10 p-4 rounded-xl text-white font-bold flex items-center gap-4 transition-all group">
+              <div className="bg-white/10 p-2 rounded-lg"><User size={20}/></div>
+              <div className="flex-1 text-left">
+                <div className="leading-none text-lg">{s.name}</div>
+                <div className="text-[10px] font-normal opacity-60 mt-1 uppercase flex gap-1">
+                  {s.role === 'admin' ? <span>Admin</span> : (
+                    <>
+                      {depts.includes('kitchen') && <span>• Küche</span>}
+                      {depts.includes('service') && <span>• Service</span>}
+                    </>
+                  )}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+        {staff.length === 0 && (
+          <button onClick={onSeed} disabled={isSeeding} className="w-full py-4 border-2 border-dashed border-slate-700 text-slate-500 rounded-xl text-xs font-bold uppercase hover:bg-white/5 transition-colors cursor-pointer flex justify-center items-center gap-2">
+            {isSeeding ? <Loader2 className="animate-spin"/> : "Datenbank Initialisieren"}
+          </button>
+        )}
+      </div>
+    </div>
+  </div>
+);
+
+/* --- 3. HAUPT APP --- */
+
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [appUser, setAppUser] = useState(null);
+  const [view, setView] = useState('login'); 
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState(null);
+  const [isSeeding, setIsSeeding] = useState(false);
+  const [alertData, setAlertData] = useState(null); // Für das Warn-Popup
+
+  const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [] });
+  const [status, setStatus] = useState({ tempLogs: [], activeShifts: {}, oilLogs: {}, cleaningLogs: {}, drawerChecks: {}, shoppingList: [] });
+
+  const showToast = (msg, type='success') => { setToast({msg, type}); setTimeout(() => setToast(null), 3000); };
+
+  // Auth
+  useEffect(() => {
+    if (!app) return;
+    const init = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
+        else await signInAnonymously(auth);
+      } catch (e) { console.error(e); }
+    };
+    init();
+    return onAuthStateChanged(auth, u => { setUser(u); if(!u) setLoading(false); });
+  }, []);
+
+  // Sync
+  useEffect(() => {
+    if (!user || !db) return;
+    const pub = (c) => collection(db, 'artifacts', appId, 'public', 'data', c);
+    
+    // Master Data
+    const cols = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'suppliers'];
+    cols.forEach(c => onSnapshot(query(pub(c), orderBy('name')), snap => {
+        const key = c === 'cooling_devices' ? 'cooling' : c === 'cleaning_tasks' ? 'tasks' : c;
+        setData(p => ({ ...p, [key]: snap.docs.map(d => ({ id: d.id, ...d.data() })) }));
+        if(c==='staff') setLoading(false);
+    }));
+
+    // Live Data
+    const today = getTodayStr();
+    onSnapshot(query(pub('logs_temp'), where('dateStr', '==', today)), s => setStatus(p => ({...p, tempLogs: s.docs.map(d=>d.data())})));
+    onSnapshot(query(pub('logs_cleaning'), where('dateStr', '==', today)), s => {
+        const logs = {}; s.docs.forEach(d => logs[d.data().taskId] = d.data());
+        setStatus(p => ({...p, cleaningLogs: logs}));
+    });
+    onSnapshot(query(pub('logs_oil'), orderBy('createdAt', 'desc'), limit(20)), s => {
+        const latest = {}; s.docs.forEach(d => { if(!latest[d.data().deviceId]) latest[d.data().deviceId] = d.data(); });
+        setStatus(p => ({...p, oilLogs: latest}));
+    });
+    
+    // Shopping List
+    onSnapshot(pub('shopping_list_manual'), mSnap => {
+        const mItems = mSnap.docs.map(d => ({...d.data(), id:d.id, isManual:true}));
+        onSnapshot(query(pub('daily_checks'), where('dateStr', '==', today)), s => {
+            const checks = {}; const autoList = [];
+            s.docs.forEach(doc => {
+                const d = doc.data();
+                checks[d.drawerId] = d.items || {};
+                if(d.items) Object.entries(d.items).forEach(([k, st]) => {
+                    if(st === 'empty') autoList.push({ id: `${d.drawerId}_${k}`, name: d.drawerName, sub: 'Leer', supplier: 'Intern' });
+                });
+            });
+            setStatus(p => ({ ...p, drawerChecks: checks, shoppingList: [...mItems, ...autoList] }));
+        });
+    });
+
+  }, [user]);
+
+  const seed = async () => {
+    setIsSeeding(true);
+    try {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'staff'), { name: 'Chef', role: 'admin', departments: ['kitchen', 'service'], pin: '0000', createdAt: serverTimestamp() });
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'cooling_devices'), { name: 'Kühlschrank 1', minTemp: 2, maxTemp: 8, createdAt: serverTimestamp() });
+      showToast("System bereit!", "success");
+    } catch(e) { showToast("Fehler: " + e.message, "error"); } 
+    setIsSeeding(false);
+  };
+
+  if (!app) return <div className="p-10 text-red-500">Config Error.</div>;
+  if (loading) return <div className="h-screen bg-slate-900 flex items-center justify-center text-white"><Loader2 className="animate-spin mb-4 text-indigo-500" size={40}/></div>;
+  if (!appUser) return <LoginScreen staff={data.staff} onLogin={(u) => { setAppUser(u); setView('dashboard'); }} onSeed={seed} isSeeding={isSeeding} />;
+
+  const hasAccess = (dept) => (appUser.role === 'admin' || (appUser.departments || []).includes(dept));
+
+  return (
+    <div className="min-h-screen bg-slate-50 pb-24 font-sans text-slate-800">
+      
+      {/* WARNING OVERLAY */}
+      {alertData && <CriticalAlert type={alertData.type} message={alertData.msg} onClose={() => setAlertData(null)} />}
+
+      <header className="bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-md flex justify-between items-center rounded-b-3xl">
+        <h2 className="font-black text-xl italic tracking-tighter cursor-pointer" onClick={()=>setView('dashboard')}>GASTRO<span className="text-indigo-400">.PLATINUM</span></h2>
+        <div className="flex gap-3 items-center">
+            <span className="text-xs font-bold text-slate-400 hidden md:block">{appUser.name}</span>
+            <button onClick={() => setAppUser(null)} className="bg-white/10 p-2 rounded-full hover:bg-red-600 transition-colors"><LogOut size={16}/></button>
+        </div>
+      </header>
+
+      {toast && (
+        <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-[90] px-6 py-3 rounded-full shadow-2xl font-bold text-sm animate-bounce flex items-center gap-2 border ${toast.type==='error'?'bg-red-600 border-red-400 text-white':'bg-indigo-600 border-indigo-400 text-white'}`}>
+          {toast.type==='error' ? <AlertTriangle size={16}/> : <CheckCircle size={16}/>} {toast.msg}
+        </div>
+      )}
+
+      <main className="max-w-xl mx-auto p-4 space-y-5">
+        {view === 'dashboard' && <SmartDashboard user={appUser} data={data} status={status} setView={setView} hasAccess={hasAccess} />}
+        {view === 'cleaning' && <SmartCleaning tasks={data.tasks} logs={status.cleaningLogs} user={appUser} appId={appId} showToast={showToast} />}
+        {view === 'cooling' && <SmartCooling items={data.cooling} logs={status.tempLogs} user={appUser} appId={appId} showToast={showToast} />}
+        {view === 'oil' && hasAccess('kitchen') && <SmartFryers items={data.fryers} logs={status.oilLogs} user={appUser} appId={appId} showToast={showToast} setAlert={setAlertData} />}
+        {view === 'inventory' && <SmartInventory list={status.shoppingList} suppliers={data.suppliers} user={appUser} appId={appId} showToast={showToast} />}
+        {view === 'admin' && <SmartAdmin data={data} appId={appId} showToast={showToast} user={appUser}/>}
+      </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t p-2 flex justify-around pb-6 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-40 rounded-t-3xl">
+        <NavBtn icon={<Menu/>} label="Start" active={view==='dashboard'} onClick={()=>setView('dashboard')}/>
+        <NavBtn icon={<Sparkles/>} label="Putz" active={view==='cleaning'} onClick={()=>setView('cleaning')}/>
+        <NavBtn icon={<Truck/>} label="Order" active={view==='inventory'} onClick={()=>setView('inventory')}/>
+        {hasAccess('kitchen') && <NavBtn icon={<Droplet/>} label="Fett" active={view==='oil'} onClick={()=>setView('oil')}/>}
+        {appUser.role === 'admin' && <NavBtn icon={<Settings/>} label="Admin" active={view==='admin'} onClick={()=>setView('admin')}/>}
+      </nav>
+    </div>
+  );
+}
+
+/* --- 4. SMART MODULES --- */
+
+const SmartDashboard = ({ user, data, status, setView, hasAccess }) => {
+  const day = getWeekdayShort();
+  const myDepts = user.departments || [];
+  
+  // Filter active tasks (ignore defective devices)
+  const activeCooling = data.cooling.filter(d => d.status !== 'defekt');
+  const activeFryers = data.fryers.filter(d => d.status !== 'defekt');
+
+  const relevantTasks = data.tasks.filter(t => t.schedule?.[day] && (user.role==='admin' || t.dept==='all' || myDepts.includes(t.dept)));
+  const doneTasks = relevantTasks.filter(t => status.cleaningLogs[t.id]).length;
+  const progress = relevantTasks.length ? Math.round((doneTasks / relevantTasks.length) * 100) : 100;
+  const openTemp = activeCooling.length - status.tempLogs.length;
+
+  return (
+    <>
+      <div className="bg-gradient-to-r from-slate-800 to-slate-900 text-white p-6 rounded-3xl shadow-xl flex justify-between items-center relative overflow-hidden">
+        <div className="relative z-10">
+          <div className="text-[10px] font-bold opacity-60 uppercase mb-1">Tages-Check</div>
+          <div className="text-4xl font-black tracking-tighter">{progress}%</div>
+          <div className="text-xs text-slate-400 mt-1">{doneTasks} / {relevantTasks.length} erledigt</div>
+        </div>
+        <div className="relative w-16 h-16">
+          <svg className="w-full h-full transform -rotate-90">
+            <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-slate-700" />
+            <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray={175} strokeDashoffset={175 - (175 * progress) / 100} className="text-indigo-500 transition-all duration-1000 ease-out" />
+          </svg>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <MenuCard title="Putzplan" sub="Aufgaben" icon={<Sparkles/>} color="from-indigo-500 to-violet-600" onClick={()=>setView('cleaning')} badge={relevantTasks.length - doneTasks}/>
+        <MenuCard title="Kühlung" sub="HACCP" icon={<Snowflake/>} color="from-cyan-500 to-blue-600" onClick={()=>setView('cooling')} badge={openTemp}/>
+        {hasAccess('kitchen') && <MenuCard title="Qualität" sub="Fett & Öl" icon={<Droplet/>} color="from-orange-400 to-red-500" onClick={()=>setView('oil')} badge={activeFryers.length - Object.keys(status.oilLogs).length}/>}
+        <MenuCard title="Lager" sub="Inventar" icon={<Truck/>} color="from-slate-600 to-slate-800" onClick={()=>setView('inventory')} badge={status.shoppingList.length}/>
+      </div>
+    </>
+  );
+};
+
+const SmartFryers = ({ items, logs, user, appId, showToast, setAlert }) => {
+  const [val, setVal] = useState({});
+  const activeItems = items.filter(i => i.status !== 'defekt'); // Nur intakte Geräte
+
+  const save = async (i) => {
+    const t = parseFloat(val[i.id]?.tmp);
+    const p = parseFloat(val[i.id]?.t);
+    
+    if(t && p) {
+      // 1. TRIGGER WARNING
+      if(t > 175) {
+        setAlert({ type: 'temp', msg: `ACHTUNG: ${i.name} ist ${t}°C heiß! Sofort runterdrehen!` });
+      }
+      if(p >= 24) {
+        setAlert({ type: 'oil', msg: `STOPP: Öl in ${i.name} ist verdorben (${p}% TPM)!` });
+        // Auto-Order Logic: Öl bestellen
+        await addDoc(collection(db,'artifacts',appId,'public','data','shopping_list_manual'),{name: `Frittieröl (${i.oilType||'Standard'})`, supplier:'Intern', addedBy:'System (Alarm)', createdAt:serverTimestamp()});
+      }
+
+      await addDoc(collection(db,'artifacts',appId,'public','data','logs_oil'),{deviceId:i.id,deviceName:i.name,temp:t,tpm:p,user:user.name,createdAt:serverTimestamp()});
+      showToast("Gespeichert");
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <Header title="Öl Qualität" sub="Smart Analysis" />
+      {activeItems.length === 0 && <div className="text-center p-8 bg-white rounded-xl border border-dashed text-slate-400">Keine aktiven Fritteusen.</div>}
+      
+      {activeItems.map(i => {
+        const l = logs[i.id];
+        return (
+          <div key={i.id} className="bg-white p-5 rounded-2xl border shadow-sm relative overflow-hidden">
+            <div className="flex justify-between items-start mb-4 relative z-10">
+              <span className="font-bold text-lg text-slate-800">{i.name}</span>
+              {l && (
+                <span className={`text-[10px] text-white px-2 py-1 rounded font-bold ${l.tpm>=24?'bg-red-600':l.tpm>=20?'bg-yellow-500':'bg-emerald-500'}`}>
+                  {l.tpm>=24?'WECHSELN':l.tpm>=20?'FILTERN':'OK'}
+                </span>
+              )}
+            </div>
+            {!l ? (
+              <div className="flex gap-2">
+                <input type="number" placeholder="Temp" className="flex-1 p-3 bg-slate-50 rounded-xl text-center font-bold" onChange={e=>setVal({...val,[i.id]:{...val[i.id],tmp:e.target.value}})}/>
+                <input type="number" placeholder="TPM" className="flex-1 p-3 bg-slate-50 rounded-xl text-center font-bold" onChange={e=>setVal({...val,[i.id]:{...val[i.id],t:e.target.value}})}/>
+                <button onClick={()=>save(i)} className="bg-slate-900 text-white px-4 rounded-xl"><Save/></button>
+              </div>
+            ) : (
+              <div className="flex gap-2 text-center text-sm">
+                <div className="flex-1 bg-slate-50 p-2 rounded-xl font-bold">{l.temp}°C</div>
+                <div className="flex-1 bg-slate-50 p-2 rounded-xl font-bold">{l.tpm}% TPM</div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// ... (Andere Module bleiben ähnlich wie vorher, nur mit Defekt-Filter) ...
+const SmartCleaning = ({ tasks, logs, user, appId, showToast }) => {
+  const day = getWeekdayShort();
+  const myDepts = user.departments || [];
+  const relevantTasks = tasks.filter(t => t.schedule?.[day] && (user.role==='admin' || t.dept==='all' || myDepts.includes(t.dept))).sort((a,b) => (logs[a.id]?1:0)-(logs[b.id]?1:0));
+  const toggle = async (t) => {
+    const ref = doc(db, 'artifacts', appId, 'public', 'data', 'logs_cleaning', `${getTodayStr()}_${t.id}`);
+    if(logs[t.id]) { if(user.role==='admin'||logs[t.id].user===user.name) await deleteDoc(ref); } 
+    else { await setDoc(ref,{taskId:t.id,taskName:t.name,user:user.name,dateStr:getTodayStr(),createdAt:serverTimestamp()}); showToast("Erledigt!"); }
+  };
+  return (
+    <div className="space-y-4"><Header title="Tagesaufgaben" sub={day} />{relevantTasks.map(t=>{const done=logs[t.id]; return <div key={t.id} onClick={()=>toggle(t)} className={`p-4 rounded-2xl border cursor-pointer flex justify-between items-center ${done?'bg-slate-50 opacity-60':'bg-white hover:border-indigo-300'}`}><div><div className={`font-bold ${done?'line-through':''}`}>{t.name}</div><div className="text-[10px] text-slate-400 uppercase font-bold">{t.area}</div>{done&&<div className="text-[10px] text-indigo-600 font-bold mt-1">{done.user}</div>}</div>{done?<CheckCircle className="text-indigo-500"/>:<div className="w-6 h-6 border-2 rounded-lg border-slate-300"/>}</div>})}{relevantTasks.length===0&&<div className="text-center p-8 text-slate-400 border border-dashed rounded-xl">Frei!</div>}</div>
+  );
+};
+
+const SmartCooling = ({ items, logs, user, appId, showToast }) => {
+  const [inp, setInp] = useState({});
+  const activeItems = items.filter(i => i.status !== 'defekt');
+  const save = async (i) => { if(inp[i.id]) { await addDoc(collection(db,'artifacts',appId,'public','data','logs_temp'),{deviceId:i.id,deviceName:i.name,temp:inp[i.id],user:user.name,dateStr:getTodayStr(),createdAt:serverTimestamp()}); showToast("OK"); } };
+  return (
+    <div className="space-y-3"><Header title="Temperatur" sub="HACCP" />{activeItems.map(i=>{ const done=logs.find(l=>l.deviceId===i.id); return <div key={i.id} className={`p-4 rounded-2xl border shadow-sm ${done?'bg-emerald-50 border-emerald-100':'bg-white'}`}><div className="flex justify-between items-center mb-2"><span className="font-bold">{i.name}</span>{done?<span className="font-bold text-emerald-600">{done.temp}°C</span>:<span className="text-[10px] bg-red-100 text-red-600 px-2 py-1 rounded font-bold">Messen</span>}</div>{!done&&<div className="flex gap-2"><input type="number" placeholder="°C" className="flex-1 bg-slate-50 border rounded-xl p-2 text-center font-bold" onChange={e=>setInp({...inp,[i.id]:e.target.value})}/><button onClick={()=>save(i)} className="bg-slate-900 text-white px-4 rounded-xl">OK</button></div>}</div>})}</div>
+  );
+};
+
+const SmartInventory = ({ list, suppliers, user, appId, showToast }) => {
+  const [n, setN] = useState('');
+  const add = async () => { if(n) { await addDoc(collection(db,'artifacts',appId,'public','data','shopping_list_manual'),{name:n, createdAt:serverTimestamp()}); setN(''); showToast('Hinzugefügt'); } };
+  const del = async (id, isManual) => { if(isManual) await deleteDoc(doc(db,'artifacts',appId,'public','data','shopping_list_manual',id)); };
+  return (
+    <div className="space-y-4"><Header title="Einkaufsliste" sub="Smart Order" /><div className="flex gap-2 bg-white p-2 rounded-2xl border shadow-sm"><input value={n} onChange={e=>setN(e.target.value)} placeholder="+ Artikel..." className="flex-1 p-2 outline-none"/><button onClick={add} className="bg-slate-900 text-white px-4 rounded-xl"><Plus size={18}/></button></div><div className="bg-white rounded-2xl border overflow-hidden divide-y">{list.map((item, i) => (<div key={i} className="p-4 flex justify-between items-center"><div><div className="font-bold text-slate-800">{item.name}</div><div className="text-xs text-slate-400">{item.supplier||'Intern'} {item.sub==='Leer'&&<span className="text-red-500 font-bold">• Leer</span>}</div></div>{item.isManual && <button onClick={()=>del(item.id, true)} className="text-slate-300 hover:text-red-500"><X size={18}/></button>}</div>))}</div></div>
+  );
+};
+
+const SmartAdmin = ({ data, appId, showToast, user }) => {
+  const [tab, setTab] = useState('staff'); const [editingItem, setEditingItem] = useState(null);
+  return (
+    <div className="pb-20"><Header title="Admin" sub="Setup" /><div className="flex gap-2 overflow-x-auto pb-4 no-scrollbar">{['staff','tasks','cooling','fryers'].map(t=><button key={t} onClick={()=>{setTab(t);setEditingItem(null)}} className={`px-4 py-2 rounded-full text-xs font-bold uppercase whitespace-nowrap transition-all ${tab===t?'bg-slate-900 text-white':'bg-white text-slate-500 border'}`}>{t}</button>)}</div><div className="bg-white rounded-2xl border shadow-sm min-h-[400px] p-4">{editingItem ? <EditorForm type={tab} initialData={editingItem} onClose={()=>setEditingItem(null)} appId={appId} showToast={showToast} /> : <div><button onClick={()=>setEditingItem({isNew:true})} className="w-full py-3 mb-4 border-2 border-dashed border-slate-300 rounded-xl text-slate-400 font-bold hover:bg-slate-50 flex items-center justify-center gap-2"><Plus size={20}/> Neu</button><div className="divide-y">{(data[tab]||[]).map(item=><div key={item.id} className="py-3 flex justify-between items-center group"><div><div className="font-bold text-slate-800">{item.name}</div><div className="text-xs text-slate-400 flex flex-wrap gap-1 mt-1">{item.status==='defekt' && <span className="bg-red-100 text-red-600 px-1 rounded font-bold">DEFEKT</span>}</div></div><div className="flex gap-2"><button onClick={()=>setEditingItem(item)} className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Edit3 size={16}/></button><button onClick={async()=>{if(window.confirm("Löschen?")){const col=tab==='tasks'?'cleaning_tasks':tab==='cooling'?'cooling_devices':tab==='fryers'?'fryers':'staff';await deleteDoc(doc(db,'artifacts',appId,'public','data',col,item.id));}}} className="p-2 bg-red-50 text-red-600 rounded-lg"><Trash2 size={16}/></button></div></div>)}</div></div>}</div></div>
+  );
+};
+
+const EditorForm = ({ type, initialData, onClose, appId, showToast }) => {
+  const [form, setForm] = useState({ name: '', ...initialData });
+  const [schedule, setSchedule] = useState(initialData.schedule || { Mo:true, Di:true, Mi:true, Do:true, Fr:true, Sa:true, So:true });
+  const [products, setProducts] = useState(initialData.products || []);
+  const [depts, setDepts] = useState(initialData.departments || []);
+
+  const update = (f, v) => setForm(p => ({ ...p, [f]: v }));
+  const toggleDept = (dept) => { if(depts.includes(dept)) setDepts(depts.filter(d=>d!==dept)); else setDepts([...depts,dept]); };
+  const addProd = () => setProducts([...products, {name:'', qty:{Mo:0,Di:0,Mi:0,Do:0,Fr:0,Sa:0,So:0}}]);
+  const updateProd = (idx, f, v) => { const c=[...products]; c[idx][f]=v; setProducts(c); };
+  const updateQty = (idx, d, v) => { const c=[...products]; if(!c[idx].qty)c[idx].qty={}; c[idx].qty[d]=parseInt(v)||0; setProducts(c); };
+
+  const save = async () => {
+    if(!form.name) return;
+    const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':'staff';
+    const payload = { ...form, name: form.name };
+    if(type === 'tasks') { payload.schedule = schedule; payload.area = form.area || 'Allgemein'; payload.dept = form.dept || 'kitchen'; }
+    if(type === 'cooling') payload.products = products.filter(p=>p.name);
+    if(type === 'staff') { payload.role = form.role || 'user'; payload.departments = depts; payload.pin = form.pin || '0000'; }
+    if(type === 'cooling' || type === 'fryers') { payload.status = form.status || 'active'; } // Defekt Status
+
+    delete payload.isNew; delete payload.id;
+    if(initialData.isNew) { payload.createdAt = serverTimestamp(); await addDoc(collection(db, 'artifacts', appId, 'public', 'data', col), payload); } 
+    else { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', col, initialData.id), payload); }
+    showToast("Gespeichert"); onClose();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div><label className="text-xs font-bold uppercase text-slate-400">Name</label><input className="w-full p-3 border rounded-xl" value={form.name} onChange={e=>update('name',e.target.value)} /></div>
+      
+      {(type === 'cooling' || type === 'fryers') && (
+        <div className="flex items-center gap-2 border p-2 rounded-lg bg-white">
+          <label className="text-xs font-bold uppercase text-slate-400 flex-1">Status</label>
+          <select className="p-2 bg-slate-50 rounded" value={form.status||'active'} onChange={e=>update('status',e.target.value)}><option value="active">Aktiv</option><option value="defekt">Defekt (Wartung)</option></select>
+        </div>
+      )}
+
+      {type === 'staff' && (
+        <div className="space-y-4">
+          <div><label className="text-xs font-bold uppercase text-slate-400 mb-2 block">Bereiche</label><div className="flex gap-2"><button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-3 rounded-xl border font-bold flex items-center justify-center gap-2 ${depts.includes('kitchen')?'bg-orange-50 border-orange-500 text-orange-600':'bg-white text-slate-400'}`}><ChefHat size={18}/> Küche</button><button onClick={()=>toggleDept('service')} className={`flex-1 py-3 rounded-xl border font-bold flex items-center justify-center gap-2 ${depts.includes('service')?'bg-purple-50 border-purple-500 text-purple-600':'bg-white text-slate-400'}`}><Coffee size={18}/> Service</button></div></div>
+          <div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-bold uppercase text-slate-400">Rolle</label><select className="w-full p-3 border rounded-xl bg-white" value={form.role || 'user'} onChange={e=>update('role', e.target.value)}><option value="user">Mitarbeiter</option><option value="admin">Admin</option></select></div><div><label className="text-xs font-bold uppercase text-slate-400">PIN Code</label><input className="w-full p-3 border rounded-xl font-mono text-center tracking-widest" maxLength={4} value={form.pin||''} onChange={e=>update('pin',e.target.value)} placeholder="0000"/></div></div>
+        </div>
+      )}
+
+      {type === 'tasks' && (
+        <>
+          <div><label className="text-xs font-bold uppercase text-slate-400">Für wen?</label><select className="w-full p-3 border rounded-xl bg-white" value={form.dept || 'kitchen'} onChange={e=>update('dept', e.target.value)}><option value="kitchen">Nur Küche</option><option value="service">Nur Service</option><option value="all">Alle</option></select></div>
+          <div><label className="text-xs font-bold uppercase text-slate-400">Bereich</label><input className="w-full p-3 border rounded-xl" value={form.area||''} onChange={e=>update('area',e.target.value)} placeholder="z.B. Bar" /></div>
+          <div className="bg-slate-50 p-3 rounded-xl border"><h4 className="text-xs font-bold mb-2">Tage</h4><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d => (<div key={d} className="flex flex-col items-center gap-1 cursor-pointer" onClick={()=>setSchedule(s=>({...s, [d]:!s[d]}))}><span className="text-[10px] font-bold">{d}</span><div className={`w-6 h-6 rounded flex items-center justify-center border transition-colors ${schedule[d]?'bg-indigo-600 border-indigo-600 text-white':'bg-white border-slate-300'}`}>{schedule[d] && <CheckSquare size={14}/>}</div></div>))}</div></div>
+        </>
+      )}
+
+      {type === 'cooling' && (
+        <div className="space-y-4"><div className="bg-slate-50 p-3 rounded border"><div className="flex justify-between mb-2"><h4 className="text-xs font-bold">Produkte</h4><button onClick={addProd} className="text-xs bg-blue-100 text-blue-700 px-2 rounded">+ Neu</button></div>{products.map((p,i)=>(<div key={i} className="mb-2 pb-2 border-b"><input className="w-full p-1 border rounded text-sm mb-1" placeholder="Name" value={p.name} onChange={e=>updateProd(i,'name',e.target.value)}/><div className="grid grid-cols-7 gap-1">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><input key={d} className="text-center text-xs p-1 border rounded" placeholder={d} value={p.qty?.[d]||''} onChange={e=>updateQty(i,d,e.target.value)}/>)}</div></div>))}</div></div>
+      )}
+
+      <button onClick={save} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold shadow-lg mt-4">Speichern</button>
+    </div>
+  );
+};
