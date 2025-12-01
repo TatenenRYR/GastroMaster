@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>GastroManager Platinum v9.0</title>
+    <title>GastroManager Platinum v10.0</title>
     
     <!-- Styles & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -24,11 +24,11 @@
         .debug-overlay { background: rgba(15, 23, 42, 0.98); }
     </style>
 
-    <!-- PDF Libs -->
+    <!-- PDF Generation Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 
-    <!-- React -->
+    <!-- React & Babel -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -106,7 +106,7 @@
         }
 
         // --- PIN PAD ---
-        const PinPad = ({ title, onClose, onSuccess, targetPin, resetMode, onReset }) => {
+        const PinPad = ({ title, onClose, onSuccess, targetPin }) => {
             const [pin, setPin] = useState('');
             const [error, setError] = useState(false);
             const handleNum = (n) => {
@@ -114,7 +114,6 @@
                     const newPin = pin + n; setPin(newPin); setError(false);
                     if(newPin.length === 4) {
                         if(targetPin && newPin === targetPin) { onSuccess(); }
-                        else if(!targetPin) { onSuccess(newPin); } 
                         else { setError(true); setTimeout(()=>setPin(''), 500); }
                     }
                 }
@@ -126,22 +125,15 @@
                         <h3 className="text-center font-black text-xl mb-2">{title}</h3>
                         <div className="flex justify-center gap-3 mb-6">{[0,1,2,3].map(i => <div key={i} className={`w-4 h-4 rounded-full border-2 transition-colors ${pin.length > i ? (error ? 'bg-red-500 border-red-500' : 'bg-indigo-600 border-indigo-600') : 'border-slate-300'}`}/>)}</div>
                         <div className="grid grid-cols-3 gap-4 mb-4">{[1,2,3,4,5,6,7,8,9,0].map(n => n===0 ? <React.Fragment key={0}><div/><button onClick={()=>handleNum(0)} className="pin-btn">0</button></React.Fragment> : <button key={n} onClick={()=>handleNum(n)} className="pin-btn">{n}</button>)}<button onClick={()=>setPin(pin.slice(0,-1))} className="pin-btn text-red-500"><Eraser size={20}/></button></div>
-                        {resetMode && <button onClick={onReset} className="w-full text-xs text-indigo-500 font-bold uppercase tracking-wider py-2">PIN Vergessen?</button>}
                     </div>
                 </div>
             );
         };
 
-        // --- ENTERPRISE LOGIN / REGISTRATION / MIGRATION ---
+        // --- ENTERPRISE LOGIN SCREEN (ID Only) ---
         const EnterpriseLogin = ({ onLogin, loading }) => {
             const [id, setId] = useState('');
-            const [pass, setPass] = useState('');
-            const [mode, setMode] = useState('login'); // 'login', 'register', 'migrate'
-
-            const submit = () => {
-                if(id.length < 3 || pass.length < 4) return;
-                onLogin(id.trim().toLowerCase().replace(/\s/g,'-'), pass, mode);
-            };
+            const submit = () => { if(id.length > 2) onLogin(id.trim().toLowerCase().replace(/\s/g,'-')); };
 
             return (
                 <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden">
@@ -149,101 +141,51 @@
                     <div className="z-10 w-full max-w-sm mx-auto animate-in">
                         <div className="mb-10 text-center">
                             <h1 className="text-4xl font-black text-white mb-2 italic tracking-tighter">GASTRO<span className="text-indigo-500">.APP</span></h1>
-                            <p className="text-slate-400 text-sm font-medium">Enterprise Access</p>
+                            <p className="text-slate-400 text-sm font-medium">Enterprise Access v10.0</p>
                         </div>
                         <div className="bg-white/10 backdrop-blur-lg border border-white/10 p-6 rounded-3xl shadow-2xl space-y-4">
-                            {mode === 'migrate' && <div className="bg-amber-500/20 text-amber-200 p-3 rounded-xl text-xs font-bold border border-amber-500/30 mb-2 flex items-center gap-2"><Zap size={14}/> Alte Filiale erkannt. Bitte neues Passwort festlegen!</div>}
-                            
-                            <div><label className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest ml-1">Restaurant ID</label><div className="relative"><Store className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/><input value={id} onChange={e=>setId(e.target.value)} disabled={mode==='migrate'} placeholder="z.B. filiale-berlin" className="w-full pl-12 p-4 rounded-xl bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 font-mono"/></div></div>
-                            
-                            <div><label className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest ml-1">Master Passwort</label><div className="relative"><Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/><input type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="****" className="w-full pl-12 p-4 rounded-xl bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 font-mono"/></div></div>
-                            
-                            <Button onClick={submit} loading={loading} className="shadow-indigo-500/20 mt-2">{mode==='migrate' ? 'Passwort Speichern & Login' : mode==='register' ? 'Registrieren & Starten' : 'Anmelden'}</Button>
-                            
-                            {mode !== 'migrate' && <div className="text-center pt-2"><button onClick={()=>setMode(mode==='login'?'register':'login')} className="text-xs text-slate-400 underline hover:text-white">{mode==='login' ? 'Neue Filiale registrieren?' : 'Zurück zum Login'}</button></div>}
+                            <div><label className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest ml-1">Restaurant ID</label><div className="relative"><Store className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/><input value={id} onChange={e=>setId(e.target.value)} placeholder="z.B. filiale-berlin" className="w-full pl-12 p-4 rounded-xl bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 font-mono" onKeyDown={e=>e.key==='Enter'&&submit()}/></div></div>
+                            <Button onClick={submit} loading={loading} className="shadow-indigo-500/20 mt-2">Weiter</Button>
                         </div>
                     </div>
                 </div>
             );
         };
 
-        // --- MAIN APP COMPONENT ---
+        // --- MAIN APP ---
         function App() {
             const [user, setUser] = useState(null);
             const [appUser, setAppUser] = useState(null);
             const [appId, setAppId] = useState(localStorage.getItem('gastro_app_id') || null);
-            const [masterKey, setMasterKey] = useState(sessionStorage.getItem('gastro_master_key') || null);
             
             const [view, setView] = useState('login'); 
             const [loading, setLoading] = useState(true);
             const [toast, setToast] = useState(null);
             
-            // Data
             const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [], company: {} });
             const [status, setStatus] = useState({ tempLogs: [], cleaningLogs: {}, oilLogs: {}, shoppingList: [], yesterdayOil: {} });
             const [logs, setLogs] = useState([]);
             const [debugMode, setDebugMode] = useState(false);
             const [showDebug, setShowDebug] = useState(false);
-            const [loginMode, setLoginMode] = useState('login'); // To force migrate mode in UI
 
             const log = (msg) => { const time = new Date().toLocaleTimeString('de-DE', {hour12:false}); setLogs(p => [...p.slice(-99), {time, msg: String(msg)}]); };
             const showToast = (msg, type='success') => { setToast({msg, type}); setTimeout(() => setToast(null), 3000); };
 
-            // LOGIN HANDLER (THE BRAIN)
-            const handleRestaurantLogin = async (id, pass, mode) => {
+            // 1. SYSTEM LOGIN (RESTAURANT LEVEL)
+            const handleRestaurantLogin = async (id) => {
                 setLoading(true);
-                try {
-                    const settingsRef = doc(db, 'artifacts', id, 'public', 'data', 'settings', 'global');
-                    const snap = await getDoc(settingsRef);
-                    
-                    if (mode === 'login') {
-                        if (!snap.exists()) {
-                            showToast("ID nicht gefunden. Bitte registrieren.", "error");
-                        } else {
-                            const settings = snap.data();
-                            if (!settings.accessKey) {
-                                // MIGRATION NEEDED
-                                showToast("Bitte Master-Passwort festlegen!", "error");
-                                setLoginMode('migrate'); // Switch UI to migrate mode
-                                // Don't allow login yet
-                            } else if (settings.accessKey === pass) {
-                                finalizeLogin(id, pass);
-                            } else {
-                                showToast("Falsches Passwort!", "error");
-                            }
-                        }
-                    } else if (mode === 'register') {
-                        if (snap.exists()) { showToast("ID bereits vergeben!", "error"); }
-                        else {
-                            await setDoc(settingsRef, { accessKey: pass, debugMode: false });
-                            finalizeLogin(id, pass);
-                            seedDB(id);
-                        }
-                    } else if (mode === 'migrate') {
-                        // Saving new password for old account
-                        await setDoc(settingsRef, { accessKey: pass }, { merge: true });
-                        finalizeLogin(id, pass);
-                        showToast("Passwort gespeichert & Eingeloggt!");
-                    }
-                } catch(e) { console.error(e); showToast("Fehler bei Verbindung", "error"); }
+                // Simple Check: Does collection exist? Ideally check a meta doc.
+                // We just assume if ID is valid, we proceed.
+                localStorage.setItem('gastro_app_id', id);
+                setAppId(id);
                 setLoading(false);
             };
 
-            const finalizeLogin = (id, key) => {
-                localStorage.setItem('gastro_app_id', id);
-                sessionStorage.setItem('gastro_master_key', key);
-                setAppId(id);
-                setMasterKey(key);
-            };
-
             const logoutSystem = () => {
-                if(confirm("Filiale abmelden?")) {
+                if(confirm("Filiale wechseln?")) {
                     localStorage.removeItem('gastro_app_id');
-                    sessionStorage.removeItem('gastro_master_key');
                     setAppId(null);
-                    setMasterKey(null);
                     setAppUser(null);
-                    setLoginMode('login');
                 }
             };
 
@@ -252,7 +194,7 @@
                 return onAuthStateChanged(auth, u => { setUser(u); if(!u) setLoading(false); });
             }, []);
 
-            // DATA SYNC
+            // 2. DATA SYNC
             useEffect(() => {
                 if (!user || !appId) { if(appId===null) setLoading(false); return; }
                 
@@ -298,8 +240,8 @@
                 return () => { [...unsubs, ...unsubsLive].forEach(u => u()); };
             }, [user, appId]);
 
-            const seedDB = async (targetId) => {
-                const id = targetId || appId;
+            const seedDB = async () => {
+                if(!appId) return;
                 try {
                     const batch = [
                         { col: 'staff', data: { name: 'Betriebsleiter', role: 'admin', departments: ['kitchen','service'], pin: '1234' } },
@@ -310,26 +252,19 @@
                         { col: 'company', id:'info', data: { name: 'Mein Restaurant', address: '' } }
                     ];
                     for (const item of batch) {
-                        const ref = item.id ? doc(db, 'artifacts', id, 'public', 'data', item.col, item.id) : collection(db, 'artifacts', id, 'public', 'data', item.col);
+                        const ref = item.id ? doc(db, 'artifacts', appId, 'public', 'data', item.col, item.id) : collection(db, 'artifacts', appId, 'public', 'data', item.col);
                         if(item.id) await setDoc(ref, item.data); else await addDoc(ref, {...item.data, createdAt: serverTimestamp()});
                     }
+                    showToast("Basis-Daten angelegt.");
                 } catch(e) { console.error(e); }
             };
 
-            if (!appId) {
-                // If the handleRestaurantLogin set loginMode to 'migrate', we render the Login Component in migrate mode, otherwise standard
-                return <EnterpriseLogin onLogin={handleRestaurantLogin} loading={loading} />; 
-            }
-            if (loginMode === 'migrate') {
-                 // Special case: appId is set locally but we are forced to migrate (this handles the re-render with migrate mode)
-                 return <EnterpriseLogin onLogin={handleRestaurantLogin} loading={loading} />;
-            }
-
+            if (!appId) return <EnterpriseLogin onLogin={handleRestaurantLogin} loading={loading} />;
             if (loading) return <Loading />;
-            if (!appUser) return <LoginScreen staff={data.staff} restaurantId={appId} yesterdayOil={status.yesterdayOil} fryers={data.fryers} onLogin={u => { setAppUser(u); setView('dashboard'); }} onLogoutSystem={logoutSystem} masterKey={masterKey} showToast={showToast} />;
+            if (!appUser) return <LoginScreen staff={data.staff} restaurantId={appId} yesterdayOil={status.yesterdayOil} fryers={data.fryers} onLogin={u => { setAppUser(u); setView('dashboard'); }} onLogoutSystem={logoutSystem} onSeed={seedDB} />;
 
             const common = { user: appUser, appId, showToast, data, status, log };
-            // FIX: Robust check for access rights to prevent white screen if departments is undefined
+            // Robust Access Check
             const hasAccess = (dept) => appUser.role === 'admin' || (appUser.departments || []).includes(dept);
 
             return (
@@ -363,14 +298,18 @@
         }
 
         // --- SUB COMPONENTS ---
-        const LoginScreen = ({ staff, onLogin, restaurantId, onLogoutSystem, yesterdayOil, fryers, masterKey, showToast }) => {
-            const [selectedUser, setSelectedUser] = useState(null); const [showPin, setShowPin] = useState(false); const [isMasterReset, setIsMasterReset] = useState(false);
+        const LoginScreen = ({ staff, onLogin, restaurantId, onLogoutSystem, yesterdayOil, fryers, onSeed }) => {
+            const [selectedUser, setSelectedUser] = useState(null); const [showPin, setShowPin] = useState(false);
             const alerts = []; Object.entries(yesterdayOil || {}).forEach(([id, log]) => { if(log.tpm >= 20) { const fname = (fryers||[]).find(f=>f.id===id)?.name || 'Fritteuse'; alerts.push({ msg: `${fname}: ${log.tpm >= 24 ? 'Wechseln!' : 'Filtern!'}`, type: log.tpm>=24?'red':'amber' }); } });
-            const handleUserClick = (u) => { if(u.pin && u.pin.length > 0) { setSelectedUser(u); setShowPin(true); setIsMasterReset(false); } else { onLogin(u); } };
+            
+            const handleUserClick = (u) => { 
+                if(u.pin && u.pin.length > 0) { setSelectedUser(u); setShowPin(true); } 
+                else { onLogin(u); } 
+            };
             const handlePinSuccess = () => { setShowPin(false); onLogin(selectedUser); };
-            const handleMasterReset = (enteredPin) => { if(enteredPin === masterKey) { onLogin(selectedUser); showToast("Admin-Override erfolgreich", "success"); } else { showToast("Falsches Master-Passwort", "error"); } };
+
             return (
-                <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden"><div className="absolute top-[-20%] right-[-20%] w-[80%] h-[80%] bg-indigo-600 rounded-full blur-[150px] opacity-20 animate-pulse"></div>{showPin && (<PinPad title={isMasterReset ? "Master-Passwort" : `PIN für ${selectedUser.name}`} targetPin={isMasterReset ? masterKey : selectedUser.pin} onClose={()=>setShowPin(false)} onSuccess={isMasterReset ? handleMasterReset : handlePinSuccess} resetMode={!isMasterReset && selectedUser.role==='admin'} onReset={()=>setIsMasterReset(true)} />)}<div className="z-10 w-full max-w-sm mx-auto space-y-6 animate-in"><div className="flex justify-between items-start"><div><h1 className="text-4xl font-black text-white mb-2 italic tracking-tighter">GASTRO<span className="text-indigo-500">.APP</span></h1><p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.3em] flex items-center gap-1"><Store size={10}/> {restaurantId}</p></div><button onClick={onLogoutSystem} className="text-slate-500 hover:text-white transition-colors bg-white/5 p-2 rounded-full"><LogOut size={20}/></button></div>{alerts.length > 0 && (<div className="bg-slate-800/80 border border-slate-700 p-4 rounded-2xl backdrop-blur-sm shadow-xl"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1"><AlertTriangle size={10}/> Frühschicht Info</div><div className="space-y-2">{alerts.map((a,i) => (<div key={i} className={`text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-2 ${a.type==='red'?'bg-red-500/20 text-red-200 border border-red-500/30':'bg-amber-500/20 text-amber-200 border border-amber-500/30'}`}><div className={`w-2 h-2 rounded-full ${a.type==='red'?'bg-red-500':'bg-amber-500'}`}/> {a.msg}</div>))}</div></div>)}<div className="space-y-3"><div className="text-slate-500 text-xs font-bold uppercase ml-2">Wer bist du?</div>{staff.map(s => (<button key={s.id} onClick={() => handleUserClick(s)} className="w-full bg-white/5 hover:bg-indigo-600 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm"><div className="bg-indigo-500/20 p-2.5 rounded-xl"><User size={20} className="text-indigo-300 group-hover:text-white"/></div><div className="flex-1 text-left"><div className="font-bold text-lg">{s.name}</div><div className="text-[11px] opacity-60 uppercase font-medium">{s.role==='admin'?'Betriebsleiter':(s.departments||[]).join(' • ')}</div></div>{s.pin && s.pin.length>0 ? <Lock size={16} className="opacity-50"/> : <Unlock size={16} className="opacity-30"/>}</button>))}</div></div></div>
+                <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden"><div className="absolute top-[-20%] right-[-20%] w-[80%] h-[80%] bg-indigo-600 rounded-full blur-[150px] opacity-20 animate-pulse"></div>{showPin && (<PinPad title={`PIN für ${selectedUser.name}`} targetPin={selectedUser.pin} onClose={()=>setShowPin(false)} onSuccess={handlePinSuccess} />)}<div className="z-10 w-full max-w-sm mx-auto space-y-6 animate-in"><div className="flex justify-between items-start"><div><h1 className="text-4xl font-black text-white mb-2 italic tracking-tighter">GASTRO<span className="text-indigo-500">.APP</span></h1><p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.3em] flex items-center gap-1"><Store size={10}/> {restaurantId}</p></div><button onClick={onLogoutSystem} className="text-slate-500 hover:text-white transition-colors bg-white/5 p-2 rounded-full"><LogOut size={20}/></button></div>{alerts.length > 0 && (<div className="bg-slate-800/80 border border-slate-700 p-4 rounded-2xl backdrop-blur-sm shadow-xl"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1"><AlertTriangle size={10}/> Frühschicht Info</div><div className="space-y-2">{alerts.map((a,i) => (<div key={i} className={`text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-2 ${a.type==='red'?'bg-red-500/20 text-red-200 border border-red-500/30':'bg-amber-500/20 text-amber-200 border border-amber-500/30'}`}><div className={`w-2 h-2 rounded-full ${a.type==='red'?'bg-red-500':'bg-amber-500'}`}/> {a.msg}</div>))}</div></div>)}<div className="space-y-3"><div className="text-slate-500 text-xs font-bold uppercase ml-2">Wer bist du?</div>{staff.map(s => (<button key={s.id} onClick={() => handleUserClick(s)} className="w-full bg-white/5 hover:bg-indigo-600 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm"><div className="bg-indigo-500/20 p-2.5 rounded-xl"><User size={20} className="text-indigo-300 group-hover:text-white"/></div><div className="flex-1 text-left"><div className="font-bold text-lg">{s.name}</div><div className="text-[11px] opacity-60 uppercase font-medium">{s.role==='admin'?'Betriebsleiter':(s.departments||[]).join(' • ')}</div></div>{s.pin && s.pin.length>0 ? <Lock size={16} className="opacity-50"/> : <Unlock size={16} className="opacity-30"/>}</button>))}</div>{staff.length===0 && <div className="text-center pt-8"><p className="text-slate-500 text-sm mb-4">Noch keine Daten vorhanden.</p><button onClick={onSeed} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg">Datenbank Initialisieren</button></div>}</div></div>
             );
         };
 
