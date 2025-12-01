@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>GastroManager Platinum v2</title>
+    <title>GastroManager Platinum v2.1</title>
     
+    <!-- Styles & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
     <style>
@@ -24,6 +25,7 @@
         input, select, button { touch-action: manipulation; }
     </style>
 
+    <!-- Core Libraries -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -44,7 +46,7 @@
             Loader2, Save, ShoppingCart, Wrench, Truck, 
             Menu, X, Sparkles, ChefHat, Coffee, AlertTriangle, Siren, Ban,
             Calendar, Edit3, ChevronDown, ChevronUp, ArrowRight, PlayCircle, StopCircle,
-            Bug, Terminal, Eraser, Power, CheckSquare
+            Bug, Terminal, Eraser, Power, CheckSquare, Database
         } from "https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0";
 
         const { useState, useEffect, useRef, useMemo } = React;
@@ -62,16 +64,15 @@
 
         let app, auth, db;
         try { app = initializeApp(firebaseConfig); auth = getAuth(app); db = getFirestore(app); } catch (e) { console.error("Init Error", e); }
-        const appId = 'gastro-debug-v2'; // Version erhöht
+        const appId = 'gastro-debug-v2'; 
 
         const getTodayStr = () => new Date().toISOString().slice(0, 10);
         const getWeekdayShort = () => ['So','Mo','Di','Mi','Do','Fr','Sa'][new Date().getDay()];
         
-        // Hilfsfunktion für Temperatur-Status (HACCP grob)
         const getTempStatus = (temp) => {
             if (!temp && temp !== 0) return 'neutral';
             const t = parseFloat(temp);
-            if (t < 0 || t > 8) return 'danger'; // Zu warm oder gefroren (für Normalkühlung)
+            if (t < 0 || t > 8) return 'danger'; 
             if (t >= 0 && t <= 8) return 'ok';
             return 'neutral';
         };
@@ -92,7 +93,6 @@
             </div>
         );
 
-        // Verbesserte Eingabefelder für Mobile (größer)
         const Input = (props) => <input {...props} className={`w-full p-3.5 rounded-xl border border-slate-200 bg-white text-base font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all ${props.className || ''}`} />;
         const Select = (props) => <select {...props} className={`w-full p-3.5 rounded-xl border border-slate-200 bg-white text-base font-medium appearance-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20class%3D%22feather%20feather-chevron-down%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:20px] bg-no-repeat bg-[right_12px_center] pr-10 ${props.className || ''}`}>{props.children}</select>;
         const Button = ({ children, isLoading, variant='primary', onClick, className='' }) => {
@@ -118,6 +118,7 @@
             const [view, setView] = useState('login'); 
             const [loading, setLoading] = useState(true);
             const [toast, setToast] = useState(null);
+            const [seeding, setSeeding] = useState(false);
             const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [] });
             const [status, setStatus] = useState({ tempLogs: [], cleaningLogs: {}, oilLogs: {}, shoppingList: [] });
 
@@ -133,7 +134,6 @@
                 if (!user || !db) return;
                 const pub = (c) => collection(db, 'artifacts', appId, 'public', 'data', c);
                 
-                // Master Data & Staff Listeners
                 ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks'].forEach(c => 
                     onSnapshot(query(pub(c), orderBy('name')), s => {
                         const key = c === 'cooling_devices' ? 'cooling' : c === 'cleaning_tasks' ? 'tasks' : c;
@@ -142,7 +142,6 @@
                     })
                 );
 
-                // Live Logs Listeners
                 const today = getTodayStr();
                 onSnapshot(query(pub('logs_temp'), where('dateStr', '==', today)), s => setStatus(p => ({...p, tempLogs: s.docs.map(d=>d.data())})));
                 onSnapshot(query(pub('logs_cleaning'), where('dateStr', '==', today)), s => {
@@ -156,8 +155,34 @@
                 onSnapshot(pub('shopping_list_manual'), s => setStatus(p => ({...p, shoppingList: s.docs.map(d=>({...d.data(), id:d.id}))})));
             }, [user]);
 
+            // --- SEED FUNCTION FOR EMPTY DB ---
+            const seedDatabase = async () => {
+                setSeeding(true);
+                try {
+                    // Erstelle Admin
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'staff'), { 
+                        name: 'Chef', 
+                        role: 'admin', 
+                        departments: ['kitchen', 'service'], 
+                        pin: '0000', 
+                        createdAt: serverTimestamp() 
+                    });
+                    // Erstelle ein Beispiel-Gerät
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'cooling_devices'), { 
+                        name: 'Kühlschrank 1', 
+                        status: 'active',
+                        createdAt: serverTimestamp() 
+                    });
+                    showToast("System eingerichtet! Bitte einloggen.");
+                } catch(e) {
+                    showToast("Fehler beim Einrichten", "error");
+                    console.error(e);
+                }
+                setSeeding(false);
+            };
+
             if (loading) return <div className="h-full flex items-center justify-center"><LoadingSpinner size={40}/></div>;
-            if (!appUser) return <LoginScreen staff={data.staff} onLogin={u => { setAppUser(u); setView('dashboard'); }} />;
+            if (!appUser) return <LoginScreen staff={data.staff} onLogin={u => { setAppUser(u); setView('dashboard'); }} onSeed={seedDatabase} isSeeding={seeding} />;
 
             const hasAccess = (dept) => (appUser.role === 'admin' || (appUser.departments || []).includes(dept));
             const commonProps = { user: appUser, appId, showToast, data, status };
@@ -194,7 +219,7 @@
         }
 
         // --- 4. AUTH & NAV COMPONENTS ---
-        const LoginScreen = ({ staff, onLogin }) => (
+        const LoginScreen = ({ staff, onLogin, onSeed, isSeeding }) => (
             <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_#6366f1_0%,_transparent_45%)] opacity-40"></div>
                 <div className="z-10 w-full max-w-sm mx-auto">
@@ -213,7 +238,16 @@
                                 <ChevronDown className="-rotate-90 opacity-50 group-hover:opacity-100 transition-transform group-hover:translate-x-1"/>
                             </button>
                         ))}
-                        {staff.length === 0 && <div className="text-white/50 text-center text-sm p-4 border-2 border-dashed border-white/10 rounded-2xl">Keine Mitarbeiter angelegt.</div>}
+                        {/* THE MISSING PIECE: SEED BUTTON */}
+                        {staff.length === 0 && (
+                            <div className="animate-in text-center">
+                                <div className="text-white/50 text-sm mb-4">Datenbank ist leer.</div>
+                                <button onClick={onSeed} disabled={isSeeding} className="w-full py-5 border-2 border-dashed border-indigo-500/50 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 rounded-2xl font-bold uppercase tracking-wider flex justify-center items-center gap-3 transition-all">
+                                    {isSeeding ? <Loader2 className="animate-spin"/> : <><Database size={20}/> Ersteinrichtung starten</>}
+                                </button>
+                                <p className="text-indigo-300/40 text-[10px] mt-2">Erstellt 'Chef' (Admin)</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
