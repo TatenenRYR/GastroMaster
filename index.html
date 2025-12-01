@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Gastromaster v18.0</title>
+    <title>Gastromaster v20.0 (Head Admin)</title>
     
     <!-- Styles & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -24,7 +24,7 @@
         .card-press { @apply active:scale-[0.98] transition-all duration-200; }
     </style>
 
-    <!-- PDF Libraries -->
+    <!-- PDF Libraries (Global Scope) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 
@@ -49,7 +49,7 @@
             ChefHat, Coffee, AlertTriangle, Bug, Terminal, Eraser, 
             ChevronDown, ShoppingBag, Activity, Database, Calendar, AlertOctagon, Info,
             History, FileText, ChevronRight, ChevronLeft, Store, Key, ShieldCheck, Lock, Unlock, Zap,
-            ClipboardList, Box, Layers, PenTool, ShieldAlert, BadgeCheck, Code
+            ClipboardList, Box, Layers, PenTool, ShieldAlert, BadgeCheck, Code, Globe, UserCog, RefreshCcw
         } from "https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0";
 
         const { useState, useEffect, useRef, useMemo } = React;
@@ -71,6 +71,8 @@
             db = getFirestore(app);
         } catch(e) { console.error("Init Error", e); }
 
+        const HEAD_ADMIN_PASS = "master99"; // Simuliertes Head Admin Passwort
+
         // --- UTILS ---
         const getTodayStr = () => new Date().toISOString().slice(0, 10);
         const getYesterdayStr = () => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); };
@@ -88,7 +90,8 @@
                  primary: "bg-slate-900 text-white shadow-xl shadow-slate-900/20 hover:bg-slate-800 disabled:bg-slate-300 disabled:shadow-none disabled:text-slate-500",
                  danger: "bg-red-50 text-red-600 hover:bg-red-100 disabled:bg-slate-100 disabled:text-slate-400",
                  ghost: "bg-transparent text-slate-500 hover:bg-slate-100 border border-slate-200",
-                 success: "bg-emerald-600 text-white shadow-emerald-900/20 hover:bg-emerald-700 disabled:bg-slate-300 disabled:shadow-none"
+                 success: "bg-emerald-600 text-white shadow-emerald-900/20 hover:bg-emerald-700 disabled:bg-slate-300 disabled:shadow-none",
+                 head: "bg-indigo-600 text-white shadow-indigo-500/30 hover:bg-indigo-700"
              };
              return <button type="button" onClick={onClick} disabled={loading || disabled} className={`${base} ${variants[variant]} ${className}`}>{loading ? <Loader2 className="animate-spin" size={20}/> : children}</button>
         };
@@ -109,7 +112,6 @@
                         <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl max-w-sm w-full">
                             <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4"><Bug size={32}/></div>
                             <h2 className="text-xl font-black text-slate-800 mb-2">Ups, ein Fehler!</h2>
-                            <p className="text-sm text-slate-500 mb-6">Das System musste neu gestartet werden.</p>
                             <pre className="text-[10px] bg-slate-100 p-3 rounded-xl border border-slate-200 text-left mb-6 overflow-auto max-h-32 text-slate-600 font-mono">{this.state.error?.toString()}</pre>
                             <Button onClick={()=>{localStorage.clear(); window.location.reload()}} variant="primary">App Zurücksetzen</Button>
                         </div>
@@ -126,7 +128,6 @@
                 if(pin.length < 4) {
                     const newPin = pin + n; setPin(newPin);
                     if(newPin.length === 4) {
-                        // SAFE COMPARISON
                         if(String(targetPin) === String(newPin)) onSuccess(); 
                         else { setPin(''); alert("Falsche PIN"); }
                     }
@@ -144,7 +145,7 @@
             );
         };
 
-        // --- ENTERPRISE LOGIN ---
+        // --- LOGIN SCREENS ---
         const EnterpriseLogin = ({ onLogin, loading }) => {
             const [id, setId] = useState('');
             const submit = () => { if(id.length > 2) onLogin(id.trim().toLowerCase().replace(/\s/g,'-')); };
@@ -152,12 +153,110 @@
                 <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600 rounded-full blur-[150px] opacity-10 animate-pulse"></div>
                     <div className="z-10 w-full max-w-sm mx-auto animate-in text-center space-y-8">
-                        <div><h1 className="text-4xl font-black text-white italic tracking-tighter mb-2">GASTROMASTER</h1><p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v18.0</p></div>
+                        <div><h1 className="text-4xl font-black text-white italic tracking-tighter mb-2">GASTROMASTER</h1><p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v20.0</p></div>
                         <div className="bg-white/10 backdrop-blur-lg border border-white/10 p-6 rounded-3xl shadow-2xl space-y-4">
                             <div><label className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest ml-1">Restaurant ID</label><div className="relative"><Store className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/><input value={id} onChange={e=>setId(e.target.value)} placeholder="z.B. berlin-01" className="w-full pl-12 p-4 rounded-xl bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 font-mono" onKeyDown={e=>e.key==='Enter'&&submit()}/></div></div>
                             <Button onClick={submit} loading={loading} className="shadow-indigo-500/20 mt-2">Filiale Öffnen</Button>
                         </div>
                         <div className="text-[10px] text-slate-600 font-medium opacity-50 flex items-center justify-center gap-1"><Code size={10}/> Entwickelt von Marvin Ringer</div>
+                    </div>
+                </div>
+            );
+        };
+
+        const HeadAdminLogin = ({ onSuccess, onBack }) => {
+            const [pw, setPw] = useState('');
+            const check = () => { if(pw === HEAD_ADMIN_PASS) onSuccess(); else alert("Zugriff verweigert"); };
+            return (
+                <div className="min-h-screen bg-indigo-950 flex flex-col justify-center p-6 relative overflow-hidden text-center">
+                    <div className="bg-white p-8 rounded-3xl max-w-sm mx-auto w-full shadow-2xl animate-in space-y-4">
+                        <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4"><UserCog size={40}/></div>
+                        <h2 className="text-2xl font-black text-slate-800">Head Admin</h2>
+                        <Input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="Master Passwort" onKeyDown={e=>e.key==='Enter'&&check()}/>
+                        <Button variant="head" onClick={check}>Login</Button>
+                        <button onClick={onBack} className="text-xs text-slate-400 underline pt-4">Zurück</button>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- HEAD ADMIN PANEL ---
+        const HeadAdminPanel = ({ onLogout, showToast }) => {
+            const [restaurants, setRestaurants] = useState([]);
+            const [loading, setLoading] = useState(false);
+
+            useEffect(() => {
+                // In einer echten Firestore Struktur müsste man eine 'meta' Collection haben, die alle IDs speichert.
+                // Da wir das hier nicht haben, simulieren wir es bzw. man müsste manuell suchen.
+                // WORKAROUND: Da wir keine globale Liste haben, zeige ich hier nur ein Interface Beispiel.
+                // Um es "echt" zu machen, müsste jede Filiale sich bei Initialisierung in einer 'global_registry' eintragen.
+                // Ich implementiere hier die Logik für "Wenn ich eine ID kenne, kann ich sie managen".
+            }, []);
+
+            const [targetId, setTargetId] = useState('');
+
+            const wipeRestaurant = async () => {
+                if(!targetId) return;
+                if(!confirm(`ACHTUNG: Filiale '${targetId}' wirklich komplett löschen? Alle Daten gehen verloren!`)) return;
+                setLoading(true);
+                try {
+                    const collections = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'prep_tasks', 'suppliers', 'settings', 'company', 'logs_temp', 'logs_cleaning', 'logs_prep', 'logs_oil', 'shopping_list', 'logs_signatures'];
+                    for (const col of collections) {
+                        const ref = collection(db, 'artifacts', targetId, 'public', 'data', col);
+                        const snap = await getDocs(ref);
+                        const batch = writeBatch(db);
+                        snap.docs.forEach(doc => batch.delete(doc.ref));
+                        await batch.commit();
+                    }
+                    showToast(`Filiale ${targetId} gelöscht.`);
+                } catch(e) { showToast("Fehler beim Löschen", "error"); }
+                setLoading(false);
+            };
+
+            const resetAdminPin = async () => {
+                if(!targetId) return;
+                setLoading(true);
+                try {
+                    // Find Admin User in that branch
+                    const q = query(collection(db, 'artifacts', targetId, 'public', 'data', 'staff'), where('role','==','admin'));
+                    const snap = await getDocs(q);
+                    if(snap.empty) { showToast("Kein Admin gefunden", "error"); }
+                    else {
+                        const adminDoc = snap.docs[0];
+                        await updateDoc(adminDoc.ref, { pin: '1234' });
+                        showToast(`Admin PIN für ${targetId} auf 1234 gesetzt.`);
+                    }
+                } catch(e) { showToast("Fehler", "error"); }
+                setLoading(false);
+            };
+
+            return (
+                <div className="min-h-screen bg-slate-100 p-6">
+                    <div className="max-w-2xl mx-auto space-y-6">
+                        <div className="flex justify-between items-center">
+                            <h1 className="text-3xl font-black text-slate-800">Global Management</h1>
+                            <button onClick={onLogout} className="bg-white p-3 rounded-xl shadow-sm text-slate-600"><LogOut size={20}/></button>
+                        </div>
+
+                        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+                            <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Store size={20}/> Filial-Verwaltung</h3>
+                            <div className="flex gap-2 mb-6">
+                                <Input value={targetId} onChange={e=>setTargetId(e.target.value)} placeholder="Restaurant-ID eingeben..." />
+                            </div>
+                            
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <button onClick={resetAdminPin} disabled={loading||!targetId} className="p-4 bg-amber-50 text-amber-700 rounded-2xl font-bold flex items-center justify-center gap-2 border border-amber-100 hover:bg-amber-100"><RefreshCcw size={18}/> Admin PIN Reset (1234)</button>
+                                <button onClick={wipeRestaurant} disabled={loading||!targetId} className="p-4 bg-red-50 text-red-700 rounded-2xl font-bold flex items-center justify-center gap-2 border border-red-100 hover:bg-red-100"><Trash2 size={18}/> Filiale Löschen (Nuke)</button>
+                            </div>
+                        </div>
+
+                        <div className="bg-indigo-600 text-white p-6 rounded-3xl shadow-lg flex items-center justify-between">
+                            <div>
+                                <div className="font-bold text-indigo-200 uppercase text-xs tracking-widest">System Status</div>
+                                <div className="font-black text-2xl">Gastromaster Online</div>
+                            </div>
+                            <Activity size={32} className="opacity-50"/>
+                        </div>
                     </div>
                 </div>
             );
@@ -170,6 +269,7 @@
             const [appId, setAppId] = useState(localStorage.getItem('gastro_app_id') || null);
             
             const [view, setView] = useState('login'); 
+            const [isHeadAdmin, setIsHeadAdmin] = useState(false);
             const [loading, setLoading] = useState(true);
             const [toast, setToast] = useState(null);
             const [adminAlert, setAdminAlert] = useState(false);
@@ -181,7 +281,14 @@
 
             const showToast = (msg, type='success') => { setToast({msg, type}); setTimeout(() => setToast(null), 3000); };
 
-            const handleRestaurantLogin = (id) => { setLoading(true); localStorage.setItem('gastro_app_id', id); setAppId(id); setLoading(false); };
+            const handleRestaurantLogin = (id) => {
+                if(id === 'head-admin') {
+                    setView('head-login');
+                } else {
+                    setLoading(true); localStorage.setItem('gastro_app_id', id); setAppId(id); setLoading(false);
+                }
+            };
+
             const handleUserLogin = (u) => {
                 setAppUser(u);
                 setView('dashboard');
@@ -192,7 +299,7 @@
             useEffect(() => { signInAnonymously(auth).catch(e=>console.error(e)); return onAuthStateChanged(auth, u => { setUser(u); if(!u) setLoading(false); }); }, []);
 
             useEffect(() => {
-                if (!user || !appId) { if(appId===null) setLoading(false); return; }
+                if (!user || !appId || isHeadAdmin) { if(appId===null && !isHeadAdmin) setLoading(false); return; }
                 setLoading(true);
                 const pub = (c) => collection(db, 'artifacts', appId, 'public', 'data', c);
                 
@@ -230,7 +337,7 @@
                 fetchYesterday();
 
                 return () => { [...unsubs, ...unsubsLive].forEach(u => u()); };
-            }, [user, appId]);
+            }, [user, appId, isHeadAdmin]);
 
             const deleteBranch = async () => {
                 if(!appId) return;
@@ -270,6 +377,9 @@
                 } catch(e) { console.error(e); }
                 setLoading(false);
             };
+
+            if (view === 'head-login') return <HeadAdminLogin onSuccess={()=>{setIsHeadAdmin(true); setView('head-panel');}} onBack={()=>setView('login')}/>;
+            if (view === 'head-panel') return <HeadAdminPanel onLogout={()=>{setIsHeadAdmin(false); setView('login');}} showToast={showToast} />;
 
             if (!appId) return <EnterpriseLogin onLogin={handleRestaurantLogin} loading={loading} />;
             if (loading) return <Loading />;
@@ -369,7 +479,7 @@
 
         const Dashboard = ({ user, data, status, setView }) => {
             const day = getWeekdayShort(); const longDay = getWeekdayLong();
-            const relevantTasks = (data.tasks || []).filter(t => t.schedule?.[day] && (user.role==='admin' || (user.departments||[]).includes(t.dept)));
+            const relevantTasks = (data.tasks || []).filter(t => t.schedule?.[day] && (user.role==='admin' || t.dept==='all' || (user.departments||[]).includes(t.dept)));
             const done = relevantTasks.filter(t => status.cleaningLogs[t.id]).length;
             const openTemp = (data.cooling || []).filter(d => d.status!=='defekt').length - status.tempLogs.length;
             const prepList = (data.prep || []).filter(t => t.schedule?.[day] && (user.role==='admin' || (user.departments||[]).includes(t.dept)));
@@ -422,7 +532,6 @@
             const delItem = async (id) => { if(!confirm("Löschen?")) return; const col = tab==='tasks'?'cleaning_tasks':tab==='cooling'?'cooling_devices':tab==='fryers'?'fryers':tab==='suppliers'?'suppliers':tab==='prep'?'prep_tasks':'staff'; await deleteDoc(doc(db,'artifacts',appId,'public','data',col,id)); showToast("Gelöscht"); }; 
             const initDeleteBranch = () => { const a=Math.floor(Math.random()*10)+1; const b=Math.floor(Math.random()*10)+1; setDeleteMath({q:`${a} + ${b}`, a:a+b}); };
             const confirmDeleteBranch = async () => { if(parseInt(deleteInput) === deleteMath.a) { deleteBranch(); } else { showToast("Rechnung falsch!", "error"); } };
-            
             return (<div className="animate-in space-y-6"><h2 className="text-3xl font-black text-slate-800">Verwaltung</h2><div className="flex gap-2 overflow-x-auto no-scrollbar -mx-5 px-5 pb-2">{Object.entries(tabs).map(([k,l])=><button key={k} onClick={()=>{setTab(k);setEdit(null)}} className={`px-6 py-3 rounded-2xl font-bold text-sm whitespace-nowrap transition-all ${tab===k?'bg-slate-900 text-white shadow-lg shadow-slate-900/20':'bg-white border text-slate-500'}`}>{l}</button>)}</div><div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 min-h-[400px]">{tab === 'system' ? (<div className="space-y-4 animate-in"><div className="text-sm font-bold uppercase text-slate-400 tracking-wider">Erweiterte Tools</div><button onClick={()=>setView('history')} className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-5 rounded-2xl flex items-center justify-between group transition-all"><div className="flex items-center gap-3 font-bold"><History size={20}/> HACCP Protokolle (PDF)</div><ChevronRight className="opacity-50 group-hover:translate-x-1 transition-transform"/></button>
             <button onClick={onLogoutSystem} className="w-full mt-4 p-4 border border-slate-200 bg-slate-50 text-slate-600 rounded-2xl font-bold flex justify-center items-center gap-2"><LogOut size={18}/> Abmelden</button>
             <div className="mt-10 pt-6 border-t border-red-100"><h4 className="text-red-500 font-bold mb-2 flex items-center gap-2"><AlertTriangle size={16}/> Danger Zone</h4>{deleteMath ? (<div className="bg-red-50 p-4 rounded-2xl border border-red-200"><p className="text-red-800 text-sm font-bold mb-2">Löse die Aufgabe: {deleteMath.q} = ?</p><div className="flex gap-2"><Input value={deleteInput} onChange={e=>setDeleteInput(e.target.value)} type="number" className="bg-white"/><button onClick={confirmDeleteBranch} className="bg-red-600 text-white px-4 rounded-xl font-bold">Löschen</button></div></div>) : (<button onClick={initDeleteBranch} className="text-xs text-red-400 underline">Filiale unwiderruflich löschen</button>)}</div>
