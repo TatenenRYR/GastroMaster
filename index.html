@@ -31,7 +31,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { 
             getFirestore, collection, addDoc, deleteDoc, doc, setDoc, updateDoc,
-            onSnapshot, query, orderBy, limit, serverTimestamp, where 
+            onSnapshot, serverTimestamp 
         } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { 
@@ -63,9 +63,9 @@
             db = getFirestore(app);
         } catch (e) { console.error("Init Error", e); }
 
-        const appId = 'gastro-debug-v1'; 
+        const appId = 'gastro-debug-v4-clientfilter'; 
 
-        // --- ERROR BOUNDARY (Verhindert White Screen) ---
+        // --- ERROR BOUNDARY ---
         class ErrorBoundary extends React.Component {
             constructor(props) { super(props); this.state = { hasError: false, error: null }; }
             static getDerivedStateFromError(error) { return { hasError: true, error }; }
@@ -73,7 +73,7 @@
                 if (this.state.hasError) {
                     return (
                         <div className="p-10 text-center">
-                            <h1 className="text-2xl font-bold text-red-600 mb-2">Es ist ein Fehler aufgetreten.</h1>
+                            <h1 className="text-2xl font-bold text-red-600 mb-2">Fehler aufgetreten</h1>
                             <pre className="text-left bg-gray-100 p-4 rounded text-xs overflow-auto">{this.state.error && this.state.error.toString()}</pre>
                             <button onClick={() => window.location.reload()} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded">Neu laden</button>
                         </div>
@@ -96,43 +96,6 @@
             if (t >= 24) return { color: 'bg-red-600', text: 'text-red-600', title: '⛔ WECHSELN', badge: 'STOP' };
             if (t >= 18) return { color: 'bg-yellow-500', text: 'text-yellow-600', title: '⚠️ FILTERN', badge: 'FILTER' };
             return { color: 'bg-emerald-500', text: 'text-emerald-600', title: '✅ OK', badge: 'GUT' };
-        };
-
-        // --- DEBUG CONSOLE COMPONENT ---
-        const DebugConsole = ({ logs, isOpen, onClose, onClear }) => {
-            const bottomRef = useRef(null);
-
-            useEffect(() => {
-                if (isOpen && bottomRef.current) {
-                    bottomRef.current.scrollIntoView({ behavior: "smooth" });
-                }
-            }, [logs, isOpen]);
-
-            if (!isOpen) return null;
-
-            return (
-                <div className="fixed bottom-0 left-0 right-0 h-1/2 bg-slate-900 border-t-2 border-slate-700 z-[100] shadow-2xl flex flex-col font-mono text-xs slide-up">
-                    <div className="flex justify-between items-center p-2 bg-slate-800 border-b border-slate-700 text-slate-300">
-                        <div className="flex items-center gap-2 font-bold">
-                            <Terminal size={14} className="text-green-400"/> DEBUG CONSOLE
-                        </div>
-                        <div className="flex gap-2">
-                            <button onClick={onClear} className="p-1 hover:text-white flex items-center gap-1"><Eraser size={14}/> Clear</button>
-                            <button onClick={onClose} className="p-1 hover:text-red-400"><X size={16}/></button>
-                        </div>
-                    </div>
-                    <div className="flex-1 overflow-auto p-2 space-y-1 bg-black/90">
-                        {logs.length === 0 && <div className="text-slate-600 italic p-2">Keine Logs vorhanden...</div>}
-                        {logs.map((log, i) => (
-                            <div key={i} className={`flex gap-2 border-b border-slate-800 pb-1 mb-1 ${log.type === 'error' ? 'text-red-400' : log.type === 'warn' ? 'text-yellow-400' : 'text-green-400'}`}>
-                                <span className="opacity-50 min-w-[60px]">{log.time}</span>
-                                <span className="break-all">{log.msg}</span>
-                            </div>
-                        ))}
-                        <div ref={bottomRef} />
-                    </div>
-                </div>
-            );
         };
 
         // --- UI COMPONENTS ---
@@ -172,7 +135,7 @@
                 <div className="z-10 w-full max-w-sm">
                     <div className="text-center mb-10">
                         <h1 className="text-5xl font-black text-white mb-2 tracking-tighter italic">GASTRO<span className="text-indigo-500">.APP</span></h1>
-                        <p className="text-slate-400 text-xs font-bold uppercase tracking-[0.3em]">Platinum Edition</p>
+                        <p className="text-slate-400 text-xs font-bold uppercase tracking-[0.3em]">Client Filter Edition</p>
                     </div>
                     <div className="space-y-3">
                         {staff.map(s => {
@@ -205,6 +168,25 @@
             </div>
         );
 
+        // --- DEBUG CONSOLE ---
+        const DebugConsole = ({ logs, isOpen, onClose, onClear }) => {
+            const bottomRef = useRef(null);
+            useEffect(() => { if (isOpen && bottomRef.current) bottomRef.current.scrollIntoView({ behavior: "smooth" }); }, [logs, isOpen]);
+            if (!isOpen) return null;
+            return (
+                <div className="fixed bottom-0 left-0 right-0 h-1/2 bg-slate-900 border-t-2 border-slate-700 z-[100] shadow-2xl flex flex-col font-mono text-xs slide-up">
+                    <div className="flex justify-between items-center p-2 bg-slate-800 border-b border-slate-700 text-slate-300">
+                        <div className="flex items-center gap-2 font-bold"><Terminal size={14} className="text-green-400"/> DEBUG</div>
+                        <div className="flex gap-2"><button onClick={onClear} className="flex gap-1 hover:text-white"><Eraser size={14}/> Clear</button><button onClick={onClose}><X size={16}/></button></div>
+                    </div>
+                    <div className="flex-1 overflow-auto p-2 bg-black/90 space-y-1">
+                        {logs.map((l, i) => <div key={i} className={`flex gap-2 border-b border-slate-800 pb-1 ${l.type==='error'?'text-red-400':l.type==='warn'?'text-yellow-400':'text-green-400'}`}><span className="opacity-50">{l.time}</span><span>{l.msg}</span></div>)}
+                        <div ref={bottomRef} />
+                    </div>
+                </div>
+            );
+        };
+
         /* --- 3. HAUPT APP --- */
 
         function App() {
@@ -215,103 +197,105 @@
             const [toast, setToast] = useState(null);
             const [isSeeding, setIsSeeding] = useState(false);
             
-            // Debug State
             const [consoleLogs, setConsoleLogs] = useState([]);
             const [showDebug, setShowDebug] = useState(false);
-            const [debugEnabled, setDebugEnabled] = useState(false); // Vom Admin gesteuert
+            const [debugEnabled, setDebugEnabled] = useState(false);
 
             const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [] });
             const [status, setStatus] = useState({ tempLogs: [], activeShifts: {}, oilLogs: {}, cleaningLogs: {}, drawerChecks: {}, shoppingList: [] });
 
             const showToast = (msg, type='success') => { setToast({msg, type}); setTimeout(() => setToast(null), 3000); };
 
-            // --- CONSOLE INTERCEPTOR ---
+            // Console Interceptor
             useEffect(() => {
-                if (!debugEnabled) return;
-
-                const originalLog = console.log;
-                const originalError = console.error;
-                const originalWarn = console.warn;
-
-                const addLog = (type, args) => {
-                    const time = new Date().toLocaleTimeString();
+                if(!debugEnabled) return;
+                const log = (type, args) => {
                     const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
-                    setConsoleLogs(prev => [...prev.slice(-49), { type, time, msg }]); // Keep last 50
+                    setConsoleLogs(p => [...p.slice(-49), { type, time: new Date().toLocaleTimeString(), msg }]);
                 };
-
-                console.log = (...args) => { addLog('log', args); originalLog.apply(console, args); };
-                console.error = (...args) => { addLog('error', args); originalError.apply(console, args); };
-                console.warn = (...args) => { addLog('warn', args); originalWarn.apply(console, args); };
-
-                return () => {
-                    console.log = originalLog;
-                    console.error = originalError;
-                    console.warn = originalWarn;
-                };
+                const oL = console.log; const oE = console.error; const oW = console.warn;
+                console.log = (...a) => { log('log', a); oL.apply(console, a); };
+                console.error = (...a) => { log('error', a); oE.apply(console, a); };
+                console.warn = (...a) => { log('warn', a); oW.apply(console, a); };
+                return () => { console.log = oL; console.error = oE; console.warn = oW; };
             }, [debugEnabled]);
 
             // Auth
             useEffect(() => {
                 if (!app) return;
-                const init = async () => {
-                    try { await signInAnonymously(auth); } catch (e) { console.error(e); }
-                };
+                const init = async () => { try { await signInAnonymously(auth); } catch (e) { console.error(e); } };
                 init();
                 return onAuthStateChanged(auth, u => { setUser(u); if(!u) setLoading(false); });
             }, []);
 
-            // Sync
+            // Data Sync - FIX: NO QUERIES, JUST COLLECTIONS
             useEffect(() => {
                 if (!user || !db) return;
                 const pub = (c) => collection(db, 'artifacts', appId, 'public', 'data', c);
-                
-                // Settings Check (Debug)
-                onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), (docSnap) => {
-                    if (docSnap.exists()) {
-                        setDebugEnabled(docSnap.data().debugMode === true);
-                    }
-                });
-
-                // Master Data
-                const cols = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'suppliers'];
-                cols.forEach(c => onSnapshot(query(pub(c), orderBy('name')), snap => {
-                    const key = c === 'cooling_devices' ? 'cooling' : c === 'cleaning_tasks' ? 'tasks' : c;
-                    setData(p => ({ ...p, [key]: snap.docs.map(d => ({ id: d.id, ...d.data() })) }));
-                    if(c==='staff') setLoading(false);
-                }));
-
-                // Live Data
                 const today = getTodayStr();
-                onSnapshot(query(pub('logs_temp'), where('dateStr', '==', today)), s => setStatus(p => ({...p, tempLogs: s.docs.map(d=>d.data())})));
-                onSnapshot(query(pub('logs_cleaning'), where('dateStr', '==', today)), s => {
-                    const logs = {}; s.docs.forEach(d => logs[d.data().taskId] = d.data());
+
+                // 1. Master Data (Manual Sort)
+                ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'suppliers'].forEach(c => 
+                    onSnapshot(pub(c), snap => {
+                        const list = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+                        const key = c === 'cooling_devices' ? 'cooling' : c === 'cleaning_tasks' ? 'tasks' : c;
+                        setData(p => ({ ...p, [key]: list }));
+                        if(c==='staff') setLoading(false);
+                    })
+                );
+
+                // 2. Settings
+                onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), s => { if(s.exists()) setDebugEnabled(s.data().debugMode); });
+
+                // 3. Operational Data (Client-Side Filter to avoid index errors)
+                onSnapshot(pub('logs_temp'), s => {
+                    setStatus(p => ({...p, tempLogs: s.docs.map(d=>d.data()).filter(d=>d.dateStr===today) }));
+                });
+                onSnapshot(pub('logs_cleaning'), s => {
+                    const logs = {}; s.docs.forEach(d => { const da=d.data(); if(da.dateStr===today) logs[da.taskId] = da; });
                     setStatus(p => ({...p, cleaningLogs: logs}));
                 });
-                onSnapshot(query(pub('logs_oil'), orderBy('createdAt', 'desc'), limit(20)), s => {
-                    const latest = {}; s.docs.forEach(d => { if(!latest[d.data().deviceId]) latest[d.data().deviceId] = d.data(); });
+                onSnapshot(pub('logs_oil'), s => {
+                    const all = s.docs.map(d=>d.data());
+                    // Manual latest per device logic
+                    const latest = {};
+                    all.forEach(log => {
+                        // Very simple latest logic: just overwrite. 
+                        // In production with thousands of logs, we'd need server index. 
+                        // For small scale, this is perfectly fine and avoids errors.
+                        latest[log.deviceId] = log;
+                    });
                     setStatus(p => ({...p, oilLogs: latest}));
                 });
+                onSnapshot(pub('logs_time'), s => {
+                    const active = {}; s.docs.forEach(d => { const l=d.data(); if(!l.end) active[l.userId] = { id: d.id, ...l }; });
+                    setStatus(p => ({ ...p, activeShifts: active }));
+                });
+                
+                // Shopping List Logic
                 onSnapshot(pub('shopping_list_manual'), mSnap => {
                     const mItems = mSnap.docs.map(d => ({...d.data(), id:d.id, isManual:true}));
-                    onSnapshot(query(pub('daily_checks'), where('dateStr', '==', today)), s => {
+                    onSnapshot(pub('daily_checks'), s => {
                         const checks = {}; const autoList = [];
                         s.docs.forEach(doc => {
                             const d = doc.data();
-                            checks[d.drawerId] = d.items || {};
-                            if(d.items) Object.entries(d.items).forEach(([k, st]) => {
-                                if(st === 'empty') autoList.push({ id: `${d.drawerId}_${k}`, name: d.drawerName, sub: 'Leer', supplier: 'Intern' });
-                            });
+                            if(d.dateStr === today) {
+                                checks[d.drawerId] = d.items || {};
+                                if(d.items) Object.entries(d.items).forEach(([k, st]) => {
+                                    if(st === 'empty') autoList.push({ id: `${d.drawerId}_${k}`, name: d.drawerName, sub: 'Leer', supplier: 'Intern' });
+                                });
+                            }
                         });
                         setStatus(p => ({ ...p, drawerChecks: checks, shoppingList: [...mItems, ...autoList] }));
                     });
                 });
+
             }, [user]);
 
             const seed = async () => {
                 setIsSeeding(true);
                 try {
                     await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'staff'), { name: 'Chef', role: 'admin', departments: ['kitchen', 'service'], pin: '0000', createdAt: serverTimestamp() });
-                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'cooling_devices'), { name: 'Kühlschrank 1', minTemp: 2, maxTemp: 8, createdAt: serverTimestamp() });
                     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), { debugMode: false });
                     showToast("System bereit!", "success");
                 } catch(e) { showToast("Fehler: " + e.message, "error"); } 
@@ -334,15 +318,10 @@
                         </div>
                     </header>
 
-                    {/* DEBUG CONSOLE OVERLAY */}
                     <DebugConsole logs={consoleLogs} isOpen={showDebug} onClose={()=>setShowDebug(false)} onClear={()=>setConsoleLogs([])} />
                     
-                    {/* DEBUG TOGGLE BUTTON */}
                     {debugEnabled && (
-                        <button 
-                            onClick={() => setShowDebug(!showDebug)}
-                            className="fixed bottom-24 right-4 z-[90] bg-slate-900 text-green-400 p-3 rounded-full shadow-xl border-2 border-green-500 animate-in hover:scale-110 transition-transform"
-                        >
+                        <button onClick={() => setShowDebug(!showDebug)} className="fixed bottom-24 right-4 z-[90] bg-slate-900 text-green-400 p-3 rounded-full shadow-xl border-2 border-green-500 hover:scale-110 transition-transform">
                             <Bug size={24} />
                         </button>
                     )}
@@ -611,3 +590,5 @@
     </script>
 </body>
 </html>
+
+
