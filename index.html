@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Gastromaster v28.0</title>
+    <title>Gastromaster v29.0</title>
     
     <!-- Styles & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -86,11 +86,16 @@
 
         const DEFAULT_MODULES = ['prep', 'cleaning', 'cooling', 'oil', 'inventory'];
         const MODULE_ICONS = { prep: <ClipboardList/>, cleaning: <Sparkles/>, cooling: <Snowflake/>, oil: <Droplet/>, inventory: <Truck/>, dashboard: <Menu/>, admin: <Settings/> };
-        const MODULE_NAMES = { prep: "Mise en Place", cleaning: "Putzplan", cooling: "Kühlung", oil: "Fett & Öl", inventory: "Einkauf" };
-
+        
         const DICTIONARY = {
-            de: { start: "Filiale Öffnen", id: "Restaurant ID", login: "Team Login", role: "Rolle", pin: "PIN", admin: "Filialleitung", kitchen: "Küche", service: "Service", save: "Speichern", cancel: "Abbrechen", prep: "Vorbereitung", stock: "Bestand", clean: "Putzplan", oil: "Fett & Öl", temp: "Kühlung", dash: "Übersicht", morning: "Frühschicht Info", yesterday: "Fettliste vom Vortag", missing: "NICHT gemacht!", dev: "Entwickelt von Marvin Ringer" },
-            // ... other languages omitted for brevity ...
+            de: { start: "Filiale Öffnen", id: "Restaurant ID", login: "Team Login", role: "Rolle", pin: "PIN", admin: "Filialleitung", kitchen: "Küche", service: "Service", save: "Speichern", cancel: "Abbrechen", prep: "Vorbereitung", stock: "Bestand", clean: "Putzplan", oil: "Fett & Öl", temp: "Kühlung", dash: "Übersicht", morning: "Frühschicht Info", yesterday: "Fettliste vom Vortag", missing: "NICHT gemacht!", dev: "Entwickelt von Marvin Ringer", k_lead: "Küchenleitung", s_lead: "Serviceleitung", worker: "Mitarbeiter", logout: "Abmelden", sign: "Signieren", pdf: "Protokoll (PDF)", create: "Erstellen" },
+            en: { start: "Open Branch", id: "Restaurant ID", login: "Team Login", role: "Role", pin: "PIN", admin: "Branch Manager", kitchen: "Kitchen", service: "Service", save: "Save", cancel: "Cancel", prep: "Prep", stock: "Stock", clean: "Cleaning", oil: "Oil Quality", temp: "Cooling", dash: "Dashboard", morning: "Morning Info", yesterday: "Yesterday's Oil", missing: "NOT done!", dev: "Developed by Marvin Ringer", k_lead: "Kitchen Lead", s_lead: "Service Lead", worker: "Staff", logout: "Logout", sign: "Sign", pdf: "Log (PDF)", create: "Create" },
+            tr: { start: "Şubeyi Aç", id: "Restoran ID", login: "Ekip Girişi", role: "Rol", pin: "PIN", admin: "Şube Müdürü", kitchen: "Mutfak", service: "Servis", save: "Kaydet", cancel: "İptal", prep: "Hazırlık", stock: "Stok", clean: "Temizlik", oil: "Yağ Kalitesi", temp: "Soğutma", dash: "Pano", morning: "Sabah Bilgisi", yesterday: "Dünkü Yağ", missing: "YAPILMADI!", dev: "Marvin Ringer tarafından geliştirildi", k_lead: "Mutfak Şefi", s_lead: "Servis Şefi", worker: "Personel", logout: "Çıkış", sign: "İmzala", pdf: "Protokol (PDF)", create: "Oluştur" },
+            pl: { start: "Otwórz oddział", id: "ID Restauracji", login: "Logowanie zespołu", role: "Rola", pin: "PIN", admin: "Kierownik", kitchen: "Kuchnia", service: "Serwis", save: "Zapisz", cancel: "Anuluj", prep: "Przygotowanie", stock: "Magazyn", clean: "Sprzątanie", oil: "Jakość oleju", temp: "Chłodzenie", dash: "Pulpit", morning: "Info poranne", yesterday: "Olej z wczoraj", missing: "NIE zrobione!", dev: "Opracowane przez Marvina Ringera", k_lead: "Szef kuchni", s_lead: "Szef serwisu", worker: "Pracownik", logout: "Wyloguj", sign: "Podpisz", pdf: "Protokół (PDF)", create: "Utwórz" },
+            ru: { start: "Открыть", id: "ID ресторана", login: "Вход", role: "Роль", pin: "PIN", admin: "Директор", kitchen: "Кухня", service: "Сервис", save: "Сохранить", cancel: "Отмена", prep: "Подготовка", stock: "Склад", clean: "Уборка", oil: "Масло", temp: "Холод", dash: "Обзор", morning: "Инфо", yesterday: "Масло вчера", missing: "НЕ сделано!", dev: "Разработано Марвином Рингером", k_lead: "Шеф-повар", s_lead: "Главный официант", worker: "Сотрудник", logout: "Выйти", sign: "Подписать", pdf: "Протокол", create: "Создать" },
+            ua: { start: "Відкрити", id: "ID ресторану", login: "Вхід", role: "Роль", pin: "PIN", admin: "Директор", kitchen: "Кухня", service: "Сервіс", save: "Зберегти", cancel: "Скасувати", prep: "Підготовка", stock: "Склад", clean: "Прибирання", oil: "Олія", temp: "Холод", dash: "Огляд", morning: "Інфо", yesterday: "Олія вчора", missing: "НЕ зроблено!", dev: "Разроблено Марвіном Рінгером", k_lead: "Шеф-кухар", s_lead: "Головний офіціант", worker: "Співробітник", logout: "Вийти", sign: "Підписати", pdf: "Протокол", create: "Створити" },
+            nl: { start: "Openen", id: "Restaurant ID", login: "Team Login", role: "Rol", pin: "PIN", admin: "Manager", kitchen: "Keuken", service: "Bediening", save: "Opslaan", cancel: "Annuleren", prep: "Voorbereiding", stock: "Voorraad", clean: "Schoonmaak", oil: "Olie", temp: "Koeling", dash: "Overzicht", morning: "Info", yesterday: "Olie gisteren", missing: "NIET gedaan!", dev: "Ontwikkeld door Marvin Ringer", k_lead: "Keukenleider", s_lead: "Serviceleider", worker: "Medewerker", logout: "Uitloggen", sign: "Tekenen", pdf: "Logboek", create: "Maken" },
+            af: { start: "Oop Tak", id: "Restaurant ID", login: "Span Teken", role: "Rol", pin: "PIN", admin: "Bestuurder", kitchen: "Kombuis", service: "Diens", save: "Stoor", cancel: "Kanselleer", prep: "Voorbereiding", stock: "Voorraad", clean: "Skoonmaak", oil: "Olie", temp: "Verkoeling", dash: "Paneelbord", morning: "Oggend Info", yesterday: "Gister se Olie", missing: "NIE gedoen!", dev: "Ontwikkel deur Marvin Ringer", k_lead: "Kombuishoof", s_lead: "Dienshoof", worker: "Personeel", logout: "Teken uit", sign: "Teken", pdf: "Logboek", create: "Skep" }
         };
 
         // --- COMPONENTS ---
@@ -114,17 +119,17 @@
             </div>
         );
 
-        // --- ERROR BOUNDARY ---
         class ErrorBoundary extends React.Component {
             constructor(props) { super(props); this.state = { hasError: false, error: null }; }
             static getDerivedStateFromError(error) { return { hasError: true, error }; }
+            componentDidCatch(error, info) { console.error("Crash:", error, info); }
             render() {
                 if (this.state.hasError) return (
                     <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-slate-50">
                         <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl max-w-sm w-full">
                             <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4"><Bug size={32}/></div>
-                            <h2 className="text-xl font-black text-slate-800 mb-2">Ups, ein Fehler!</h2>
-                            <Button onClick={()=>{localStorage.clear(); window.location.reload()}} variant="primary">App Zurücksetzen</Button>
+                            <h2 className="text-xl font-black text-slate-800 mb-2">Systemfehler</h2>
+                            <Button onClick={()=>{localStorage.clear(); window.location.reload()}} variant="primary">Neustart</Button>
                         </div>
                     </div>
                 );
@@ -132,7 +137,6 @@
             }
         }
 
-        // --- PIN PAD ---
         const PinPad = ({ title, onClose, onSuccess, targetPin }) => {
             const [pin, setPin] = useState('');
             const handleNum = (n) => {
@@ -156,15 +160,30 @@
             );
         };
 
+        const LanguageSwitcher = ({ current, set }) => (
+            <div className="absolute top-6 right-6 z-50">
+                <div className="relative group">
+                    <button className="bg-white/10 p-2 rounded-full text-white hover:bg-white/20 transition-colors"><Globe size={20}/></button>
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl overflow-hidden hidden group-hover:block border border-slate-100 animate-in z-50">
+                        {Object.keys(DICTIONARY).map(l => (
+                            <button key={l} onClick={()=>set(l)} className={`w-full text-left px-4 py-3 text-sm font-bold hover:bg-slate-50 ${current===l?'text-indigo-600 bg-indigo-50':'text-slate-600'}`}>
+                                {l === 'de' ? '🇩🇪 Deutsch' : l === 'en' ? '🇺🇸 English' : l === 'tr' ? '🇹🇷 Türkçe' : l === 'pl' ? '🇵🇱 Polski' : l === 'ru' ? '🇷🇺 Русский' : l === 'ua' ? '🇺🇦 Українська' : l === 'nl' ? '🇳🇱 Nederlands' : '🇦🇫 Dari/Pashto'}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+
         // --- LOGO COMPONENT ---
         const AppLogo = ({ company, large }) => {
             if (company?.logoUrl) {
-                return <img src={company.logoUrl} alt="Logo" className={`${large ? 'h-20' : 'h-8'} object-contain mx-auto rounded-lg`} />;
+                return <img src={company.logoUrl} alt="Logo" className={`${large ? 'h-24' : 'h-8'} object-contain mx-auto rounded-lg transition-all`} />;
             }
             return (
                 <div>
                     <h1 className={`${large ? 'text-4xl' : 'text-xl'} font-black text-white italic tracking-tighter`}>{company?.appName || 'GASTROMASTER'}</h1>
-                    {large && <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v28.0</p>}
+                    {large && <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v29.0</p>}
                 </div>
             );
         };
@@ -185,9 +204,7 @@
 
             return (
                 <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden">
-                    <div className="absolute top-6 right-6 z-50 flex gap-2">
-                        {Object.keys(DICTIONARY).slice(0,2).map(l => <button key={l} onClick={()=>setLang(l)} className={`px-2 py-1 rounded text-xs font-bold ${lang===l?'bg-white text-slate-900':'bg-white/10 text-white'}`}>{l.toUpperCase()}</button>)}
-                    </div>
+                    <LanguageSwitcher current={lang} set={setLang} />
                     <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600 rounded-full blur-[150px] opacity-10 animate-pulse"></div>
                     <div className="z-10 w-full max-w-sm mx-auto animate-in text-center space-y-8">
                         <AppLogo large />
@@ -200,13 +217,13 @@
                             </div>
                         ) : (
                             <div className="bg-white/10 backdrop-blur-lg border border-white/10 p-6 rounded-3xl shadow-2xl space-y-4 text-left">
-                                <div className="text-center font-bold text-white mb-2">Neues Restaurant</div>
+                                <div className="text-center font-bold text-white mb-2">{t.create}</div>
                                 <div><label className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest ml-1">Registrierungs-Code</label><input value={regCode} onChange={e=>setRegCode(e.target.value)} placeholder="KEY-XXXX-XXXX" className="w-full p-3 rounded-xl bg-slate-800/50 border border-slate-700 text-white font-mono text-center uppercase"/></div>
                                 <div><label className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest ml-1">Wunsch-ID (z.B. mein-cafe)</label><input value={id} onChange={e=>setId(e.target.value)} placeholder="mein-laden" className="w-full p-3 rounded-xl bg-slate-800/50 border border-slate-700 text-white font-mono"/></div>
                                 <div><label className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest ml-1">Master-Passwort (WICHTIG!)</label><input type="password" value={masterPw} onChange={e=>setMasterPw(e.target.value)} placeholder="Hauptschlüssel..." className="w-full p-3 rounded-xl bg-slate-800/50 border border-slate-700 text-white"/></div>
                                 <div className="flex gap-2 mt-2">
-                                    <button onClick={()=>setMode('login')} className="px-4 py-3 rounded-xl bg-white/10 text-white font-bold">Zurück</button>
-                                    <button onClick={handleRegister} className="flex-1 py-3 rounded-xl bg-emerald-500 text-white font-bold shadow-lg shadow-emerald-500/20">Erstellen</button>
+                                    <button onClick={()=>setMode('login')} className="px-4 py-3 rounded-xl bg-white/10 text-white font-bold">{t.cancel}</button>
+                                    <button onClick={handleRegister} className="flex-1 py-3 rounded-xl bg-emerald-500 text-white font-bold shadow-lg shadow-emerald-500/20">{t.save}</button>
                                 </div>
                             </div>
                         )}
@@ -225,7 +242,6 @@
                         <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4"><UserCog size={40}/></div>
                         <h2 className="text-2xl font-black text-slate-800">Head Admin</h2>
                         <Input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="Master Passwort" onKeyDown={e=>e.key==='Enter'&&check()}/>
-                        <p className="text-xs text-slate-400">(Default: master99)</p>
                         <Button variant="head" onClick={check}>Login</Button>
                         <button onClick={onBack} className="text-xs text-slate-400 underline pt-4">Zurück</button>
                     </div>
@@ -242,7 +258,6 @@
 
             const normalizedActiveId = normalizeId(activeId);
 
-            // FIX: Correct Path to store tokens
             const createToken = async () => {
                 const t = generateToken();
                 await setDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'tokens', t), { created: serverTimestamp(), active: true });
@@ -302,13 +317,11 @@
                     {remoteMode && <RemoteAdminWrapper targetId={remoteMode} close={()=>setRemoteMode(null)} />}
                     <div className="max-w-2xl mx-auto space-y-8">
                         <div className="flex justify-between items-center"><div><h1 className="text-3xl font-black italic tracking-tighter">HEAD ADMIN</h1><p className="text-indigo-400 text-xs font-bold uppercase tracking-widest">Zentrale Steuerung</p></div><button onClick={onLogout} className="bg-white/10 p-3 rounded-full hover:bg-red-600 transition-colors"><LogOut/></button></div>
-                        
                         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 rounded-3xl shadow-lg">
                             <h3 className="font-bold text-lg mb-2 flex items-center gap-2"><Ticket/> Neuer Registrierungscode</h3>
                             {token ? (<div className="bg-white text-slate-900 p-4 rounded-xl font-mono text-2xl font-black text-center tracking-widest select-all cursor-pointer" onClick={()=>navigator.clipboard.writeText(token)}>{token}</div>) : (<button onClick={createToken} className="bg-white/20 hover:bg-white/30 w-full py-3 rounded-xl font-bold transition-colors">Code Generieren</button>)}
                             <p className="text-xs opacity-60 mt-2 text-center">Erlaubt das Erstellen EINER neuen Filiale.</p>
                         </div>
-
                         <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4">
                             <h3 className="font-bold text-lg flex items-center gap-2"><Globe size={20}/> Filiale Verbinden</h3>
                             <div className="flex gap-2"><div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/><input value={activeId} onChange={e=>setActiveId(e.target.value)} placeholder="Restaurant ID..." className="w-full pl-12 p-4 rounded-xl bg-slate-800 border border-slate-700 text-white focus:border-indigo-500 outline-none"/></div><button onClick={()=>{addId(); manage(normalizedActiveId)}} disabled={normalizedActiveId.length<3} className="bg-indigo-600 px-6 rounded-xl font-bold disabled:opacity-50">Manage</button></div>
@@ -332,9 +345,7 @@
             const [toast, setToast] = useState(null);
             const [adminAlert, setAdminAlert] = useState(false);
             const [seedSuccess, setSeedSuccess] = useState(false);
-            const [tempMasterPw, setTempMasterPw] = useState(''); // Store generated/recovered PW to show user
             
-            // Default Data
             const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [], prep: [], company: {} });
             const [status, setStatus] = useState({ tempLogs: [], cleaningLogs: {}, oilLogs: {}, prepLogs: {}, shoppingList: [], yesterdayOil: {}, signatures: {} });
             const [debugMode, setDebugMode] = useState(false);
@@ -353,7 +364,6 @@
             const handleRegistration = async (token, newId, masterPw) => {
                 setLoading(true);
                 try {
-                    // FIX: Correct path for tokens
                     const tokenRef = doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'tokens', token);
                     const tokenSnap = await getDoc(tokenRef);
                     if(!tokenSnap.exists()) throw new Error("Ungültiger Code");
@@ -364,7 +374,6 @@
                     await deleteDoc(tokenRef);
                     localStorage.setItem('gastro_app_id', newId);
                     setAppId(newId);
-                    setTempMasterPw(masterPw);
                     showToast("Restaurant erfolgreich erstellt!");
                 } catch(e) { console.error(e); showToast(e.message, "error"); }
                 setLoading(false);
@@ -428,10 +437,6 @@
                 const id = targetId || appId;
                 if(!id) return;
                 try {
-                    // If no masterKey provided (legacy init), use a default one
-                    const finalMasterKey = masterKey || 'gastro123';
-                    if(!masterKey) setTempMasterPw(finalMasterKey); // Save for display
-
                     const batch = [
                         { col: 'staff', data: { name: 'Filialleitung', role: 'admin', departments: ['kitchen','service'], pin: '1234' } },
                         { col: 'suppliers', data: { name: 'Metro' } },
@@ -440,7 +445,7 @@
                         { col: 'prep_tasks', data: { name: 'Gurken schneiden', target: '2 Behälter', category: 'prep', dept: 'kitchen', schedule: {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true} } },
                         { col: 'cleaning_tasks', data: { name: 'Boden', area: 'Küche', dept: 'kitchen', schedule: {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true} } },
                         { col: 'company', id:'info', data: { name: 'Mein Restaurant', address: '' } },
-                        { col: 'settings', id: 'global', data: { debugMode: false, masterKey: finalMasterKey, moduleOrder: DEFAULT_MODULES } }
+                        { col: 'settings', id: 'global', data: { debugMode: false, masterKey: masterKey || 'gastro123', moduleOrder: DEFAULT_MODULES } }
                     ];
                     for (const item of batch) {
                         const ref = item.id ? doc(db, 'artifacts', id, 'public', 'data', item.col, item.id) : collection(db, 'artifacts', id, 'public', 'data', item.col);
@@ -455,7 +460,7 @@
             if (view === 'head-panel') return <HeadAdminPanel onLogout={()=>{setIsHeadAdmin(false); setView('login');}} showToast={showToast} />;
             if (!appId) return <EnterpriseLogin onLogin={handleRestaurantLogin} onRegister={handleRegistration} loading={loading} lang={lang} setLang={setLang} />;
             if (loading) return <Loading />;
-            if (!appUser) return <LoginScreen staff={data.staff} restaurantId={appId} company={data.company} yesterdayOil={status.yesterdayOil} fryers={data.fryers} onLogin={handleUserLogin} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} onSeed={()=>seedDB()} showToast={showToast} seedSuccess={seedSuccess} onCloseSeed={()=>setSeedSuccess(false)} lang={lang} onMasterRecovery={handleMasterKeyRecovery} tempMasterPw={tempMasterPw} />;
+            if (!appUser) return <LoginScreen staff={data.staff} restaurantId={appId} company={data.company} yesterdayOil={status.yesterdayOil} fryers={data.fryers} onLogin={handleUserLogin} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} onSeed={()=>seedDB()} showToast={showToast} seedSuccess={seedSuccess} onCloseSeed={()=>setSeedSuccess(false)} lang={lang} onMasterRecovery={handleMasterKeyRecovery} />;
 
             const common = { user: appUser, appId, showToast, data, status, lang, moduleOrder };
             const hasAccess = (dept) => {
@@ -503,7 +508,7 @@
                             {/* Dynamic Modules */}
                             {moduleOrder.filter(m => m !== 'dashboard' && m !== 'admin').slice(0, 4).map(m => {
                                 if(m === 'oil' && !hasAccess('kitchen')) return null;
-                                return <NavBtn key={m} icon={MODULE_ICONS[m]} label={MODULE_NAMES[m]} active={view===m} onClick={()=>setView(m)}/>
+                                return <NavBtn key={m} icon={MODULE_ICONS[m]} label={DICTIONARY[lang][m] || MODULE_NAMES[m]} active={view===m} onClick={()=>setView(m)}/>
                             })}
                             {(appUser.role === 'admin' || ['kitchen_lead','service_lead'].includes(appUser.role)) && <NavBtn icon={<Settings/>} label="Admin" active={view==='admin'} onClick={()=>setView('admin')}/>}
                         </nav>
@@ -512,26 +517,104 @@
             );
         }
 
-        // --- SUB COMPONENTS (Login, Dash, Modules...) ---
-        // Updated LoginScreen to show Master-Key on Seed Success
-        const LoginScreen = ({ staff, restaurantId, company, onLogoutSystem, yesterdayOil, fryers, onSeed, onLogin, showToast, seedSuccess, onCloseSeed, lang, onMasterRecovery, tempMasterPw }) => {
-            const [selectedUser, setSelectedUser] = useState(null); const [showPin, setShowPin] = useState(false); const [recoveryMode, setRecoveryMode] = useState(false);
-            const oilLogs = Object.values(yesterdayOil || {});
-            const showOilWarning = (fryers||[]).length > 0;
-            const t = DICTIONARY[lang] || DICTIONARY.de;
-            const handleUserClick = (u) => { const pin = String(u.pin || ''); if(pin.length > 0) { setSelectedUser({...u, pin}); setShowPin(true); setRecoveryMode(false); } else { onLogin(u); } };
-            const onPinSuccess = (inputPin) => { setShowPin(false); if(recoveryMode) onMasterRecovery(inputPin); else onLogin(selectedUser); };
-            const getRoleLabel = (role) => { if(role === 'admin') return t.admin; if(role === 'kitchen_lead') return 'Küchenleitung'; if(role === 'service_lead') return 'Serviceleitung'; return 'Mitarbeiter'; };
+        // --- SUB COMPONENTS (Modules...) ---
+        const Dashboard = ({ user, data, status, setView, lang, moduleOrder }) => {
+            const day = getWeekdayShort(); const longDay = getWeekdayLong(); const t = DICTIONARY[lang];
+            const relevantTasks = (data.tasks || []).filter(t => t.schedule?.[day] && (user.role==='admin' || ['kitchen_lead','service_lead'].includes(user.role) || (user.departments||[]).includes(t.dept)));
+            const done = relevantTasks.filter(t => status.cleaningLogs[t.id]).length;
+            const openTemp = (data.cooling || []).filter(d => d.status!=='defekt').length - status.tempLogs.length;
+            const prepList = (data.prep || []).filter(t => t.schedule?.[day] && (user.role==='admin' || ['kitchen_lead','service_lead'].includes(user.role) || (user.departments||[]).includes(t.dept)));
+            const prepDone = prepList.filter(t => status.prepLogs[t.id]).length;
+            const fryers = data.fryers || []; const oilLogs = status.oilLogs || {};
+
+            const renderCard = (m) => {
+                if(m === 'prep') return <DashCard title={t.prep} val={prepList.length - prepDone} icon={MODULE_ICONS.prep} col="bg-indigo-500" onClick={()=>setView('prep')} sub={t.stock} />;
+                if(m === 'cleaning') return <DashCard title={t.clean} val={relevantTasks.length - done} icon={MODULE_ICONS.cleaning} col="bg-violet-500" onClick={()=>setView('cleaning')} sub={t.clean} />;
+                if(m === 'cooling') return <DashCard title={t.temp} val={openTemp} icon={MODULE_ICONS.cooling} col="bg-sky-500" onClick={()=>setView('cooling')} sub={t.temp} />;
+                if(m === 'oil') return <DashCard title={t.oil} val={fryers.length - Object.keys(oilLogs).length} icon={MODULE_ICONS.oil} col="bg-amber-500" onClick={()=>setView('oil')} sub={t.oil} />;
+                if(m === 'inventory') return <DashCard title={DICTIONARY[lang].inventory} val={status.shoppingList.length} icon={MODULE_ICONS.inventory} col="bg-emerald-500" onClick={()=>setView('inventory')} sub="Liste" />;
+                return null;
+            };
 
             return (
-                <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden"><div className="absolute top-[-20%] right-[-20%] w-[80%] h-[80%] bg-indigo-600 rounded-full blur-[150px] opacity-20 animate-pulse"></div>{showPin && (<PinPad title={recoveryMode ? "Master-Schlüssel" : `${t.pin} für ${selectedUser.name}`} targetPin={recoveryMode ? null : selectedUser.pin} onClose={()=>setShowPin(false)} onSuccess={onPinSuccess} />)}
-                {seedSuccess && (<div className="fixed inset-0 z-[100] bg-slate-900/90 flex items-center justify-center p-6 animate-in"><div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center"><div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4"><BadgeCheck size={32}/></div><h3 className="font-black text-2xl text-slate-800">Filiale Bereit!</h3><div className="bg-slate-100 p-4 rounded-xl text-left text-sm mb-6 border border-slate-200 mt-4"><div className="text-xs uppercase font-bold text-slate-400">Dein Login:</div><div className="font-bold text-lg text-indigo-600">{t.admin}</div><div className="text-xs uppercase font-bold text-slate-400 mt-2">Deine PIN:</div><div className="font-bold text-lg text-indigo-600">1234</div><div className="text-xs uppercase font-bold text-slate-400 mt-4 pt-4 border-t border-slate-200">Notfall-Schlüssel (Master Key):</div><div className="font-mono font-bold text-lg text-amber-600 select-all">{tempMasterPw}</div></div><Button onClick={onCloseSeed}>Zum Login</Button></div></div>)}
-                <div className="z-10 w-full max-w-sm mx-auto space-y-6 animate-in"><div className="flex justify-between items-start"><div><AppLogo company={company} /><p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.3em] flex items-center gap-1 mt-2"><Store size={10}/> {restaurantId}</p></div><div className="flex gap-2"><button onClick={()=>{setRecoveryMode(true); setShowPin(true);}} className="text-amber-500 hover:text-amber-400 transition-colors bg-white/5 p-2 rounded-full"><Key size={20}/></button><button onClick={onLogoutSystem} className="text-slate-500 hover:text-white transition-colors bg-white/5 p-2 rounded-full"><LogOut size={20}/></button></div></div>
-                {showOilWarning && (<div className={`p-4 rounded-2xl backdrop-blur-sm shadow-xl border ${oilLogs.length === 0 ? 'bg-red-500/20 border-red-500/30 text-red-200' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}><div className="text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1"><AlertTriangle size={10}/> {t.yesterday}</div>{oilLogs.length === 0 ? (<div className="text-sm font-bold flex items-center gap-2"><X size={16}/> {t.missing}</div>) : (<div className="space-y-1">{oilLogs.map((l,i) => { const fname = (fryers||[]).find(f=>f.id===l.deviceId)?.name || 'Fritteuse'; const crit = l.tpm >= 24; const warn = l.tpm >= 20; return <div key={i} className="text-xs flex justify-between"><span>{fname}</span><span className={`font-bold ${crit?'text-red-400':warn?'text-amber-400':'text-emerald-400'}`}>{l.tpm}% TPM</span></div> })}</div>)}</div>)}
-                <div className="space-y-3"><div className="text-slate-500 text-xs font-bold uppercase ml-2">{t.login}</div>{(staff||[]).map(s => (<button type="button" key={s.id} onClick={() => handleUserClick(s)} className="w-full bg-white/5 hover:bg-indigo-600 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm"><div className="bg-indigo-500/20 p-2.5 rounded-xl"><User size={20} className="text-indigo-300 group-hover:text-white"/></div><div className="flex-1 text-left"><div className="font-bold text-lg">{s.name}</div><div className="text-[11px] opacity-60 uppercase font-medium">{getRoleLabel(s.role)}</div></div>{s.pin && String(s.pin).length>0 ? <Lock size={16} className="opacity-50"/> : <Unlock size={16} className="opacity-30 text-red-400"/>}</button>))}</div>{(staff||[]).length===0 && <div className="text-center pt-8"><p className="text-slate-500 text-sm mb-4">Erster Start?</p><button onClick={onSeed} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg">Datenbank Initialisieren</button></div>}
-                <div className="text-[10px] text-slate-500 text-center mt-8 opacity-60 flex justify-center items-center gap-1"><Code size={10}/> {t.dev}</div></div></div>
+                <div className="animate-in space-y-6"><div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl flex justify-between items-center relative overflow-hidden"><div className="relative z-10"><div className="text-xs font-bold text-indigo-400 uppercase mb-1">{longDay}</div><div className="text-3xl font-black tracking-tight">Hallo, {user.name}</div><div className="text-slate-400 text-sm mt-1 font-medium">{done} Tasks • {prepDone} Prep erledigt</div></div><div className="bg-slate-800 p-4 rounded-2xl shadow-inner relative z-10"><Activity className="text-indigo-500" size={32}/></div><div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500 rounded-full blur-[60px] opacity-20"></div></div>
+                <div className="grid grid-cols-2 gap-4">{moduleOrder.map(m => renderCard(m))}</div></div>
             );
         };
+        const DashCard = ({ title, val, icon, col, onClick, sub }) => ( <button type="button" onClick={onClick} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm text-left hover:shadow-lg transition-all active:scale-[0.98] relative overflow-hidden group"><div className={`absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity ${col} text-white rounded-bl-3xl scale-150`}>{icon}</div><div className="relative z-10"><div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white mb-4 shadow-md ${col} group-hover:scale-110 transition-transform`}>{React.cloneElement(icon, {size:22})}</div><div className="font-black text-slate-700 text-lg leading-none mb-1">{title}</div><div className="text-[10px] uppercase font-bold text-slate-400 mb-3">{sub}</div>{val > 0 ? <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-bold"><AlertTriangle size={12}/> {val} Offen</div> : <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-bold"><CheckCircle size={12}/> Fertig</div>}</div></button> );
+
+        const SmartPrep = ({ data, status, user, appId, showToast, lang }) => {
+            const day = getWeekdayShort();
+            const t = DICTIONARY[lang];
+            const list = data.prep || [];
+            const myDepts = user.departments || [];
+            const relevant = list.filter(i => i.schedule?.[day] && (user.role==='admin' || ['kitchen_lead','service_lead'].includes(user.role) || myDepts.includes(i.dept)));
+            const prepItems = relevant.filter(i => i.category === 'prep').sort((a,b) => (status.prepLogs[a.id]?1:0) - (status.prepLogs[b.id]?1:0));
+            const stockItems = relevant.filter(i => i.category === 'stock').sort((a,b) => (status.prepLogs[a.id]?1:0) - (status.prepLogs[b.id]?1:0));
+            const toggle = async (item) => { const id = `${getTodayStr()}_${item.id}`; const ref = doc(db,'artifacts',appId,'public','data','logs_prep',id); if(status.prepLogs[item.id]) await deleteDoc(ref); else { await setDoc(ref, {taskId:item.id, taskName:item.name, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()}); showToast("Erledigt!"); } };
+            const ItemRow = ({ item }) => { const done = status.prepLogs[item.id]; return ( <div onClick={()=>toggle(item)} className={`p-4 rounded-2xl border flex justify-between items-center cursor-pointer card-press ${done?'bg-slate-50 border-slate-100 opacity-60 grayscale':'bg-white border-slate-100 shadow-sm hover:border-indigo-200'}`}><div><div className={`font-bold text-base leading-tight ${done?'text-slate-400 line-through':'text-slate-800'}`}>{item.name}</div><div className="text-[11px] font-bold uppercase text-indigo-500 mt-1 flex items-center gap-1"><Box size={10}/> {item.target}</div></div><div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${done?'bg-emerald-500 text-white':'bg-slate-100 text-slate-300'}`}><CheckCircle size={16}/></div></div> ); };
+            return (<div className="animate-in space-y-8"><div className="flex justify-between items-end"><div><h2 className="text-3xl font-black text-slate-800">{t.prep}</h2><p className="text-slate-400 text-sm font-medium">Plan für {getWeekdayLong()}</p></div></div><div className="space-y-3"><div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-400 tracking-widest mb-2"><ChefHat size={14}/> {t.prep}</div>{prepItems.map(item => <ItemRow key={item.id} item={item}/>)}{prepItems.length===0 && <div className="text-center p-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Nichts zu tun.</div>}</div><div className="space-y-3"><div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-400 tracking-widest mb-2"><Layers size={14}/> {t.stock}</div>{stockItems.map(item => <ItemRow key={item.id} item={item}/>)}{stockItems.length===0 && <div className="text-center p-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Alles voll.</div>}</div></div>);
+        };
+
+        const Cooling = ({ data, status, user, appId, showToast, lang }) => { 
+            const [val, setVal] = useState({}); const active = (data.cooling || []).filter(d => d.status!=='defekt'); 
+            const t = DICTIONARY[lang];
+            const signature = (status.signatures || {})['cooling'];
+            const tempLogs = status.tempLogs || [];
+            const canSign = active.length > 0 && active.every(d => tempLogs.find(l => l.deviceId === d.id));
+            const save = async (dev) => { if(!val[dev.id]) return; try { await addDoc(collection(db,'artifacts',appId,'public','data','logs_temp'), { deviceId:dev.id, deviceName:dev.name, temp: val[dev.id], user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); setVal(p=>({...p,[dev.id]:''})); showToast("Temperatur erfasst"); } catch(e){ console.error(e); } }; 
+            const sign = async () => { if(confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) { await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_cooling`), { module:'cooling', user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); showToast("Protokoll signiert!"); } };
+            return (<div className="animate-in space-y-6"><div><h2 className="text-3xl font-black text-slate-800">{t.temp}</h2><p className="text-slate-400 text-sm font-medium">HACCP Dokumentation</p></div><div className="grid gap-4">{active.map(dev => { const done = tempLogs.find(l=>l.deviceId===dev.id); const v = val[dev.id] || ''; const isHigh = v && (parseFloat(v)>8 || parseFloat(v)<0); return (<div key={dev.id} className={`p-6 rounded-[2rem] border shadow-sm transition-all ${done?'bg-emerald-50/50 border-emerald-100':'bg-white border-slate-100'}`}><div className="flex justify-between mb-4 font-black text-lg text-slate-700 items-center"><span>{dev.name}</span>{done ? <span className="text-emerald-600 bg-emerald-100 px-2 py-1 rounded-lg text-sm">{done.temp}°C</span> : <Thermometer size={20} className="text-slate-300"/>}</div>{!done && (<div className="flex gap-3 h-14"><div className="relative flex-1 h-full"><input type="number" inputMode="decimal" value={v} onChange={e=>setVal({...val,[dev.id]:e.target.value})} placeholder="0.0" className={`w-full h-full rounded-2xl border-2 font-black text-2xl text-center outline-none transition-colors ${isHigh?'border-red-300 bg-red-50 text-red-600 placeholder-red-300':'border-slate-100 focus:border-indigo-500 placeholder-slate-200'}`} /></div><button onClick={()=>save(dev)} className="bg-slate-900 active:bg-slate-800 text-white w-16 h-full rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/20"><Save size={24}/></button></div>)}{isHigh && <div className="text-red-500 text-xs font-bold mt-2 flex items-center gap-1"><AlertTriangle size={12}/> Achtung: Kritischer Bereich</div>}</div>); })}</div><div className="mt-8 pt-6 border-t border-slate-200">{signature ? (<div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold"><PenTool size={20}/><div className="flex-1"><div className="text-xs uppercase opacity-70">Digital Signiert von</div><div className="text-lg">{signature.user}</div></div></div>) : (<div className="space-y-2"><Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18}/> {t.sign}</Button>{!canSign && <div className="text-center text-xs text-slate-400">Erst signieren, wenn alle Geräte erfasst sind.</div>}</div>)}</div></div>); 
+        };
+
+        const Oil = ({ data, status, user, appId, showToast, lang }) => { 
+            const [inp, setInp] = useState({}); const active = (data.fryers || []).filter(d => d.status!=='defekt'); 
+            const signature = (status.signatures || {})['oil'];
+            const t = DICTIONARY[lang];
+            const oilLogs = status.oilLogs || {};
+            const canSign = active.length > 0 && active.every(d => oilLogs[d.id]);
+            const save = async (dev) => { const t = inp[dev.id]?.t, p = inp[dev.id]?.p; if(!t || !p) return; await addDoc(collection(db,'artifacts',appId,'public','data','logs_oil'), { deviceId:dev.id, deviceName:dev.name, temp:t, tpm:p, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); showToast("Gespeichert"); }; 
+            const deleteLog = async (logId) => { if(confirm("Eintrag wirklich löschen?")) { await deleteDoc(doc(db,'artifacts',appId,'public','data','logs_oil', logId)); showToast("Gelöscht"); }};
+            const sign = async () => { if(confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) { await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_oil`), { module:'oil', user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); showToast("Protokoll signiert!"); } };
+            return (<div className="animate-in space-y-6"><div><h2 className="text-3xl font-black text-slate-800">{t.oil}</h2><p className="text-slate-400 text-sm font-medium">TPM Messung</p></div><div className="space-y-4">{active.map(dev => { const l = oilLogs[dev.id]; const quality = l ? (l.tpm>=24?'bad':l.tpm>=20?'warn':'good') : null; const colors = { bad: 'bg-red-500 shadow-red-200', warn: 'bg-amber-500 shadow-amber-200', good: 'bg-emerald-500 shadow-emerald-200' }; const labels = { bad: 'Wechseln', warn: 'Filtern', good: 'OK' }; return (<div key={dev.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm"><div className="flex justify-between items-center mb-6"><span className="font-bold text-lg text-slate-700">{dev.name}</span>{l ? <div className="flex items-center gap-2"><span className={`text-white text-xs font-black px-3 py-1.5 rounded-xl uppercase shadow-lg ${colors[quality]}`}>{labels[quality]}</span><button onClick={()=>deleteLog(l.id)} className="p-2 bg-slate-100 rounded-full hover:bg-red-100 hover:text-red-500 transition-colors"><Trash2 size={14}/></button></div> : <span className="bg-slate-100 text-slate-400 text-xs font-bold px-2 py-1 rounded-lg">Messung offen</span>}</div>{!l ? (<div className="flex gap-3"><div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">Temp</div><Input type="number" inputMode="decimal" placeholder="°C" className="text-center h-14 font-bold text-xl" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],t:e.target.value}})} /></div><div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">TPM %</div><Input type="number" inputMode="decimal" placeholder="%" className="text-center h-14 font-bold text-xl" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],p:e.target.value}})} /></div><div className="space-y-1"><div className="h-[17px]"></div><button onClick={()=>save(dev)} className="bg-slate-900 text-white h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg"><Save size={24}/></button></div></div>) : (<div className="grid grid-cols-2 gap-3"><div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Temp</div><div className="font-black text-xl text-slate-700">{l.temp}°C</div></div><div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">TPM</div><div className="font-black text-xl text-slate-700">{l.tpm}%</div></div></div>)}</div>); })}</div><div className="mt-8 pt-6 border-t border-slate-200">{signature ? (<div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold"><PenTool size={20}/><div className="flex-1"><div className="text-xs uppercase opacity-70">Digital Signiert von</div><div className="text-lg">{signature.user}</div></div></div>) : (<div className="space-y-2"><Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18}/> {t.sign}</Button></div>)}</div></div>); 
+        };
+
+        const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView, onLogoutSystem, deleteBranch, isRemote, currentUser, lang }) => { 
+            const [tab, setTab] = useState('staff'); const [edit, setEdit] = useState(null); const [deleteMath, setDeleteMath] = useState(null); const [deleteInput, setDeleteInput] = useState('');
+            const t = DICTIONARY[lang] || DICTIONARY.de;
+            const role = currentUser?.role;
+            
+            let availableTabs = {};
+            if(role === 'admin') {
+                availableTabs = { staff: t.login, prep: t.prep, tasks: t.clean, cooling: t.temp, fryers: t.oil, suppliers: 'Lief', company: 'Firma', system: 'Sys' };
+            } else {
+                // Kitchen/Service Leads: Can manage Ops but NOT Staff or System
+                availableTabs = { prep: t.prep, tasks: t.clean, cooling: t.temp, fryers: t.oil, suppliers: 'Lief' };
+            }
+            
+            const delItem = async (id) => { if(!confirm("Löschen?")) return; const col = tab==='tasks'?'cleaning_tasks':tab==='cooling'?'cooling_devices':tab==='fryers'?'fryers':tab==='suppliers'?'suppliers':tab==='prep'?'prep_tasks':'staff'; await deleteDoc(doc(db,'artifacts',appId,'public','data',col,id)); showToast("Gelöscht"); }; 
+            const initDeleteBranch = () => { const a=Math.floor(Math.random()*10)+1; const b=Math.floor(Math.random()*10)+1; setDeleteMath({q:`${a} + ${b}`, a:a+b}); };
+            const confirmDeleteBranch = async () => { if(parseInt(deleteInput) === deleteMath.a) { deleteBranch(); } else { showToast("Rechnung falsch!", "error"); } };
+            const toggleDebug = async () => { const n=!debugMode; await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { debugMode: n }, {merge:true}); setDebugMode(n); };
+
+            useEffect(() => { if(!availableTabs[tab]) setTab(Object.keys(availableTabs)[0]); }, [role]);
+
+            return (<div className="animate-in space-y-6"><h2 className="text-3xl font-black text-slate-800">Verwaltung</h2><div className="flex gap-2 overflow-x-auto no-scrollbar -mx-5 px-5 pb-2">{Object.entries(availableTabs).map(([k,l])=><button key={k} onClick={()=>{setTab(k);setEdit(null)}} className={`px-6 py-3 rounded-2xl font-bold text-sm whitespace-nowrap transition-all ${tab===k?'bg-slate-900 text-white shadow-lg shadow-slate-900/20':'bg-white border text-slate-500'}`}>{l}</button>)}</div><div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 min-h-[400px]">{tab === 'system' ? (<div className="space-y-4 animate-in"><div className="text-sm font-bold uppercase text-slate-400 tracking-wider">Erweiterte Tools</div><button onClick={()=>setView('history')} className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-5 rounded-2xl flex items-center justify-between group transition-all"><div className="flex items-center gap-3 font-bold"><History size={20}/> HACCP Protokolle (PDF)</div><ChevronRight className="opacity-50 group-hover:translate-x-1 transition-transform"/></button>
+            <button onClick={onLogoutSystem} className="w-full mt-4 p-4 border border-slate-200 bg-slate-50 text-slate-600 rounded-2xl font-bold flex justify-center items-center gap-2"><LogOut size={18}/> Abmelden</button>
+            {!isRemote && <div className="mt-10 pt-6 border-t border-red-100"><h4 className="text-red-500 font-bold mb-2 flex items-center gap-2"><AlertTriangle size={16}/> Danger Zone</h4>{deleteMath ? (<div className="bg-red-50 p-4 rounded-2xl border border-red-200"><p className="text-red-800 text-sm font-bold mb-2">Löse die Aufgabe: {deleteMath.q} = ?</p><div className="flex gap-2"><Input value={deleteInput} onChange={e=>setDeleteInput(e.target.value)} type="number" className="bg-white"/><button onClick={confirmDeleteBranch} className="bg-red-600 text-white px-4 rounded-xl font-bold">Löschen</button></div></div>) : (<button onClick={initDeleteBranch} className="text-xs text-red-400 underline">Filiale unwiderruflich löschen</button>)}</div>}
+            </div>) : tab==='company' ? (<CompanyEditor data={data.company} appId={appId} showToast={showToast}/>) : edit ? (<Editor type={tab} data={edit} close={()=>setEdit(null)} appId={appId} showToast={showToast} />) : (<div className="space-y-4 animate-in"><Button variant="ghost" onClick={()=>setEdit({isNew:true})} className="border-dashed py-5 text-slate-400 bg-slate-50 hover:bg-slate-100 hover:text-slate-600"><Plus size={20}/> Neuen Eintrag hinzufügen</Button><div className="divide-y divide-slate-100">{(data[tab]||[]).map(item => (<div key={item.id} className="py-4 flex justify-between items-center group"><div><div className="font-bold text-slate-700 text-lg">{item.name}</div>{tab==='tasks' && <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mt-1">{item.area} • {Object.keys(item.schedule||{}).filter(k=>item.schedule[k]).length} Tage</div>}</div><div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"><button onClick={()=>setEdit(item)} className="p-3 bg-indigo-50 text-indigo-500 rounded-xl hover:bg-indigo-100"><Settings size={18}/></button><button onClick={()=>delItem(item.id)} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-100"><Trash2 size={18}/></button></div></div>))}</div></div>)}</div></div>); };
+        const CompanyEditor = ({ data, appId, showToast }) => { const [f, setF] = useState(data||{}); 
+            // ... (Same logic as v27, just keeping it clean)
+            const [modules, setModules] = useState(DEFAULT_MODULES);
+            const move = (idx, dir) => { const newM = [...modules]; const temp = newM[idx]; newM[idx] = newM[idx+dir]; newM[idx+dir] = temp; setModules(newM); };
+            const save = async () => { await setDoc(doc(db,'artifacts',appId,'public','data','company','info'), f); await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { moduleOrder: modules }, { merge: true }); showToast("Einstellungen gespeichert"); }; 
+            return <div className="space-y-6 animate-in"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Betriebsname / App Titel</span><Input value={f.appName||''} onChange={e=>setF({...f,appName:e.target.value})} placeholder="Mein Restaurant" /></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Logo URL (Optional)</span><Input value={f.logoUrl||''} onChange={e=>setF({...f,logoUrl:e.target.value})} placeholder="https://..." />{f.logoUrl && <img src={f.logoUrl} className="h-16 mx-auto object-contain border rounded p-2"/>}</div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Anschrift (für PDF)</span><Input value={f.address||''} onChange={e=>setF({...f,address:e.target.value})} /></div><div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><h4 className="font-bold text-sm mb-4">Menü & Module Sortierung</h4><div className="space-y-2">{modules.filter(m=>m!=='dashboard'&&m!=='admin').map((m, i) => (<div key={m} className="bg-white p-3 rounded-xl border flex justify-between items-center"><div className="flex items-center gap-3 text-slate-600">{MODULE_ICONS[m]} <span className="font-bold text-sm">{MODULE_NAMES[m]}</span></div><div className="flex gap-1">{i > 0 && <button onClick={()=>move(i+1, -1)} className="p-2 hover:bg-slate-100 rounded">⬆️</button>}{i < modules.length-3 && <button onClick={()=>move(i+1, 1)} className="p-2 hover:bg-slate-100 rounded">⬇️</button>}</div></div>))}</div></div><Button onClick={save}>Speichern</Button></div> 
+        };
+        const Editor = ({ type, data, close, appId, showToast }) => { const [form, setForm] = useState({...data}); const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); const [loading, setLoading] = useState(false); const save = async () => { if(!form.name) return; setLoading(true); const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':type==='prep'?'prep_tasks':'staff'; const payload = { ...form }; if(type==='tasks') { payload.schedule = sched; payload.dept = form.dept||'kitchen'; payload.area = form.area||'General'; } if(type==='staff') { payload.role = form.role||'user'; payload.departments = form.departments||[]; payload.pin = form.pin||''; } if(['cooling','fryers'].includes(type)) payload.status = form.status||'active'; if(type==='prep') { payload.schedule = sched; payload.category = form.category||'prep'; payload.target = form.target||''; payload.dept = form.dept||'kitchen'; } delete payload.id; delete payload.isNew; const ref = collection(db,'artifacts',appId,'public','data',col); if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()}); else await updateDoc(doc(ref, data.id), payload); showToast("Gespeichert"); setLoading(false); close(); }; const toggleDept = (d) => { const cur = form.departments || []; setForm({...form, departments: cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]}); }; return (<div className="space-y-6 animate-in"><div className="flex justify-between items-center mb-2"><h3 className="font-black text-xl text-slate-800">{data.isNew?'Neu':'Bearbeiten'}</h3><button onClick={close} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bezeichnung</span><Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." /></div>{type==='prep' && (<div className="space-y-4"><div className="grid grid-cols-2 gap-3"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Kategorie</span><Select value={form.category||'prep'} onChange={e=>setForm({...form,category:e.target.value})}><option value="prep">Vorbereitung (Mise en Place)</option><option value="stock">Lager/Auffüllen</option></Select></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Zuständigkeit</span><Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}><option value="kitchen">Küche</option><option value="service">Service</option></Select></div></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Ziel / Menge</span><Input value={form.target||''} onChange={e=>setForm({...form,target:e.target.value})} placeholder="z.B. 2 Behälter, Voll machen..." /></div><div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Zeitplan (Tage)</span><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'bg-indigo-600 text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`}>{d.slice(0,2)}</button>)}</div></div></div>)}{type==='staff' && (<div className="space-y-4"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Abteilungen</span><div className="flex gap-3"><button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('kitchen')?'border-orange-500 bg-orange-50 text-orange-600':'border-slate-100 bg-white text-slate-400'}`}>Küche</button><button onClick={()=>toggleDept('service')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('service')?'border-purple-500 bg-purple-50 text-purple-600':'border-slate-100 bg-white text-slate-400'}`}>Service</button></div></div><div className="flex gap-3"><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Rolle</span><Select value={form.role||'user'} onChange={e=>setForm({...form,role:e.target.value})}><option value="user">Mitarbeiter</option><option value="kitchen_lead">Küchenleitung</option><option value="service_lead">Serviceleitung</option><option value="admin">Filialleitung</option></Select></div><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">PIN (Optional)</span><Input value={form.pin||''} onChange={e=>setForm({...form,pin:e.target.value})} className="text-center font-mono tracking-widest" maxLength={4}/></div></div></div>)}{type==='tasks' && (<div className="space-y-4"><div className="flex gap-3"><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bereich</span><Input value={form.area||''} onChange={e=>setForm({...form,area:e.target.value})} placeholder="z.B. Bar"/></div><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Dept</span><Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}><option value="kitchen">Küche</option><option value="service">Service</option><option value="all">Alle</option></Select></div></div><div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Wochentage</span><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'bg-indigo-600 text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`}>{d.slice(0,2)}</button>)}</div></div></div>)}<Button onClick={save} loading={loading} className="mt-6 shadow-xl shadow-slate-900/10">Speichern</Button></div>); };
+        
+        const NavBtn = ({ icon, label, active, onClick }) => (<button onClick={onClick} className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl transition-all duration-300 ${active ? 'text-indigo-600 bg-indigo-50 scale-105 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>{React.cloneElement(icon, { size: 24, strokeWidth: active ? 2.5 : 2 })}<span className="text-[10px] font-bold">{label}</span></button>);
+        const Inventory = ({ data, status, appId, showToast, user, lang }) => { const [newItem, setNewItem] = useState(''); const [supplier, setSupplier] = useState(''); const [loading, setLoading] = useState(false); const groupedList = useMemo(() => { const grp = {}; status.shoppingList.forEach(item => { const sup = item.supplier || 'Sonstige'; if(!grp[sup]) grp[sup] = []; grp[sup].push(item); }); return grp; }, [status.shoppingList]); const add = async () => { if(!newItem) return; setLoading(true); try { await addDoc(collection(db,'artifacts',appId,'public','data','shopping_list'), { name: newItem, supplier: supplier || 'Sonstige', createdBy: user.name, createdAt: serverTimestamp() }); setNewItem(''); showToast("Hinzugefügt"); } catch(e){ console.error(e); } setLoading(false); }; const del = async (id) => await deleteDoc(doc(db,'artifacts',appId,'public','data','shopping_list',id)); return (<div className="animate-in space-y-6"><div className="flex justify-between items-end"><div><h2 className="text-3xl font-black text-slate-800">Einkauf</h2><p className="text-slate-400 text-sm font-medium">Bestellungen managen</p></div><span className="bg-slate-900 text-white px-3 py-1 rounded-full text-xs font-bold">{status.shoppingList.length}</span></div><div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 space-y-3"><Input value={newItem} onChange={e=>setNewItem(e.target.value)} placeholder="Produktname..." /><div className="flex gap-2"><Select value={supplier} onChange={e=>setSupplier(e.target.value)}><option value="">Lieferant wählen...</option>{(data.suppliers||[]).map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</Select><Button onClick={add} loading={loading} className="w-auto px-6 rounded-xl"><Plus/></Button></div></div><div className="space-y-6">{Object.entries(groupedList).map(([sup, items]) => (<div key={sup} className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm"><div className="bg-slate-50/80 px-6 py-4 border-b border-slate-100 font-black text-sm text-slate-600 uppercase tracking-widest flex justify-between items-center">{sup} <span className="bg-white px-2 py-1 rounded-lg text-xs border">{items.length}</span></div><div className="divide-y divide-slate-50">{items.map(item => (<div key={item.id} className="p-4 pl-6 flex justify-between items-center group active:bg-slate-50 transition-colors"><span className="font-bold text-slate-700 text-base">{item.name}</span><button onClick={()=>del(item.id)} className="text-slate-300 hover:text-red-500 p-3 rounded-xl hover:bg-red-50 transition-all"><Trash2 size={18}/></button></div>))}</div></div>))}{status.shoppingList.length === 0 && <div className="text-center text-slate-400 py-12 flex flex-col items-center gap-2"><div className="bg-slate-100 p-4 rounded-full"><CheckCircle size={32} className="text-slate-300"/></div><span className="font-medium">Alles bestellt!</span></div>}</div></div>); };
+        const Cleaning = ({ data, status, user, appId, showToast, lang }) => { const day = getWeekdayShort(); const t = DICTIONARY[lang]; const myDepts = user.departments || []; const tasks = (data.tasks || []).filter(t => t.schedule?.[day] && (user.role==='admin' || ['kitchen_lead','service_lead'].includes(user.role) || myDepts.includes(t.dept))).sort((a,b) => (status.cleaningLogs[a.id]?1:0)-(status.cleaningLogs[b.id]?1:0)); const toggle = async (t) => { const id = `${getTodayStr()}_${t.id}`; const ref = doc(db,'artifacts',appId,'public','data','logs_cleaning',id); if(status.cleaningLogs[t.id]) await deleteDoc(ref); else { await setDoc(ref, {taskId:t.id, taskName:t.name, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()}); showToast("Sauber!"); } }; return (<div className="animate-in space-y-5"><div className="flex justify-between items-end"><div><h2 className="text-3xl font-black text-slate-800">{t.clean}</h2><p className="text-indigo-500 font-bold uppercase tracking-widest text-xs mt-1">{getWeekdayLong()}</p></div></div><div className="space-y-3">{tasks.map(t => { const done = status.cleaningLogs[t.id]; return (<div key={t.id} onClick={()=>toggle(t)} className={`p-5 rounded-[1.5rem] border flex justify-between items-center cursor-pointer card-press ${done?'bg-slate-50 border-slate-100 opacity-60 grayscale':'bg-white border-slate-100 shadow-sm hover:border-indigo-200'}`}><div><div className={`font-bold text-lg leading-tight ${done?'text-slate-400 line-through':'text-slate-800'}`}>{t.name}</div><div className="text-[11px] font-black uppercase text-slate-400 mt-1.5 flex gap-2"><span className="bg-slate-100 px-1.5 py-0.5 rounded">{t.area}</span>{done && <span className="text-emerald-500 flex items-center gap-1"><User size={10}/> {done.user}</span>}</div></div><div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-colors ${done?'bg-emerald-500 text-white':'bg-slate-100 text-slate-300'}`}><CheckCircle size={20} className={done ? 'scale-110' : ''}/></div></div>); })}{tasks.length===0 && (<div className="text-center p-10 border-2 border-dashed border-slate-200 rounded-[2rem] text-slate-400 flex flex-col items-center gap-2"><Sparkles size={32} className="text-slate-200"/><span>Keine Aufgaben für Heute.</span></div>)}</div></div>); };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
