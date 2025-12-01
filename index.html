@@ -1,31 +1,35 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" class="h-full bg-slate-50">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GastroManager Platinum (Debug)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>GastroManager Platinum v2</title>
     
-    <!-- Styles & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;900;300&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; -webkit-tap-highlight-color: transparent; }
+        /* Mobile Optimierungen */
+        :root { --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); }
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; padding-bottom: var(--sab); }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-        .animate-in { animation: fade-in 0.3s ease-out forwards; }
-        @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
-        .slide-up { animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        
+        /* Animationen */
+        @keyframes fade-in-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-in { animation: fade-in-up 0.4s ease-out forwards; }
+        .safe-bottom { padding-bottom: calc(80px + var(--sab)); }
+        
+        /* Bessere Touch-Ziele auf Mobile */
+        input, select, button { touch-action: manipulation; }
     </style>
 
-    <!-- Core Libraries -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
-<body>
-    <div id="root"></div>
+<body class="h-full">
+    <div id="root" class="h-full"></div>
 
     <script type="text/babel" data-type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -33,19 +37,19 @@
             getFirestore, collection, addDoc, deleteDoc, doc, setDoc, updateDoc,
             onSnapshot, query, orderBy, limit, serverTimestamp, where 
         } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { 
             Thermometer, Droplet, ClipboardList, Settings, LogOut, 
             Plus, Trash2, User, CheckCircle, AlertOctagon, Snowflake, 
             Loader2, Save, ShoppingCart, Wrench, Truck, 
             Menu, X, Sparkles, ChefHat, Coffee, AlertTriangle, Siren, Ban,
             Calendar, Edit3, ChevronDown, ChevronUp, ArrowRight, PlayCircle, StopCircle,
-            Bug, Terminal, Eraser, Power
+            Bug, Terminal, Eraser, Power, CheckSquare
         } from "https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0";
 
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useMemo } = React;
 
-        // --- FIREBASE CONFIG ---
+        // --- 1. CONFIG & UTILS ---
         const firebaseConfig = {
           apiKey: "AIzaSyDkmhRTKaRI2qPcnSvkiH4CETnrOu98zyk",
           authDomain: "gastromaster-209db.firebaseapp.com",
@@ -57,431 +61,380 @@
         };
 
         let app, auth, db;
-        try {
-            app = initializeApp(firebaseConfig);
-            auth = getAuth(app);
-            db = getFirestore(app);
-        } catch (e) { console.error("Init Error", e); }
+        try { app = initializeApp(firebaseConfig); auth = getAuth(app); db = getFirestore(app); } catch (e) { console.error("Init Error", e); }
+        const appId = 'gastro-debug-v2'; // Version erhöht
 
-        const appId = 'gastro-debug-v1'; 
-
-        // --- ERROR BOUNDARY (Verhindert White Screen) ---
-        class ErrorBoundary extends React.Component {
-            constructor(props) { super(props); this.state = { hasError: false, error: null }; }
-            static getDerivedStateFromError(error) { return { hasError: true, error }; }
-            render() {
-                if (this.state.hasError) {
-                    return (
-                        <div className="p-10 text-center">
-                            <h1 className="text-2xl font-bold text-red-600 mb-2">Es ist ein Fehler aufgetreten.</h1>
-                            <pre className="text-left bg-gray-100 p-4 rounded text-xs overflow-auto">{this.state.error && this.state.error.toString()}</pre>
-                            <button onClick={() => window.location.reload()} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded">Neu laden</button>
-                        </div>
-                    );
-                }
-                return this.props.children;
-            }
-        }
-
-        // --- UTILS ---
         const getTodayStr = () => new Date().toISOString().slice(0, 10);
         const getWeekdayShort = () => ['So','Mo','Di','Mi','Do','Fr','Sa'][new Date().getDay()];
-        const formatTime = (ts) => ts ? new Date(ts.seconds * 1000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'}) : '';
-        const formatDateTime = (ts) => ts ? new Date(ts.seconds * 1000).toLocaleString('de-DE', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}) : '-';
-
-        const getOilStatus = (tpm, temp) => {
-            const t = parseFloat(tpm || 0);
-            const tmp = parseFloat(temp || 0);
-            if (tmp > 175) return { color: 'bg-red-500', text: 'text-red-600', title: '🔥 HITZE', badge: 'HEISS' };
-            if (t >= 24) return { color: 'bg-red-600', text: 'text-red-600', title: '⛔ WECHSELN', badge: 'STOP' };
-            if (t >= 18) return { color: 'bg-yellow-500', text: 'text-yellow-600', title: '⚠️ FILTERN', badge: 'FILTER' };
-            return { color: 'bg-emerald-500', text: 'text-emerald-600', title: '✅ OK', badge: 'GUT' };
+        
+        // Hilfsfunktion für Temperatur-Status (HACCP grob)
+        const getTempStatus = (temp) => {
+            if (!temp && temp !== 0) return 'neutral';
+            const t = parseFloat(temp);
+            if (t < 0 || t > 8) return 'danger'; // Zu warm oder gefroren (für Normalkühlung)
+            if (t >= 0 && t <= 8) return 'ok';
+            return 'neutral';
         };
 
-        // --- DEBUG CONSOLE COMPONENT ---
-        const DebugConsole = ({ logs, isOpen, onClose, onClear }) => {
-            const bottomRef = useRef(null);
+        // --- 2. SHARED COMPONENTS ---
+        class ErrorBoundary extends React.Component {
+            constructor(props) { super(props); this.state = { hasError: false }; }
+            static getDerivedStateFromError(error) { return { hasError: true }; }
+            render() { if (this.state.hasError) return <div className="p-8 text-center text-red-600 font-bold mt-20">Ein Fehler ist aufgetreten. Bitte App neu laden.</div>; return this.props.children; }
+        }
 
-            useEffect(() => {
-                if (isOpen && bottomRef.current) {
-                    bottomRef.current.scrollIntoView({ behavior: "smooth" });
-                }
-            }, [logs, isOpen]);
-
-            if (!isOpen) return null;
-
-            return (
-                <div className="fixed bottom-0 left-0 right-0 h-1/2 bg-slate-900 border-t-2 border-slate-700 z-[100] shadow-2xl flex flex-col font-mono text-xs slide-up">
-                    <div className="flex justify-between items-center p-2 bg-slate-800 border-b border-slate-700 text-slate-300">
-                        <div className="flex items-center gap-2 font-bold">
-                            <Terminal size={14} className="text-green-400"/> DEBUG CONSOLE
-                        </div>
-                        <div className="flex gap-2">
-                            <button onClick={onClear} className="p-1 hover:text-white flex items-center gap-1"><Eraser size={14}/> Clear</button>
-                            <button onClick={onClose} className="p-1 hover:text-red-400"><X size={16}/></button>
-                        </div>
-                    </div>
-                    <div className="flex-1 overflow-auto p-2 space-y-1 bg-black/90">
-                        {logs.length === 0 && <div className="text-slate-600 italic p-2">Keine Logs vorhanden...</div>}
-                        {logs.map((log, i) => (
-                            <div key={i} className={`flex gap-2 border-b border-slate-800 pb-1 mb-1 ${log.type === 'error' ? 'text-red-400' : log.type === 'warn' ? 'text-yellow-400' : 'text-green-400'}`}>
-                                <span className="opacity-50 min-w-[60px]">{log.time}</span>
-                                <span className="break-all">{log.msg}</span>
-                            </div>
-                        ))}
-                        <div ref={bottomRef} />
-                    </div>
-                </div>
-            );
-        };
-
-        // --- UI COMPONENTS ---
+        const LoadingSpinner = ({ color = 'text-indigo-500' }) => <Loader2 className={`animate-spin ${color}`} size={24} />;
+        
         const Header = ({ title, sub }) => (
-            <div className="mb-4 bg-white/80 backdrop-blur-sm p-3 rounded-2xl border border-white/50 shadow-sm flex justify-between items-center">
-                <div>
-                    <h2 className="text-xl font-black text-slate-800 tracking-tight leading-none">{title}</h2>
-                    {sub && <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mt-1">{sub}</p>}
-                </div>
+            <div className="mb-5 pt-2">
+                <h2 className="text-2xl font-black text-slate-800 tracking-tight leading-none">{title}</h2>
+                {sub && <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mt-1">{sub}</p>}
             </div>
         );
 
-        const MenuCard = ({ title, sub, icon, color, onClick, badge }) => (
-            <button onClick={onClick} className={`bg-gradient-to-br ${color} p-4 rounded-2xl shadow-lg text-white text-left relative overflow-hidden active:scale-95 transition-all w-full group`}>
-                <div className="absolute right-[-10px] top-[-10px] opacity-20 scale-150 rotate-12 group-hover:rotate-0 transition-transform">{icon}</div>
-                <div className="relative z-10">
-                    <div className="flex justify-between items-start mb-2">
-                        <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">{icon}</div>
-                        {badge > 0 && <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow animate-pulse">{badge}</span>}
-                    </div>
-                    <div className="font-black text-lg leading-none mb-1">{title}</div>
-                    <div className="text-[10px] opacity-80 font-bold uppercase tracking-wide">{sub}</div>
-                </div>
-            </button>
-        );
+        // Verbesserte Eingabefelder für Mobile (größer)
+        const Input = (props) => <input {...props} className={`w-full p-3.5 rounded-xl border border-slate-200 bg-white text-base font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all ${props.className || ''}`} />;
+        const Select = (props) => <select {...props} className={`w-full p-3.5 rounded-xl border border-slate-200 bg-white text-base font-medium appearance-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20class%3D%22feather%20feather-chevron-down%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:20px] bg-no-repeat bg-[right_12px_center] pr-10 ${props.className || ''}`}>{props.children}</select>;
+        const Button = ({ children, isLoading, variant='primary', onClick, className='' }) => {
+             const base = "w-full py-3.5 rounded-xl font-bold text-sm uppercase tracking-wider flex justify-center items-center gap-2 transition-all active:scale-[0.98]";
+             const variants = {
+                 primary: "bg-slate-900 text-white shadow-md hover:bg-slate-800 disabled:bg-slate-400",
+                 danger: "bg-red-50 text-red-600 hover:bg-red-100",
+                 ghost: "bg-transparent text-slate-500 hover:bg-slate-100 border"
+             };
+             return <button onClick={onClick} disabled={isLoading} className={`${base} ${variants[variant]} ${className}`}>{isLoading ? <Loader2 className="animate-spin" size={20}/> : children}</button>
+        };
 
-        const NavBtn = ({ icon, label, active, onClick }) => (
-            <button onClick={onClick} className={`flex flex-col items-center gap-1 px-2 py-2 rounded-xl transition-all duration-300 ${active ? 'text-indigo-600 bg-indigo-50 scale-110 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                {React.cloneElement(icon, { size: 22, strokeWidth: active ? 2.5 : 2 })}
-                <span className="text-[9px] font-bold tracking-tight">{label}</span>
-            </button>
-        );
-
-        const LoginScreen = ({ staff, onLogin, onSeed, isSeeding }) => (
-            <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 relative overflow-hidden">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_#4f46e5_0%,_transparent_40%)] opacity-30"></div>
-                <div className="z-10 w-full max-w-sm">
-                    <div className="text-center mb-10">
-                        <h1 className="text-5xl font-black text-white mb-2 tracking-tighter italic">GASTRO<span className="text-indigo-500">.APP</span></h1>
-                        <p className="text-slate-400 text-xs font-bold uppercase tracking-[0.3em]">Platinum Edition</p>
-                    </div>
-                    <div className="space-y-3">
-                        {staff.map(s => {
-                            const depts = s.departments || [];
-                            return (
-                                <button key={s.id} onClick={() => onLogin(s)} className="w-full bg-white/5 hover:bg-indigo-600 hover:shadow-indigo-500/50 hover:shadow-lg backdrop-blur border border-white/10 p-4 rounded-xl text-white font-bold flex items-center gap-4 transition-all group">
-                                    <div className="bg-white/10 p-2 rounded-lg"><User size={20}/></div>
-                                    <div className="flex-1 text-left">
-                                        <div className="leading-none text-lg">{s.name}</div>
-                                        <div className="text-[10px] font-normal opacity-60 mt-1 uppercase flex gap-1">
-                                            {s.role === 'admin' ? <span>Admin</span> : (
-                                                <>
-                                                    {depts.includes('kitchen') && <span>• Küche</span>}
-                                                    {depts.includes('service') && <span>• Service</span>}
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <ArrowRight className="opacity-0 group-hover:opacity-100 transition-opacity"/>
-                                </button>
-                            );
-                        })}
-                        {staff.length === 0 && (
-                            <button onClick={onSeed} disabled={isSeeding} className="w-full py-4 border-2 border-dashed border-slate-700 text-slate-500 rounded-xl text-xs font-bold uppercase hover:bg-white/5 transition-colors cursor-pointer flex justify-center items-center gap-2">
-                                {isSeeding ? <Loader2 className="animate-spin"/> : "Datenbank Initialisieren"}
-                            </button>
-                        )}
-                    </div>
-                </div>
+        const Toast = ({ msg, type }) => (
+            <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-full shadow-2xl font-bold text-sm animate-in flex items-center gap-3 border ${type==='error'?'bg-red-50 border-red-100 text-red-600':'bg-emerald-50 border-emerald-100 text-emerald-700'}`}>
+                {type==='error' ? <AlertTriangle size={18}/> : <CheckCircle size={18}/>} {msg}
             </div>
         );
 
-        /* --- 3. HAUPT APP --- */
-
+        /* --- 3. MAIN APP SHELL --- */
         function App() {
             const [user, setUser] = useState(null);
             const [appUser, setAppUser] = useState(null);
             const [view, setView] = useState('login'); 
             const [loading, setLoading] = useState(true);
             const [toast, setToast] = useState(null);
-            const [isSeeding, setIsSeeding] = useState(false);
-            
-            // Debug State
-            const [consoleLogs, setConsoleLogs] = useState([]);
-            const [showDebug, setShowDebug] = useState(false);
-            const [debugEnabled, setDebugEnabled] = useState(false); // Vom Admin gesteuert
+            const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [] });
+            const [status, setStatus] = useState({ tempLogs: [], cleaningLogs: {}, oilLogs: {}, shoppingList: [] });
 
-            const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [] });
-            const [status, setStatus] = useState({ tempLogs: [], activeShifts: {}, oilLogs: {}, cleaningLogs: {}, drawerChecks: {}, shoppingList: [] });
+            const showToast = (msg, type='success') => { setToast({msg, type}); setTimeout(() => setToast(null), 2500); };
 
-            const showToast = (msg, type='success') => { setToast({msg, type}); setTimeout(() => setToast(null), 3000); };
-
-            // --- CONSOLE INTERCEPTOR ---
-            useEffect(() => {
-                if (!debugEnabled) return;
-
-                const originalLog = console.log;
-                const originalError = console.error;
-                const originalWarn = console.warn;
-
-                const addLog = (type, args) => {
-                    const time = new Date().toLocaleTimeString();
-                    const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
-                    setConsoleLogs(prev => [...prev.slice(-49), { type, time, msg }]); // Keep last 50
-                };
-
-                console.log = (...args) => { addLog('log', args); originalLog.apply(console, args); };
-                console.error = (...args) => { addLog('error', args); originalError.apply(console, args); };
-                console.warn = (...args) => { addLog('warn', args); originalWarn.apply(console, args); };
-
-                return () => {
-                    console.log = originalLog;
-                    console.error = originalError;
-                    console.warn = originalWarn;
-                };
-            }, [debugEnabled]);
-
-            // Auth
             useEffect(() => {
                 if (!app) return;
-                const init = async () => {
-                    try { await signInAnonymously(auth); } catch (e) { console.error(e); }
-                };
-                init();
+                signInAnonymously(auth).catch(console.error);
                 return onAuthStateChanged(auth, u => { setUser(u); if(!u) setLoading(false); });
             }, []);
 
-            // Sync
             useEffect(() => {
                 if (!user || !db) return;
                 const pub = (c) => collection(db, 'artifacts', appId, 'public', 'data', c);
                 
-                // Settings Check (Debug)
-                onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), (docSnap) => {
-                    if (docSnap.exists()) {
-                        setDebugEnabled(docSnap.data().debugMode === true);
-                    }
-                });
+                // Master Data & Staff Listeners
+                ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks'].forEach(c => 
+                    onSnapshot(query(pub(c), orderBy('name')), s => {
+                        const key = c === 'cooling_devices' ? 'cooling' : c === 'cleaning_tasks' ? 'tasks' : c;
+                        setData(p => ({ ...p, [key]: s.docs.map(d => ({ id: d.id, ...d.data() })) }));
+                        if(c==='staff') setLoading(false);
+                    })
+                );
 
-                // Master Data
-                const cols = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'suppliers'];
-                cols.forEach(c => onSnapshot(query(pub(c), orderBy('name')), snap => {
-                    const key = c === 'cooling_devices' ? 'cooling' : c === 'cleaning_tasks' ? 'tasks' : c;
-                    setData(p => ({ ...p, [key]: snap.docs.map(d => ({ id: d.id, ...d.data() })) }));
-                    if(c==='staff') setLoading(false);
-                }));
-
-                // Live Data
+                // Live Logs Listeners
                 const today = getTodayStr();
                 onSnapshot(query(pub('logs_temp'), where('dateStr', '==', today)), s => setStatus(p => ({...p, tempLogs: s.docs.map(d=>d.data())})));
                 onSnapshot(query(pub('logs_cleaning'), where('dateStr', '==', today)), s => {
                     const logs = {}; s.docs.forEach(d => logs[d.data().taskId] = d.data());
                     setStatus(p => ({...p, cleaningLogs: logs}));
                 });
-                onSnapshot(query(pub('logs_oil'), orderBy('createdAt', 'desc'), limit(20)), s => {
+                onSnapshot(query(pub('logs_oil'), orderBy('createdAt', 'desc'), limit(10)), s => {
                     const latest = {}; s.docs.forEach(d => { if(!latest[d.data().deviceId]) latest[d.data().deviceId] = d.data(); });
                     setStatus(p => ({...p, oilLogs: latest}));
                 });
-                onSnapshot(pub('shopping_list_manual'), mSnap => {
-                    const mItems = mSnap.docs.map(d => ({...d.data(), id:d.id, isManual:true}));
-                    onSnapshot(query(pub('daily_checks'), where('dateStr', '==', today)), s => {
-                        const checks = {}; const autoList = [];
-                        s.docs.forEach(doc => {
-                            const d = doc.data();
-                            checks[d.drawerId] = d.items || {};
-                            if(d.items) Object.entries(d.items).forEach(([k, st]) => {
-                                if(st === 'empty') autoList.push({ id: `${d.drawerId}_${k}`, name: d.drawerName, sub: 'Leer', supplier: 'Intern' });
-                            });
-                        });
-                        setStatus(p => ({ ...p, drawerChecks: checks, shoppingList: [...mItems, ...autoList] }));
-                    });
-                });
+                onSnapshot(pub('shopping_list_manual'), s => setStatus(p => ({...p, shoppingList: s.docs.map(d=>({...d.data(), id:d.id}))})));
             }, [user]);
 
-            const seed = async () => {
-                setIsSeeding(true);
-                try {
-                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'staff'), { name: 'Chef', role: 'admin', departments: ['kitchen', 'service'], pin: '0000', createdAt: serverTimestamp() });
-                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'cooling_devices'), { name: 'Kühlschrank 1', minTemp: 2, maxTemp: 8, createdAt: serverTimestamp() });
-                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), { debugMode: false });
-                    showToast("System bereit!", "success");
-                } catch(e) { showToast("Fehler: " + e.message, "error"); } 
-                setIsSeeding(false);
-            };
-
-            if (!app) return <div className="p-10 text-red-500">Config Error.</div>;
-            if (loading) return <div className="h-screen bg-slate-900 flex items-center justify-center text-white"><Loader2 className="animate-spin mb-4 text-indigo-500" size={40}/></div>;
-            if (!appUser) return <LoginScreen staff={data.staff} onLogin={(u) => { setAppUser(u); setView('dashboard'); console.log("User logged in:", u.name); }} onSeed={seed} isSeeding={isSeeding} />;
+            if (loading) return <div className="h-full flex items-center justify-center"><LoadingSpinner size={40}/></div>;
+            if (!appUser) return <LoginScreen staff={data.staff} onLogin={u => { setAppUser(u); setView('dashboard'); }} />;
 
             const hasAccess = (dept) => (appUser.role === 'admin' || (appUser.departments || []).includes(dept));
+            const commonProps = { user: appUser, appId, showToast, data, status };
 
             return (
-                <div className="min-h-screen bg-slate-50 pb-24 font-sans text-slate-800">
-                    <header className="bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-md flex justify-between items-center rounded-b-3xl">
-                        <h2 className="font-black text-xl italic tracking-tighter cursor-pointer" onClick={()=>setView('dashboard')}>GASTRO<span className="text-indigo-400">.PLATINUM</span></h2>
-                        <div className="flex gap-3 items-center">
-                            <span className="text-xs font-bold text-slate-400 hidden md:block">{appUser.name}</span>
-                            <button onClick={() => setAppUser(null)} className="bg-white/10 p-2 rounded-full hover:bg-red-600 transition-colors"><LogOut size={16}/></button>
-                        </div>
+                <div className="min-h-full bg-slate-50 font-sans text-slate-800">
+                    {/* Mobile Header */}
+                    <header className="bg-slate-900 text-white py-4 px-5 sticky top-0 z-50 shadow-md flex justify-between items-center pb-[calc(1rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)]">
+                        <h2 className="font-black text-xl italic tracking-tighter" onClick={()=>setView('dashboard')}>GASTRO<span className="text-indigo-400">.PLATINUM</span></h2>
+                        <button onClick={() => setAppUser(null)} className="bg-white/10 p-2 rounded-full text-slate-300 hover:text-white hover:bg-red-600 transition-colors"><LogOut size={18}/></button>
                     </header>
 
-                    {/* DEBUG CONSOLE OVERLAY */}
-                    <DebugConsole logs={consoleLogs} isOpen={showDebug} onClose={()=>setShowDebug(false)} onClear={()=>setConsoleLogs([])} />
+                    {toast && <Toast {...toast} />}
                     
-                    {/* DEBUG TOGGLE BUTTON */}
-                    {debugEnabled && (
-                        <button 
-                            onClick={() => setShowDebug(!showDebug)}
-                            className="fixed bottom-24 right-4 z-[90] bg-slate-900 text-green-400 p-3 rounded-full shadow-xl border-2 border-green-500 animate-in hover:scale-110 transition-transform"
-                        >
-                            <Bug size={24} />
-                        </button>
-                    )}
-
-                    {toast && <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-[90] px-6 py-3 rounded-full shadow-2xl font-bold text-sm animate-bounce flex items-center gap-2 border ${toast.type==='error'?'bg-red-600 border-red-400 text-white':'bg-indigo-600 border-indigo-400 text-white'}`}>{toast.type==='error' ? <AlertTriangle size={16}/> : <CheckCircle size={16}/>} {toast.msg}</div>}
-                    
-                    <main className="max-w-xl mx-auto p-4 space-y-5">
-                        {view === 'dashboard' && <SmartDashboard user={appUser} data={data} status={status} setView={setView} hasAccess={hasAccess} />}
-                        {view === 'cleaning' && <SmartCleaning tasks={data.tasks} logs={status.cleaningLogs} user={appUser} appId={appId} showToast={showToast} />}
-                        {view === 'cooling' && <SmartCooling items={data.cooling} logs={status.tempLogs} user={appUser} appId={appId} showToast={showToast} />}
-                        {view === 'oil' && hasAccess('kitchen') && <SmartFryers items={data.fryers} logs={status.oilLogs} user={appUser} appId={appId} showToast={showToast} />}
-                        {view === 'inventory' && <SmartInventory list={status.shoppingList} suppliers={data.suppliers} user={appUser} appId={appId} showToast={showToast} />}
-                        {view === 'admin' && <SmartAdmin data={data} appId={appId} showToast={showToast} user={appUser} debugEnabled={debugEnabled} />}
+                    <main className="max-w-lg mx-auto p-5 safe-bottom space-y-6">
+                        {view === 'dashboard' && <SmartDashboard {...commonProps} setView={setView} hasAccess={hasAccess} />}
+                        {view === 'cleaning' && <SmartCleaning {...commonProps} />}
+                        {view === 'cooling' && <SmartCooling {...commonProps} />}
+                        {view === 'oil' && hasAccess('kitchen') && <SmartFryers {...commonProps} />}
+                        {view === 'inventory' && <SmartInventory {...commonProps} />}
+                        {view === 'admin' && hasAccess('admin') && <SmartAdmin {...commonProps} />}
                     </main>
-                    <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t p-2 flex justify-around pb-6 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-40 rounded-t-3xl">
-                        <NavBtn icon={<Menu/>} label="Start" active={view==='dashboard'} onClick={()=>setView('dashboard')}/>
+
+                    {/* Mobile Bottom Nav */}
+                    <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-100 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex justify-around items-end shadow-[0_-4px_10px_rgba(0,0,0,0.03)] z-40">
+                        <NavBtn icon={<Menu/>} label="Home" active={view==='dashboard'} onClick={()=>setView('dashboard')}/>
                         <NavBtn icon={<Sparkles/>} label="Putz" active={view==='cleaning'} onClick={()=>setView('cleaning')}/>
-                        <NavBtn icon={<Truck/>} label="Order" active={view==='inventory'} onClick={()=>setView('inventory')}/>
-                        {hasAccess('kitchen') && <NavBtn icon={<Droplet/>} label="Fett" active={view==='oil'} onClick={()=>setView('oil')}/>}
-                        {appUser.role === 'admin' && <NavBtn icon={<Settings/>} label="Admin" active={view==='admin'} onClick={()=>setView('admin')}/>}
+                        <NavBtn icon={<Truck/>} label="Lager" active={view==='inventory'} onClick={()=>setView('inventory')}/>
+                        {hasAccess('kitchen') && <NavBtn icon={<Droplet/>} label="Öl" active={view==='oil'} onClick={()=>setView('oil')}/>}
+                        {hasAccess('admin') && <NavBtn icon={<Settings/>} label="Admin" active={view==='admin'} onClick={()=>setView('admin')}/>}
                     </nav>
                 </div>
             );
         }
 
-        /* --- 4. SMART MODULES --- */
+        // --- 4. AUTH & NAV COMPONENTS ---
+        const LoginScreen = ({ staff, onLogin }) => (
+            <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_#6366f1_0%,_transparent_45%)] opacity-40"></div>
+                <div className="z-10 w-full max-w-sm mx-auto">
+                    <div className="mb-12">
+                        <h1 className="text-5xl font-black text-white mb-2 tracking-tighter italic">GASTRO<span className="text-indigo-400">.APP</span></h1>
+                        <p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.3em]">Platinum Mobile</p>
+                    </div>
+                    <div className="space-y-3">
+                        {staff.map(s => (
+                            <button key={s.id} onClick={() => onLogin(s)} className="w-full bg-white/10 hover:bg-indigo-600 backdrop-blur-lg border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all group active:scale-95">
+                                <div className="bg-white/10 p-2.5 rounded-xl"><User size={20} className="text-indigo-300 group-hover:text-white"/></div>
+                                <div className="flex-1 text-left">
+                                    <div className="font-bold text-lg">{s.name}</div>
+                                    <div className="text-[11px] font-medium opacity-60 uppercase">{s.role === 'admin' ? 'Administrator' : (s.departments||[]).join(' • ')}</div>
+                                </div>
+                                <ChevronDown className="-rotate-90 opacity-50 group-hover:opacity-100 transition-transform group-hover:translate-x-1"/>
+                            </button>
+                        ))}
+                        {staff.length === 0 && <div className="text-white/50 text-center text-sm p-4 border-2 border-dashed border-white/10 rounded-2xl">Keine Mitarbeiter angelegt.</div>}
+                    </div>
+                </div>
+            </div>
+        );
 
+        const NavBtn = ({ icon, label, active, onClick }) => (
+            <button onClick={onClick} className={`flex flex-col items-center gap-1.5 px-3 py-2 rounded-2xl transition-all duration-300 ${active ? 'text-indigo-600 bg-indigo-50' : 'text-slate-400 hover:text-slate-600'}`}>
+                {React.cloneElement(icon, { size: 22, strokeWidth: active ? 2.5 : 2 })}
+                <span className="text-[10px] font-bold tracking-tight leading-none">{label}</span>
+            </button>
+        );
+
+        const DashboardCard = ({ title, sub, icon, color, onClick, badge }) => (
+            <button onClick={onClick} className={`relative overflow-hidden w-full text-left p-5 rounded-[2rem] bg-gradient-to-br ${color} text-white shadow-lg shadow-indigo-900/10 active:scale-[0.97] transition-transform`}>
+                <div className="absolute right-[-20px] top-[-20px] opacity-20 scale-[1.6] rotate-12 pointer-events-none">{icon}</div>
+                <div className="relative z-10 flex flex-col h-full justify-between">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">{React.cloneElement(icon, { size: 24 })}</div>
+                        {badge > 0 && <span className="bg-red-500 text-white text-[11px] font-black px-2.5 py-1 rounded-full shadow-sm">{badge}</span>}
+                    </div>
+                    <div>
+                        <div className="font-black text-xl leading-none mb-1.5">{title}</div>
+                        <div className="text-[11px] font-bold uppercase tracking-wider opacity-80">{sub}</div>
+                    </div>
+                </div>
+            </button>
+        );
+
+        // --- 5. FEATURE MODULES ---
+
+        // --- DASHBOARD ---
         const SmartDashboard = ({ user, data, status, setView, hasAccess }) => {
             const day = getWeekdayShort();
             const myDepts = user.departments || [];
-            const activeCooling = data.cooling.filter(d => d.status !== 'defekt');
-            const activeFryers = data.fryers.filter(d => d.status !== 'defekt');
             const relevantTasks = data.tasks.filter(t => t.schedule?.[day] && (user.role==='admin' || t.dept==='all' || myDepts.includes(t.dept)));
             const doneTasks = relevantTasks.filter(t => status.cleaningLogs[t.id]).length;
             const progress = relevantTasks.length ? Math.round((doneTasks / relevantTasks.length) * 100) : 100;
-            const openTemp = activeCooling.length - status.tempLogs.length;
+            const openTemp = data.cooling.filter(d => d.status !== 'defekt').length - status.tempLogs.length;
 
             return (
-                <div className="animate-in">
-                    <div className="bg-gradient-to-r from-slate-800 to-slate-900 text-white p-6 rounded-3xl shadow-xl flex justify-between items-center relative overflow-hidden mb-5">
+                <div className="animate-in space-y-6">
+                    <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl flex justify-between items-center relative overflow-hidden">
                         <div className="relative z-10">
-                            <div className="text-[10px] font-bold opacity-60 uppercase mb-1">Tages-Check</div>
-                            <div className="text-4xl font-black tracking-tighter">{progress}%</div>
-                            <div className="text-xs text-slate-400 mt-1">{doneTasks} / {relevantTasks.length} erledigt</div>
+                            <div className="text-xs font-bold text-indigo-300 uppercase mb-2">Tagesfortschritt</div>
+                            <div className="text-5xl font-black tracking-tighter">{progress}<span className="text-2xl text-indigo-400">%</span></div>
+                            <div className="text-sm text-slate-400 font-medium mt-1">{doneTasks} von {relevantTasks.length} Aufgaben erledigt</div>
                         </div>
-                        <div className="relative w-16 h-16">
+                         {/* Progress Circle */}
+                        <div className="relative w-20 h-20">
                             <svg className="w-full h-full transform -rotate-90">
-                                <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-slate-700" />
-                                <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray={175} strokeDashoffset={175 - (175 * progress) / 100} className="text-indigo-500 transition-all duration-1000 ease-out" />
+                                <circle cx="40" cy="40" r="36" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-800" />
+                                <circle cx="40" cy="40" r="36" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray={226} strokeDashoffset={226 - (226 * progress) / 100} className="text-indigo-500 transition-all duration-1000 ease-out" strokeLinecap="round" />
                             </svg>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                        <MenuCard title="Putzplan" sub="Aufgaben" icon={<Sparkles/>} color="from-indigo-500 to-violet-600" onClick={()=>setView('cleaning')} badge={relevantTasks.length - doneTasks}/>
-                        <MenuCard title="Kühlung" sub="HACCP" icon={<Snowflake/>} color="from-cyan-500 to-blue-600" onClick={()=>setView('cooling')} badge={openTemp}/>
-                        {hasAccess('kitchen') && <MenuCard title="Qualität" sub="Fett & Öl" icon={<Droplet/>} color="from-orange-400 to-red-500" onClick={()=>setView('oil')} badge={activeFryers.length - Object.keys(status.oilLogs).length}/>}
-                        <MenuCard title="Lager" sub="Inventar" icon={<Truck/>} color="from-slate-600 to-slate-800" onClick={()=>setView('inventory')} badge={status.shoppingList.length}/>
+                    <div className="grid grid-cols-2 gap-4">
+                        <DashboardCard title="Putzplan" sub="Heute fällig" icon={<Sparkles/>} color="from-indigo-500 to-purple-600" onClick={()=>setView('cleaning')} badge={relevantTasks.length - doneTasks}/>
+                        <DashboardCard title="Kühlung" sub="Temperatur" icon={<Snowflake/>} color="from-sky-500 to-blue-600" onClick={()=>setView('cooling')} badge={openTemp}/>
+                        {hasAccess('kitchen') && <DashboardCard title="Fett & Öl" sub="Qualität" icon={<Droplet/>} color="from-amber-400 to-orange-500" onClick={()=>setView('oil')} badge={data.fryers.length - Object.keys(status.oilLogs).length}/>}
+                        <DashboardCard title="Einkauf" sub="Bestellliste" icon={<Truck/>} color="from-emerald-500 to-teal-600" onClick={()=>setView('inventory')} badge={status.shoppingList.length}/>
                     </div>
                 </div>
             );
         };
 
-        const SmartCleaning = ({ tasks, logs, user, appId, showToast }) => {
+        // --- CLEANING ---
+        const SmartCleaning = ({ data, status, user, appId, showToast }) => {
             const day = getWeekdayShort();
             const myDepts = user.departments || [];
-            const relevantTasks = tasks.filter(t => t.schedule?.[day] && (user.role==='admin' || t.dept==='all' || myDepts.includes(t.dept))).sort((a,b) => (logs[a.id]?1:0)-(logs[b.id]?1:0));
+            const relevantTasks = data.tasks.filter(t => t.schedule?.[day] && (user.role==='admin' || t.dept==='all' || myDepts.includes(t.dept)))
+                .sort((a,b) => (status.cleaningLogs[a.id]?1:0)-(status.cleaningLogs[b.id]?1:0));
             
             const toggle = async (t) => {
-                const ref = doc(db, 'artifacts', appId, 'public', 'data', 'logs_cleaning', `${getTodayStr()}_${t.id}`);
-                if(logs[t.id]) { if(user.role==='admin'||logs[t.id].user===user.name) await deleteDoc(ref); } 
-                else { 
-                    await setDoc(ref,{taskId:t.id,taskName:t.name,user:user.name,dateStr:getTodayStr(),createdAt:serverTimestamp()}); 
-                    showToast("Erledigt!");
-                    console.log("Task finished:", t.name); // Debug log
+                const logRef = doc(db, 'artifacts', appId, 'public', 'data', 'logs_cleaning', `${getTodayStr()}_${t.id}`);
+                if(status.cleaningLogs[t.id]) { 
+                    if(user.role==='admin'||status.cleaningLogs[t.id].user===user.name) await deleteDoc(logRef); 
+                } else { 
+                    await setDoc(logRef,{taskId:t.id,taskName:t.name,user:user.name,dateStr:getTodayStr(),createdAt:serverTimestamp()}); 
+                    showToast("Erledigt!", "success");
                 }
             };
+
             return (
-                <div className="space-y-4 animate-in"><Header title="Tagesaufgaben" sub={day} />{relevantTasks.map(t=>{const done=logs[t.id]; return <div key={t.id} onClick={()=>toggle(t)} className={`p-4 rounded-2xl border cursor-pointer flex justify-between items-center ${done?'bg-slate-50 opacity-60':'bg-white hover:border-indigo-300'}`}><div><div className={`font-bold ${done?'line-through':''}`}>{t.name}</div><div className="text-[10px] uppercase font-bold text-slate-400 mt-1">{t.area}</div>{done&&<div className="text-[10px] text-indigo-600 font-bold mt-1">{done.user}</div>}</div>{done?<CheckCircle className="text-indigo-500"/>:<div className="w-6 h-6 border-2 rounded-lg border-slate-300"/>}</div>})}{relevantTasks.length===0&&<div className="text-center p-8 text-slate-400 border border-dashed rounded-xl">Frei!</div>}</div>
+                <div className="animate-in"><Header title="Putzplan" sub={day} />
+                    <div className="space-y-3">
+                        {relevantTasks.map(t=>{
+                            const done=status.cleaningLogs[t.id]; 
+                            return (
+                                <div key={t.id} onClick={()=>toggle(t)} className={`p-4 rounded-2xl border-2 cursor-pointer flex justify-between items-center transition-all active:scale-[0.98] ${done?'bg-slate-50 border-slate-200 opacity-70':'bg-white border-slate-100 hover:border-indigo-200 shadow-sm'}`}>
+                                    <div>
+                                        <div className={`font-bold text-base ${done?'line-through text-slate-500':''}`}>{t.name}</div>
+                                        <div className="text-[11px] uppercase font-bold text-slate-400 mt-1">{t.area}</div>
+                                    </div>
+                                    {done ? <CheckCircle className="text-emerald-500" size={28}/> : <div className="w-7 h-7 border-2 rounded-xl border-slate-300 bg-slate-50"/>}
+                                </div>
+                            )
+                        })}
+                    </div>
+                    {relevantTasks.length===0 && <div className="text-center p-10 text-slate-400 border-2 border-dashed rounded-3xl">Alles erledigt!</div>}
+                </div>
             );
         };
 
-        const SmartCooling = ({ items, logs, user, appId, showToast }) => {
-            const [inp, setInp] = useState({});
-            const activeItems = items.filter(i => i.status !== 'defekt');
-            const save = async (i) => { if(inp[i.id]) { await addDoc(collection(db,'artifacts',appId,'public','data','logs_temp'),{deviceId:i.id,deviceName:i.name,temp:inp[i.id],user:user.name,dateStr:getTodayStr(),createdAt:serverTimestamp()}); showToast("OK"); console.log("Temp Logged:", i.name, inp[i.id]); } };
+        // --- COOLING ---
+        const SmartCooling = ({ data, status, user, appId, showToast }) => {
+            const [inputs, setInputs] = useState({});
+            const [loadingId, setLoadingId] = useState(null);
+            const activeItems = data.cooling.filter(i => i.status !== 'defekt');
+
+            const save = async (id, name) => {
+                const temp = inputs[id];
+                if(!temp && temp !== 0) return;
+                setLoadingId(id);
+                await addDoc(collection(db,'artifacts',appId,'public','data','logs_temp'),{deviceId:id,deviceName:name,temp,user:user.name,dateStr:getTodayStr(),createdAt:serverTimestamp()});
+                setLoadingId(null); setInputs(p=>({...p,[id]:''})); showToast(`${name} gespeichert`);
+            };
+
             return (
-                <div className="space-y-3 animate-in"><Header title="Temperatur" sub="HACCP" />{activeItems.map(i=>{ const done=logs.find(l=>l.deviceId===i.id); return <div key={i.id} className={`p-4 rounded-2xl border shadow-sm ${done?'bg-emerald-50 border-emerald-100':'bg-white'}`}><div className="flex justify-between items-center mb-2"><span className="font-bold">{i.name}</span>{done?<span className="font-bold text-emerald-600">{done.temp}°C</span>:<span className="text-[10px] bg-red-100 text-red-600 px-2 py-1 rounded font-bold">Messen</span>}</div>{!done&&<div className="flex gap-2"><input type="number" placeholder="°C" className="flex-1 bg-slate-50 border rounded-xl p-2 text-center font-bold" onChange={e=>setInp({...inp,[i.id]:e.target.value})}/><button onClick={()=>save(i)} className="bg-slate-900 text-white px-4 rounded-xl">OK</button></div>}</div>})}</div>
+                <div className="animate-in space-y-4"><Header title="Temperaturen" sub="HACCP Kontrolle" />
+                    {activeItems.map(i=>{ 
+                        const done = status.tempLogs.find(l=>l.deviceId===i.id);
+                        const currentInputStr = inputs[i.id] || '';
+                        const tempStatus = getTempStatus(currentInputStr);
+                        const statusColors = { neutral: 'text-slate-400', ok: 'text-emerald-500', danger: 'text-red-500' };
+                        
+                        return (
+                        <div key={i.id} className={`p-5 rounded-[1.5rem] border shadow-sm transition-all ${done?'bg-emerald-50/50 border-emerald-200':'bg-white border-slate-100'}`}>
+                            <div className="flex justify-between items-center mb-3">
+                                <span className="font-bold text-lg">{i.name}</span>
+                                {done ? <span className="font-black text-lg text-emerald-600 flex items-center gap-1"><CheckCircle size={16}/>{done.temp}°C</span> 
+                                      : <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded-md font-bold uppercase tracking-wider">Messung ausstehend</span>}
+                            </div>
+                            {!done && (
+                                <div className="flex gap-3">
+                                    <div className="relative flex-1">
+                                        <Input type="number" inputMode="decimal" placeholder="Temperatur..." value={inputs[i.id]||''} onChange={e=>setInputs({...inputs,[i.id]:e.target.value})} className={`pr-10 font-bold text-lg ${tempStatus==='danger'?'text-red-600 border-red-300 bg-red-50 focus:ring-red-200 focus:border-red-500':tempStatus==='ok'?'text-emerald-600 border-emerald-300 bg-emerald-50 focus:ring-emerald-200 focus:border-emerald-500':''}`} />
+                                        <Thermometer className={`absolute right-3 top-4 transition-colors ${statusColors[tempStatus]}`} size={20}/>
+                                    </div>
+                                    <Button onClick={()=>save(i.id, i.name)} isLoading={loadingId===i.id} className="w-auto px-6"><Save size={20}/></Button>
+                                </div>
+                            )}
+                        </div>
+                    )})}
+                </div>
             );
         };
 
-        const SmartInventory = ({ list, suppliers, user, appId, showToast }) => {
-            const [n, setN] = useState('');
-            const add = async () => { if(n) { await addDoc(collection(db,'artifacts',appId,'public','data','shopping_list_manual'),{name:n, createdAt:serverTimestamp()}); setN(''); showToast('Hinzugefügt'); } };
-            const del = async (id, isManual) => { if(isManual) await deleteDoc(doc(db,'artifacts',appId,'public','data','shopping_list_manual',id)); };
+        // --- INVENTORY ---
+        const SmartInventory = ({ status, appId, showToast }) => {
+            const [newItem, setNewItem] = useState('');
+            const [isAdding, setIsAdding] = useState(false);
+            const add = async () => { 
+                if(!newItem) return; setIsAdding(true);
+                await addDoc(collection(db,'artifacts',appId,'public','data','shopping_list_manual'),{name:newItem, createdAt:serverTimestamp()});
+                setNewItem(''); setIsAdding(false); showToast('Artikel hinzugefügt'); 
+            };
+            const del = async (id) => await deleteDoc(doc(db,'artifacts',appId,'public','data','shopping_list_manual',id));
+
             return (
-                <div className="space-y-4 animate-in"><Header title="Einkaufsliste" sub="Smart Order" /><div className="flex gap-2 bg-white p-2 rounded-2xl border shadow-sm"><input value={n} onChange={e=>setN(e.target.value)} placeholder="+ Artikel..." className="flex-1 p-2 outline-none"/><button onClick={add} className="bg-slate-900 text-white px-4 rounded-xl"><Plus size={18}/></button></div><div className="bg-white rounded-2xl border overflow-hidden divide-y">{list.map((item, i) => (<div key={i} className="p-4 flex justify-between items-center"><div><div className="font-bold text-slate-800">{item.name}</div><div className="text-xs text-slate-400">{item.supplier||'Intern'} {item.sub==='Leer'&&<span className="text-red-500 font-bold">• Leer</span>}</div></div>{item.isManual && <button onClick={()=>del(item.id, true)} className="text-slate-300 hover:text-red-500"><X size={18}/></button>}</div>))}</div></div>
+                <div className="animate-in space-y-4"><Header title="Einkaufsliste" sub="Manuelle Einträge" />
+                    <div className="flex gap-3 p-2 bg-white rounded-2xl border shadow-sm">
+                        <Input value={newItem} onChange={e=>setNewItem(e.target.value)} placeholder="Neuer Artikel..." onKeyPress={e=>e.key==='Enter'&&add()} className="border-0 bg-transparent focus:ring-0" />
+                        <Button onClick={add} isLoading={isAdding} className="w-auto px-5 rounded-xl"><Plus size={24}/></Button>
+                    </div>
+                    <div className="bg-white rounded-[1.5rem] border shadow-sm overflow-hidden divide-y divide-slate-100">
+                        {status.shoppingList.map(item => (
+                            <div key={item.id} className="p-4 flex justify-between items-center group">
+                                <div className="font-bold text-slate-800 text-lg">{item.name}</div>
+                                <button onClick={()=>del(item.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><X size={20}/></button>
+                            </div>
+                        ))}
+                        {status.shoppingList.length === 0 && <div className="p-6 text-center text-slate-400 font-medium">Liste ist leer.</div>}
+                    </div>
+                </div>
             );
         };
 
-        const SmartFryers = ({ items, logs, user, appId, showToast }) => {
-            const [val, setVal] = useState({});
-            const activeItems = items.filter(i => i.status !== 'defekt');
+        // --- FRYERS (OIL) ---
+        const SmartFryers = ({ data, status, user, appId, showToast }) => {
+            const [vals, setVals] = useState({});
+            const [loadingId, setLoadingId] = useState(null);
+            const activeItems = data.fryers.filter(i => i.status !== 'defekt');
 
             const save = async (i) => {
-                const t = parseFloat(val[i.id]?.tmp);
-                const p = parseFloat(val[i.id]?.t);
-                
-                if(t && p) {
-                    if(t > 175) console.warn("High Temp Alert:", t);
-                    if(p >= 24) console.error("Oil Critical:", p);
-                    
-                    await addDoc(collection(db,'artifacts',appId,'public','data','logs_oil'),{deviceId:i.id,deviceName:i.name,temp:t,tpm:p,user:user.name,createdAt:serverTimestamp()});
-                    showToast("Gespeichert");
-                }
+                const t = parseFloat(vals[i.id]?.tmp), p = parseFloat(vals[i.id]?.tpm);
+                if(!t || !p) return;
+                setLoadingId(i.id);
+                await addDoc(collection(db,'artifacts',appId,'public','data','logs_oil'),{deviceId:i.id,deviceName:i.name,temp:t,tpm:p,user:user.name,createdAt:serverTimestamp()});
+                setLoadingId(null); showToast("Messung gespeichert");
             };
 
+            const getTpmStatus = (tpm) => {
+                if(tpm >= 24) return { bg:'bg-red-500', text:'Wechseln' };
+                if(tpm >= 20) return { bg:'bg-amber-500', text:'Filtern' };
+                return { bg:'bg-emerald-500', text:'OK' };
+            }
+
             return (
-                <div className="space-y-4 animate-in">
-                    <Header title="Öl Qualität" sub="Smart Analysis" />
-                    {activeItems.length === 0 && <div className="text-center p-8 bg-white rounded-xl border border-dashed text-slate-400">Keine aktiven Fritteusen.</div>}
+                <div className="animate-in space-y-4"><Header title="Fett & Öl" sub="Qualitätsmessung" />
                     {activeItems.map(i => {
-                        const l = logs[i.id];
+                        const l = status.oilLogs[i.id];
+                        const st = l ? getTpmStatus(l.tpm) : null;
                         return (
-                            <div key={i.id} className="bg-white p-5 rounded-2xl border shadow-sm relative overflow-hidden">
-                                <div className="flex justify-between items-start mb-4 relative z-10">
-                                    <span className="font-bold text-lg text-slate-800">{i.name}</span>
-                                    {l && <span className={`text-[10px] text-white px-2 py-1 rounded font-bold ${l.tpm>=24?'bg-red-600':l.tpm>=20?'bg-yellow-500':'bg-emerald-500'}`}>{l.tpm>=24?'WECHSELN':l.tpm>=20?'FILTERN':'OK'}</span>}
+                            <div key={i.id} className="bg-white p-5 rounded-[1.5rem] border shadow-sm">
+                                <div className="flex justify-between items-start mb-4">
+                                    <span className="font-bold text-xl text-slate-800">{i.name}</span>
+                                    {l && <span className={`${st.bg} text-white text-xs font-black px-3 py-1.5 rounded-full uppercase shadow-sm`}>{st.text}</span>}
                                 </div>
                                 {!l ? (
-                                    <div className="flex gap-2">
-                                        <input type="number" placeholder="Temp" className="flex-1 p-3 bg-slate-50 rounded-xl text-center font-bold" onChange={e=>setVal({...val,[i.id]:{...val[i.id],tmp:e.target.value}})}/>
-                                        <input type="number" placeholder="TPM" className="flex-1 p-3 bg-slate-50 rounded-xl text-center font-bold" onChange={e=>setVal({...val,[i.id]:{...val[i.id],t:e.target.value}})}/>
-                                        <button onClick={()=>save(i)} className="bg-slate-900 text-white px-4 rounded-xl"><Save/></button>
+                                    <div className="space-y-3">
+                                        <div className="flex gap-3">
+                                            <Input type="number" inputMode="decimal" placeholder="Temp °C" className="text-center font-bold text-lg" onChange={e=>setVals({...vals,[i.id]:{...vals[i.id],tmp:e.target.value}})}/>
+                                            <Input type="number" inputMode="decimal" placeholder="TPM %" className="text-center font-bold text-lg" onChange={e=>setVals({...vals,[i.id]:{...vals[i.id],tpm:e.target.value}})}/>
+                                        </div>
+                                        <Button onClick={()=>save(i)} isLoading={loadingId===i.id}><Save size={20}/> Speichern</Button>
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-2 gap-2 text-center">
-                                        <div className="p-2 bg-slate-50 rounded-xl"><div className="text-[10px] uppercase text-slate-400 font-bold">Temp</div><div className="font-mono font-bold text-lg">{l.temp}°C</div></div>
-                                        <div className="p-2 bg-slate-50 rounded-xl"><div className="text-[10px] uppercase text-slate-400 font-bold">TPM</div><div className="font-mono font-bold text-lg">{l.tpm}%</div></div>
+                                    <div className="flex gap-2">
+                                        <div className="flex-1 p-3 bg-slate-50 rounded-xl border text-center"><div className="text-xs uppercase text-slate-400 font-bold mb-1">Temp</div><div className="font-mono font-black text-xl">{l.temp}°C</div></div>
+                                        <div className="flex-1 p-3 bg-slate-50 rounded-xl border text-center"><div className="text-xs uppercase text-slate-400 font-bold mb-1">TPM</div><div className="font-mono font-black text-xl">{l.tpm}%</div></div>
                                     </div>
                                 )}
                             </div>
@@ -491,123 +444,119 @@
             );
         };
 
-        const SmartAdmin = ({ data, appId, showToast, user, debugEnabled }) => {
-            const [tab, setTab] = useState('staff'); const [editingItem, setEditingItem] = useState(null);
-            
-            // Toggle Global Debug Mode
-            const toggleDebug = async () => {
-                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), { debugMode: !debugEnabled }, { merge: true });
-                showToast(`Debug Modus ${!debugEnabled ? 'AN' : 'AUS'}`);
+        // --- ADMIN ---
+        const SmartAdmin = ({ data, appId, showToast }) => {
+            const [tab, setTab] = useState('staff'); 
+            const [editingItem, setEditingItem] = useState(null);
+            const tabs = { staff: 'Personal', tasks: 'Putzplan', cooling: 'Kühlgeräte', fryers: 'Fritteusen' };
+
+            const deleteItem = async (id) => {
+                if(!window.confirm("Wirklich löschen?")) return;
+                const colMap = { tasks:'cleaning_tasks', cooling:'cooling_devices', fryers:'fryers', staff:'staff' };
+                await deleteDoc(doc(db,'artifacts',appId,'public','data',colMap[tab], id));
+                showToast("Gelöscht");
             };
 
             return (
-                <div className="pb-20 animate-in">
-                    <Header title="Admin" sub="Setup" />
-                    <div className="flex gap-2 overflow-x-auto pb-4 no-scrollbar">
-                        {['staff','tasks','cooling','fryers', 'system'].map(t=><button key={t} onClick={()=>{setTab(t);setEditingItem(null)}} className={`px-4 py-2 rounded-full text-xs font-bold uppercase whitespace-nowrap transition-all ${tab===t?'bg-slate-900 text-white':'bg-white text-slate-500 border'}`}>{t}</button>)}
+                <div className="animate-in pb-10 space-y-4">
+                    <Header title="Verwaltung" sub="Setup" />
+                    <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar -mx-5 px-5">
+                        {Object.entries(tabs).map(([k,label])=>(
+                            <button key={k} onClick={()=>{setTab(k);setEditingItem(null)}} className={`px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all ${tab===k?'bg-slate-900 text-white shadow-md':'bg-white text-slate-500 border'}`}>{label}</button>
+                        ))}
                     </div>
                     
-                    {tab === 'system' ? (
-                        <div className="bg-white rounded-2xl border shadow-sm p-6">
-                            <h3 className="font-bold text-lg mb-4">System Einstellungen</h3>
-                            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
-                                <div className="flex items-center gap-3">
-                                    <div className="bg-slate-200 p-2 rounded-lg text-slate-600"><Bug size={20}/></div>
-                                    <div>
-                                        <div className="font-bold text-sm">Debug Konsole</div>
-                                        <div className="text-xs text-slate-400">Für Entwickler / Fehlersuche</div>
-                                    </div>
+                    <div className="bg-white rounded-[1.5rem] border shadow-sm p-5 min-h-[300px]">
+                        {editingItem ? (
+                            <EditorForm type={tab} initialData={editingItem} onClose={()=>setEditingItem(null)} appId={appId} showToast={showToast} />
+                        ) : (
+                            <div className="space-y-4">
+                                <Button variant="ghost" onClick={()=>setEditingItem({isNew:true})} className="border-dashed text-slate-400 py-4"><Plus size={22}/> Neuen Eintrag anlegen</Button>
+                                <div className="divide-y divide-slate-100">
+                                    {(data[tab]||[]).map(item=>(
+                                        <div key={item.id} className="py-4 flex justify-between items-center">
+                                            <div>
+                                                <div className="font-bold text-lg text-slate-800">{item.name}</div>
+                                                <div className="text-xs font-medium text-slate-400 flex flex-wrap gap-2 mt-1">
+                                                    {item.status==='defekt' && <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded-md font-bold uppercase text-[10px]">Defekt</span>}
+                                                    {tab==='staff' && (item.role==='admin'?'Admin':(item.departments||[]).join(', '))}
+                                                    {tab==='tasks' && `${item.area} (${item.dept})`}
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={()=>setEditingItem(item)} className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl"><Edit3 size={18}/></button>
+                                                <button onClick={()=>deleteItem(item.id)} className="p-2.5 bg-red-50 text-red-600 rounded-xl"><Trash2 size={18}/></button>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                                <button onClick={toggleDebug} className={`w-12 h-6 rounded-full p-1 transition-colors ${debugEnabled ? 'bg-green-500' : 'bg-slate-300'}`}>
-                                    <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${debugEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
-                                </button>
                             </div>
-                        </div>
-                    ) : (
-                        <div className="bg-white rounded-2xl border shadow-sm min-h-[400px] p-4">
-                            {editingItem ? <EditorForm type={tab} initialData={editingItem} onClose={()=>setEditingItem(null)} appId={appId} showToast={showToast} /> : <div><button onClick={()=>setEditingItem({isNew:true})} className="w-full py-3 mb-4 border-2 border-dashed border-slate-300 rounded-xl text-slate-400 font-bold hover:bg-slate-50 flex items-center justify-center gap-2"><Plus size={20}/> Neu</button><div className="divide-y">{(data[tab]||[]).map(item=><div key={item.id} className="py-3 flex justify-between items-center group"><div><div className="font-bold text-slate-800">{item.name}</div><div className="text-xs text-slate-400 flex flex-wrap gap-1 mt-1">{item.status==='defekt' && <span className="bg-red-100 text-red-600 px-1 rounded font-bold">DEFEKT</span>}</div></div><div className="flex gap-2"><button onClick={()=>setEditingItem(item)} className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Edit3 size={16}/></button><button onClick={async()=>{if(window.confirm("Löschen?")){const col=tab==='tasks'?'cleaning_tasks':tab==='cooling'?'cooling_devices':tab==='fryers'?'fryers':'staff';await deleteDoc(doc(db,'artifacts',appId,'public','data',col,item.id));}}} className="p-2 bg-red-50 text-red-600 rounded-lg"><Trash2 size={16}/></button></div></div>)}</div></div>}
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             );
         };
 
         const EditorForm = ({ type, initialData, onClose, appId, showToast }) => {
             const [form, setForm] = useState({ name: '', ...initialData });
+            const [saving, setSaving] = useState(false);
             const [schedule, setSchedule] = useState(initialData.schedule || { Mo:true, Di:true, Mi:true, Do:true, Fr:true, Sa:true, So:true });
-            const [products, setProducts] = useState(initialData.products || []);
             const [depts, setDepts] = useState(initialData.departments || []);
 
             const update = (f, v) => setForm(p => ({ ...p, [f]: v }));
-            const toggleDept = (dept) => { if(depts.includes(dept)) setDepts(depts.filter(d=>d!==dept)); else setDepts([...depts,dept]); };
-            const addProd = () => setProducts([...products, {name:'', qty:{Mo:0,Di:0,Mi:0,Do:0,Fr:0,Sa:0,So:0}}]);
-            const updateProd = (idx, f, v) => { const c=[...products]; c[idx][f]=v; setProducts(c); };
-            const updateQty = (idx, d, v) => { const c=[...products]; if(!c[idx].qty)c[idx].qty={}; c[idx].qty[d]=parseInt(v)||0; setProducts(c); };
+            const toggleDept = (d) => setDepts(prev => prev.includes(d) ? prev.filter(x=>x!==d) : [...prev,d]);
 
             const save = async () => {
-                if(!form.name) return;
-                const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':'staff';
+                if(!form.name) return showToast("Name fehlt", "error");
+                setSaving(true);
+                const colMap = { tasks:'cleaning_tasks', cooling:'cooling_devices', fryers:'fryers', staff:'staff' };
                 const payload = { ...form, name: form.name };
+                
                 if(type === 'tasks') { payload.schedule = schedule; payload.area = form.area || 'Allgemein'; payload.dept = form.dept || 'kitchen'; }
-                if(type === 'cooling') payload.products = products.filter(p=>p.name);
                 if(type === 'staff') { payload.role = form.role || 'user'; payload.departments = depts; payload.pin = form.pin || '0000'; }
-                if(type === 'cooling' || type === 'fryers') { payload.status = form.status || 'active'; }
+                if(['cooling','fryers'].includes(type)) { payload.status = form.status || 'active'; }
 
                 delete payload.isNew; delete payload.id;
-                if(initialData.isNew) { payload.createdAt = serverTimestamp(); await addDoc(collection(db, 'artifacts', appId, 'public', 'data', col), payload); } 
-                else { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', col, initialData.id), payload); }
-                showToast("Gespeichert"); onClose();
+                try {
+                    if(initialData.isNew) { await addDoc(collection(db,'artifacts',appId,'public','data',colMap[type]), {...payload, createdAt: serverTimestamp()}); } 
+                    else { await updateDoc(doc(db,'artifacts',appId,'public','data',colMap[type], initialData.id), payload); }
+                    showToast("Gespeichert"); onClose();
+                } catch(e) { showToast("Fehler beim Speichern", "error"); console.error(e); }
+                setSaving(false);
             };
 
+            const Label = ({c}) => <label className="block text-xs font-bold uppercase text-slate-400 mb-2 tracking-wider">{c}</label>;
+
             return (
-                <div className="space-y-4">
-                    <div><label className="text-xs font-bold uppercase text-slate-400">Name</label><input className="w-full p-3 border rounded-xl" value={form.name} onChange={e=>update('name',e.target.value)} /></div>
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center mb-4"><h3 className="font-black text-xl">{initialData.isNew?'Neu erstellen':'Bearbeiten'}</h3><button onClick={onClose} className="p-2 bg-slate-100 rounded-full"><X size={20}/></button></div>
                     
-                    {(type === 'cooling' || type === 'fryers') && (
-                        <div className="flex items-center gap-2 border p-2 rounded-lg bg-white">
-                            <label className="text-xs font-bold uppercase text-slate-400 flex-1">Status</label>
-                            <select className="p-2 bg-slate-50 rounded" value={form.status||'active'} onChange={e=>update('status',e.target.value)}><option value="active">Aktiv</option><option value="defekt">Defekt (Wartung)</option></select>
-                        </div>
+                    <div><Label c="Name"/><Input value={form.name} onChange={e=>update('name',e.target.value)} placeholder="Bezeichnung eingeben" /></div>
+                    
+                    {['cooling','fryers'].includes(type) && (
+                        <div><Label c="Status"/><Select value={form.status||'active'} onChange={e=>update('status',e.target.value)}><option value="active">Aktiv (In Betrieb)</option><option value="defekt">Defekt / In Wartung</option></Select></div>
                     )}
 
                     {type === 'staff' && (
-                        <div className="space-y-4">
-                            <div><label className="text-xs font-bold uppercase text-slate-400 mb-2 block">Bereiche</label><div className="flex gap-2"><button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-3 rounded-xl border font-bold flex items-center justify-center gap-2 ${depts.includes('kitchen')?'bg-orange-50 border-orange-500 text-orange-600':'bg-white text-slate-400'}`}><ChefHat size={18}/> Küche</button><button onClick={()=>toggleDept('service')} className={`flex-1 py-3 rounded-xl border font-bold flex items-center justify-center gap-2 ${depts.includes('service')?'bg-purple-50 border-purple-500 text-purple-600':'bg-white text-slate-400'}`}><Coffee size={18}/> Service</button></div></div>
-                            <div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-bold uppercase text-slate-400">Rolle</label><select className="w-full p-3 border rounded-xl bg-white" value={form.role || 'user'} onChange={e=>update('role', e.target.value)}><option value="user">Mitarbeiter</option><option value="admin">Admin</option></select></div><div><label className="text-xs font-bold uppercase text-slate-400">PIN Code</label><input className="w-full p-3 border rounded-xl font-mono text-center tracking-widest" maxLength={4} value={form.pin||''} onChange={e=>update('pin',e.target.value)} placeholder="0000"/></div></div>
+                        <div className="space-y-5">
+                             <div><Label c="Bereiche"/><div className="flex gap-3"><button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-4 rounded-xl border-2 font-bold flex items-center justify-center gap-2 transition-all ${depts.includes('kitchen')?'bg-orange-50 border-orange-400 text-orange-700':'bg-white border-slate-200 text-slate-400'}`}><ChefHat size={22}/> Küche</button><button onClick={()=>toggleDept('service')} className={`flex-1 py-4 rounded-xl border-2 font-bold flex items-center justify-center gap-2 transition-all ${depts.includes('service')?'bg-purple-50 border-purple-400 text-purple-700':'bg-white border-slate-200 text-slate-400'}`}><Coffee size={22}/> Service</button></div></div>
+                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><Label c="Rolle"/><Select value={form.role||'user'} onChange={e=>update('role',e.target.value)}><option value="user">Mitarbeiter</option><option value="admin">Administrator</option></Select></div><div><Label c="PIN Code (4-stellig)"/><Input inputMode="numeric" maxLength={4} value={form.pin||''} onChange={e=>update('pin',e.target.value)} placeholder="0000" className="text-center font-mono tracking-[0.5em] text-xl"/></div></div>
                         </div>
                     )}
 
                     {type === 'tasks' && (
-                        <>
-                            <div><label className="text-xs font-bold uppercase text-slate-400">Für wen?</label><select className="w-full p-3 border rounded-xl bg-white" value={form.dept || 'kitchen'} onChange={e=>update('dept', e.target.value)}><option value="kitchen">Nur Küche</option><option value="service">Nur Service</option><option value="all">Alle</option></select></div>
-                            <div><label className="text-xs font-bold uppercase text-slate-400">Bereich</label><input className="w-full p-3 border rounded-xl" value={form.area||''} onChange={e=>update('area',e.target.value)} placeholder="z.B. Bar" /></div>
-                            <div className="bg-slate-50 p-3 rounded-xl border"><h4 className="text-xs font-bold mb-2">Tage</h4><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d => (<div key={d} className="flex flex-col items-center gap-1 cursor-pointer" onClick={()=>setSchedule(s=>({...s, [d]:!s[d]}))}><span className="text-[10px] font-bold">{d}</span><div className={`w-6 h-6 rounded flex items-center justify-center border transition-colors ${schedule[d]?'bg-indigo-600 border-indigo-600 text-white':'bg-white border-slate-300'}`}>{schedule[d] && <CheckSquare size={14}/>}</div></div>))}</div></div>
-                        </>
-                    )}
-
-                    {type === 'cooling' && (
-                        <div className="bg-slate-50 p-3 rounded-xl border">
-                            <div className="flex justify-between mb-2"><h4 className="text-xs font-bold">Produkte</h4><button onClick={addProd} className="text-xs bg-blue-100 text-blue-700 px-2 rounded">+ Neu</button></div>
-                            {products.map((p,i)=>(<div key={i} className="mb-2 pb-2 border-b"><input className="w-full p-1 border rounded text-sm mb-1" placeholder="Name" value={p.name} onChange={e=>updateProd(i,'name',e.target.value)}/><div className="grid grid-cols-7 gap-1">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><input key={d} className="text-center text-xs p-1 border rounded" placeholder={d} value={p.qty?.[d]||''} onChange={e=>updateQty(i,d,e.target.value)}/>)}</div></div>))}
+                        <div className="space-y-5">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><Label c="Zuständigkeit"/><Select value={form.dept||'kitchen'} onChange={e=>update('dept',e.target.value)}><option value="kitchen">Küche</option><option value="service">Service</option><option value="all">Alle</option></Select></div><div><Label c="Bereich / Ort"/><Input value={form.area||''} onChange={e=>update('area',e.target.value)} placeholder="z.B. Bar, Lager..." /></div></div>
+                            <div className="bg-slate-50 p-4 rounded-2xl border"><Label c="Wochentage"/><div className="flex justify-between gap-1 mt-3">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d => (<button key={d} onClick={()=>setSchedule(s=>({...s,[d]:!s[d]}))} className={`flex-1 h-14 rounded-xl flex flex-col items-center justify-center border-2 transition-all active:scale-95 ${schedule[d]?'bg-indigo-600 border-indigo-600 text-white shadow-md':'bg-white border-slate-200 text-slate-400'}`}><span className="text-xs font-black uppercase leading-none mb-1">{d}</span>{schedule[d] && <CheckSquare size={14}/>}</button>))}</div></div>
                         </div>
                     )}
-
-                    <button onClick={save} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold shadow-lg mt-4">Speichern</button>
+                    <Button onClick={save} isLoading={saving} className="mt-8 py-4 text-base">Speichern</Button>
                 </div>
             );
         };
 
-        // --- MAIN RENDER ---
-        function Main() {
-            return (
-                <ErrorBoundary>
-                    <App />
-                </ErrorBoundary>
-            );
-        }
-
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<Main />);
+        root.render(<ErrorBoundary><App /></ErrorBoundary>);
     </script>
 </body>
 </html>
