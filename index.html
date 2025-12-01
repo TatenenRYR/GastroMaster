@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Gastromaster v30.1</title>
+    <title>Gastromaster v30.2</title>
     
     <!-- Styles & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -86,12 +86,13 @@
 
         const DEFAULT_MODULES = ['prep', 'cleaning', 'cooling', 'oil', 'inventory'];
         const MODULE_ICONS = { prep: <ClipboardList/>, cleaning: <Sparkles/>, cooling: <Snowflake/>, oil: <Droplet/>, inventory: <Truck/>, dashboard: <Menu/>, admin: <Settings/> };
+        // FIX: Added missing MODULE_NAMES constant
+        const MODULE_NAMES = { prep: "Mise en Place", cleaning: "Putzplan", cooling: "Kühlung", oil: "Fett & Öl", inventory: "Einkauf" };
         
         const DICTIONARY = {
-            de: { start: "Filiale Öffnen", id: "Restaurant ID", login: "Team Login", role: "Rolle", pin: "PIN", admin: "Filialleitung", kitchen: "Küche", service: "Service", save: "Speichern", cancel: "Abbrechen", prep: "Vorbereitung", stock: "Bestand", clean: "Putzplan", oil: "Fett & Öl", temp: "Kühlung", dash: "Übersicht", morning: "Frühschicht Info", yesterday: "Fettliste vom Vortag", missing: "NICHT gemacht!", dev: "Entwickelt von Marvin Ringer", k_lead: "Küchenleitung", s_lead: "Serviceleitung", worker: "Mitarbeiter", logout: "Abmelden", sign: "Signieren", pdf: "Protokoll (PDF)", create: "Erstellen" },
-            en: { start: "Open Branch", id: "Restaurant ID", login: "Team Login", role: "Role", pin: "PIN", admin: "Branch Manager", kitchen: "Kitchen", service: "Service", save: "Save", cancel: "Cancel", prep: "Prep", stock: "Stock", clean: "Cleaning", oil: "Oil Quality", temp: "Cooling", dash: "Dashboard", morning: "Morning Info", yesterday: "Yesterday's Oil", missing: "NOT done!", dev: "Developed by Marvin Ringer", k_lead: "Kitchen Lead", s_lead: "Service Lead", worker: "Staff", logout: "Logout", sign: "Sign", pdf: "Log (PDF)", create: "Create" },
-            tr: { start: "Şubeyi Aç", id: "Restoran ID", login: "Ekip Girişi", role: "Rol", pin: "PIN", admin: "Şube Müdürü", kitchen: "Mutfak", service: "Servis", save: "Kaydet", cancel: "İptal", prep: "Hazırlık", stock: "Stok", clean: "Temizlik", oil: "Yağ Kalitesi", temp: "Soğutma", dash: "Pano", morning: "Sabah Bilgisi", yesterday: "Dünkü Yağ", missing: "YAPILMADI!", dev: "Marvin Ringer tarafından geliştirildi", k_lead: "Mutfak Şefi", s_lead: "Servis Şefi", worker: "Personel", logout: "Çıkış", sign: "İmzala", pdf: "Protokol (PDF)", create: "Oluştur" },
-            // Other languages are supported in logic, keeping concise here
+            de: { start: "Filiale Öffnen", id: "Restaurant ID", login: "Team Login", role: "Rolle", pin: "PIN", admin: "Filialleitung", kitchen: "Küche", service: "Service", save: "Speichern", cancel: "Abbrechen", prep: "Vorbereitung", stock: "Bestand", clean: "Putzplan", oil: "Fett & Öl", temp: "Kühlung", dash: "Übersicht", morning: "Frühschicht Info", yesterday: "Fettliste vom Vortag", missing: "NICHT gemacht!", dev: "Entwickelt von Marvin Ringer", k_lead: "Küchenleitung", s_lead: "Serviceleitung", worker: "Mitarbeiter", logout: "Abmelden", sign: "Signieren", pdf: "Protokoll (PDF)", create: "Erstellen", inventory: "Einkauf" },
+            en: { start: "Open Branch", id: "Restaurant ID", login: "Team Login", role: "Role", pin: "PIN", admin: "Branch Manager", kitchen: "Kitchen", service: "Service", save: "Save", cancel: "Cancel", prep: "Prep", stock: "Stock", clean: "Cleaning", oil: "Oil Quality", temp: "Cooling", dash: "Dashboard", morning: "Morning Info", yesterday: "Yesterday's Oil", missing: "NOT done!", dev: "Developed by Marvin Ringer", k_lead: "Kitchen Lead", s_lead: "Service Lead", worker: "Staff", logout: "Logout", sign: "Sign", pdf: "Log (PDF)", create: "Create", inventory: "Inventory" },
+            tr: { start: "Şubeyi Aç", id: "Restoran ID", login: "Ekip Girişi", role: "Rol", pin: "PIN", admin: "Şube Müdürü", kitchen: "Mutfak", service: "Servis", save: "Kaydet", cancel: "İptal", prep: "Hazırlık", stock: "Stok", clean: "Temizlik", oil: "Yağ Kalitesi", temp: "Soğutma", dash: "Pano", morning: "Sabah Bilgisi", yesterday: "Dünkü Yağ", missing: "YAPILMADI!", dev: "Marvin Ringer tarafından geliştirildi", k_lead: "Mutfak Şefi", s_lead: "Servis Şefi", worker: "Personel", logout: "Çıkış", sign: "İmzala", pdf: "Protokol (PDF)", create: "Oluştur", inventory: "Envanter" },
         };
 
         // --- COMPONENTS ---
@@ -115,6 +116,7 @@
             </div>
         );
 
+        // --- ERROR BOUNDARY ---
         class ErrorBoundary extends React.Component {
             constructor(props) { super(props); this.state = { hasError: false, error: null }; }
             static getDerivedStateFromError(error) { return { hasError: true, error }; }
@@ -124,8 +126,9 @@
                     <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-slate-50">
                         <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl max-w-sm w-full">
                             <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4"><Bug size={32}/></div>
-                            <h2 className="text-xl font-black text-slate-800 mb-2">Systemfehler</h2>
-                            <Button onClick={()=>{localStorage.clear(); window.location.reload()}} variant="primary">Neustart</Button>
+                            <h2 className="text-xl font-black text-slate-800 mb-2">Ups, ein Fehler!</h2>
+                            <pre className="text-[10px] bg-slate-100 p-3 rounded-xl border border-slate-200 text-left mb-6 overflow-auto max-h-32 text-slate-600 font-mono">{this.state.error?.toString()}</pre>
+                            <Button onClick={()=>{localStorage.clear(); window.location.reload()}} variant="primary">App Zurücksetzen</Button>
                         </div>
                     </div>
                 );
@@ -133,6 +136,7 @@
             }
         }
 
+        // --- PIN PAD ---
         const PinPad = ({ title, onClose, onSuccess, targetPin }) => {
             const [pin, setPin] = useState('');
             const handleNum = (n) => {
@@ -156,6 +160,7 @@
             );
         };
 
+        // --- LANGUAGE SWITCHER ---
         const LanguageSwitcher = ({ current, set }) => (
             <div className="absolute top-6 right-6 z-50">
                 <div className="relative group">
@@ -179,7 +184,7 @@
             return (
                 <div>
                     <h1 className={`${large ? 'text-4xl' : 'text-xl'} font-black text-white italic tracking-tighter`}>{company?.appName || 'GASTROMASTER'}</h1>
-                    {large && <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v30.1</p>}
+                    {large && <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v30.2</p>}
                 </div>
             );
         };
@@ -460,6 +465,7 @@
             if (view === 'head-panel') return <HeadAdminPanel onLogout={()=>{setIsHeadAdmin(false); setView('login');}} showToast={showToast} />;
             if (!appId) return <EnterpriseLogin onLogin={handleRestaurantLogin} onRegister={handleRegistration} loading={loading} lang={lang} setLang={setLang} />;
             if (loading) return <Loading />;
+            // IMPORTANT: Added missing LoginScreen definition check.
             if (!appUser) return <LoginScreen staff={data.staff} restaurantId={appId} company={data.company} yesterdayOil={status.yesterdayOil} fryers={data.fryers} onLogin={handleUserLogin} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} onSeed={()=>seedDB()} showToast={showToast} seedSuccess={seedSuccess} onCloseSeed={()=>setSeedSuccess(false)} lang={lang} onMasterRecovery={handleMasterKeyRecovery} />;
 
             const common = { user: appUser, appId, showToast, data, status, lang, moduleOrder };
@@ -536,9 +542,9 @@
             // Helper for role translation display
             const getRoleLabel = (role) => {
                  if(role === 'admin') return t.admin;
-                 if(role === 'kitchen_lead') return 'Küchenleitung'; // Hardcoded for now as dictionary is limited
-                 if(role === 'service_lead') return 'Serviceleitung';
-                 return 'Mitarbeiter';
+                 if(role === 'kitchen_lead') return t.k_lead;
+                 if(role === 'service_lead') return t.s_lead;
+                 return t.worker;
             };
 
             return (
@@ -596,13 +602,12 @@
             const t = DICTIONARY[lang];
             const list = data.prep || [];
             const myDepts = user.departments || [];
-            // Updated filter logic for new roles
             const relevant = list.filter(i => i.schedule?.[day] && (user.role==='admin' || ['kitchen_lead','service_lead'].includes(user.role) || myDepts.includes(i.dept)));
             const prepItems = relevant.filter(i => i.category === 'prep').sort((a,b) => (status.prepLogs[a.id]?1:0) - (status.prepLogs[b.id]?1:0));
             const stockItems = relevant.filter(i => i.category === 'stock').sort((a,b) => (status.prepLogs[a.id]?1:0) - (status.prepLogs[b.id]?1:0));
             const toggle = async (item) => { const id = `${getTodayStr()}_${item.id}`; const ref = doc(db,'artifacts',appId,'public','data','logs_prep',id); if(status.prepLogs[item.id]) await deleteDoc(ref); else { await setDoc(ref, {taskId:item.id, taskName:item.name, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()}); showToast("Erledigt!"); } };
             const ItemRow = ({ item }) => { const done = status.prepLogs[item.id]; return ( <div onClick={()=>toggle(item)} className={`p-4 rounded-2xl border flex justify-between items-center cursor-pointer card-press ${done?'bg-slate-50 border-slate-100 opacity-60 grayscale':'bg-white border-slate-100 shadow-sm hover:border-indigo-200'}`}><div><div className={`font-bold text-base leading-tight ${done?'text-slate-400 line-through':'text-slate-800'}`}>{item.name}</div><div className="text-[11px] font-bold uppercase text-indigo-500 mt-1 flex items-center gap-1"><Box size={10}/> {item.target}</div></div><div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${done?'bg-emerald-500 text-white':'bg-slate-100 text-slate-300'}`}><CheckCircle size={16}/></div></div> ); };
-            return (<div className="animate-in space-y-8"><div className="flex justify-between items-end"><div><h2 className="text-3xl font-black text-slate-800">{t.prep}</h2><p className="text-slate-400 text-sm font-medium">Plan für {getWeekdayLong()}</p></div></div><div className="space-y-3"><div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-400 tracking-widest mb-2"><ChefHat size={14}/> {t.prep}</div>{prepItems.map(item => <ItemRow key={item.id} item={item}/>)}{prepItems.length===0 && <div className="text-center p-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Nichts zu tun.</div>}</div><div className="space-y-3"><div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-400 tracking-widest mb-2"><Layers size={14}/> {t.stock}</div>{stockItems.map(item => <ItemRow key={item.id} item={item}/>)}{stockItems.length===0 && <div className="text-center p-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Alles voll.</div>}</div></div>);
+            return (<div className="animate-in space-y-8"><div className="flex justify-between items-end"><div><h2 className="text-3xl font-black text-slate-800">{t.prep}</h2><p className="text-slate-400 text-sm font-medium">Plan für {getWeekdayLong()}</p></div></div><div className="space-y-3"><div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-400 tracking-widest mb-2"><ChefHat size={14}/> Vorbereitung</div>{prepItems.map(item => <ItemRow key={item.id} item={item}/>)}{prepItems.length===0 && <div className="text-center p-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Nichts zu tun.</div>}</div><div className="space-y-3"><div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-400 tracking-widest mb-2"><Layers size={14}/> Auffüllen & Bestand</div>{stockItems.map(item => <ItemRow key={item.id} item={item}/>)}{stockItems.length===0 && <div className="text-center p-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Alles voll.</div>}</div></div>);
         };
 
         const Cooling = ({ data, status, user, appId, showToast, lang }) => { 
