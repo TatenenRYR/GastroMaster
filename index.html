@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>GastroManager Platinum v11.0</title>
+    <title>GastroManager Platinum v12.0</title>
     
     <!-- Styles & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -21,6 +21,7 @@
         
         input, select, button { touch-action: manipulation; }
         .pin-btn { @apply active:scale-90 transition-transform bg-slate-100 rounded-full w-16 h-16 flex items-center justify-center text-xl font-bold text-slate-700 shadow-sm border border-slate-200; }
+        .card-press { @apply active:scale-[0.98] transition-all duration-200; }
     </style>
 
     <!-- PDF Libraries -->
@@ -47,7 +48,8 @@
             CheckCircle, Snowflake, Loader2, Save, Truck, Menu, X, Sparkles, 
             ChefHat, Coffee, AlertTriangle, Bug, Terminal, Eraser, 
             ChevronDown, ShoppingBag, Activity, Database, Calendar, AlertOctagon, Info,
-            History, FileText, ChevronRight, ChevronLeft, Store, Key, ShieldCheck, Lock, Unlock, Zap
+            History, FileText, ChevronRight, ChevronLeft, Store, Key, ShieldCheck, Lock, Unlock, Zap,
+            ClipboardList, Box, Layers
         } from "https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0";
 
         const { useState, useEffect, useRef, useMemo } = React;
@@ -67,7 +69,7 @@
             app = initializeApp(firebaseConfig);
             auth = getAuth(app);
             db = getFirestore(app);
-        } catch(e) { console.error("Firebase Init Error", e); }
+        } catch(e) { console.error("Init", e); }
 
         // --- UTILS ---
         const getTodayStr = () => new Date().toISOString().slice(0, 10);
@@ -91,27 +93,17 @@
              return <button onClick={onClick} disabled={loading} className={`${base} ${variants[variant]} ${className}`}>{loading ? <Loader2 className="animate-spin" size={20}/> : children}</button>
         };
         const Toast = ({ msg, type }) => (
-            <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-full shadow-2xl font-bold text-sm animate-in flex items-center gap-3 border backdrop-blur-md ${type==='error'?'bg-red-50/90 border-red-200 text-red-700':'bg-emerald-50/90 border-emerald-200 text-emerald-700'}`}>
-                {type==='error' ? <AlertTriangle size={18}/> : <CheckCircle size={18}/>} {msg}
+            <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-6 py-4 rounded-2xl shadow-2xl font-bold text-sm animate-in flex items-center gap-3 border backdrop-blur-xl ${type==='error'?'bg-red-50/90 border-red-200 text-red-700':'bg-emerald-50/90 border-emerald-200 text-emerald-700'}`}>
+                {type==='error' ? <AlertTriangle size={20}/> : <CheckCircle size={20}/>} {msg}
             </div>
         );
 
-        // --- ERROR BOUNDARY (CRASH CATCHER) ---
+        // --- ERROR BOUNDARY ---
         class ErrorBoundary extends React.Component {
-            constructor(props) { super(props); this.state = { hasError: false, error: null }; }
-            static getDerivedStateFromError(error) { return { hasError: true, error }; }
-            componentDidCatch(error, errorInfo) { console.error("App Crash:", error, errorInfo); }
+            constructor(props) { super(props); this.state = { hasError: false }; }
+            static getDerivedStateFromError(error) { return { hasError: true }; }
             render() {
-                if (this.state.hasError) return (
-                    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-white">
-                        <div className="max-w-md w-full bg-slate-800 p-6 rounded-2xl border border-slate-700">
-                            <div className="flex items-center gap-3 text-red-400 font-bold text-xl mb-4"><AlertOctagon/> Systemfehler</div>
-                            <p className="text-slate-300 mb-4 text-sm">Die App ist unerwartet abgestürzt. Hier sind die Details:</p>
-                            <pre className="bg-black/50 p-4 rounded-xl text-[10px] font-mono text-red-300 overflow-auto mb-6 whitespace-pre-wrap">{this.state.error?.toString()}</pre>
-                            <button onClick={()=>{localStorage.clear(); window.location.reload()}} className="w-full bg-indigo-600 py-3 rounded-xl font-bold hover:bg-indigo-500 transition-colors">App Zurücksetzen & Neustarten</button>
-                        </div>
-                    </div>
-                );
+                if (this.state.hasError) return <div className="p-10 text-center"><h1 className="font-bold">Systemfehler.</h1><button onClick={()=>window.location.reload()} className="mt-4 bg-slate-900 text-white px-4 py-2 rounded">Neustart</button></div>;
                 return this.props.children;
             }
         }
@@ -119,50 +111,45 @@
         // --- PIN PAD ---
         const PinPad = ({ title, onClose, onSuccess, targetPin }) => {
             const [pin, setPin] = useState('');
-            const [error, setError] = useState(false);
             const handleNum = (n) => {
                 if(pin.length < 4) {
-                    const newPin = pin + n; setPin(newPin); setError(false);
+                    const newPin = pin + n; setPin(newPin);
                     if(newPin.length === 4) {
-                        if(targetPin && newPin === targetPin) { onSuccess(); }
-                        else { setError(true); setTimeout(()=>setPin(''), 500); }
+                        if(targetPin && newPin === targetPin) onSuccess(); 
+                        else { setPin(''); alert("Falsche PIN"); }
                     }
                 }
             };
             return (
                 <div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in">
-                    <div className="bg-white w-full max-w-xs rounded-3xl p-6 shadow-2xl relative overflow-hidden">
-                        <button onClick={onClose} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600"><X size={24}/></button>
-                        <h3 className="text-center font-black text-xl mb-2">{title}</h3>
-                        <div className="flex justify-center gap-3 mb-6">{[0,1,2,3].map(i => <div key={i} className={`w-4 h-4 rounded-full border-2 transition-colors ${pin.length > i ? (error ? 'bg-red-500 border-red-500' : 'bg-indigo-600 border-indigo-600') : 'border-slate-300'}`}/>)}</div>
-                        <div className="grid grid-cols-3 gap-4 mb-4">{[1,2,3,4,5,6,7,8,9,0].map(n => n===0 ? <React.Fragment key={0}><div/><button onClick={()=>handleNum(0)} className="pin-btn">0</button></React.Fragment> : <button key={n} onClick={()=>handleNum(n)} className="pin-btn">{n}</button>)}<button onClick={()=>setPin(pin.slice(0,-1))} className="pin-btn text-red-500"><Eraser size={20}/></button></div>
+                    <div className="bg-white w-full max-w-xs rounded-3xl p-6 shadow-2xl relative">
+                        <button onClick={onClose} className="absolute top-4 right-4 p-2 text-slate-400"><X size={24}/></button>
+                        <h3 className="text-center font-black text-xl mb-6">{title}</h3>
+                        <div className="flex justify-center gap-3 mb-6">{[0,1,2,3].map(i => <div key={i} className={`w-4 h-4 rounded-full border-2 ${pin.length > i ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}/>)}</div>
+                        <div className="grid grid-cols-3 gap-4">{[1,2,3,4,5,6,7,8,9,0].map(n => n===0 ? <React.Fragment key={0}><div/><button onClick={()=>handleNum(0)} className="pin-btn">0</button></React.Fragment> : <button key={n} onClick={()=>handleNum(n)} className="pin-btn">{n}</button>)}<button onClick={()=>setPin(pin.slice(0,-1))} className="pin-btn text-red-500"><Eraser size={20}/></button></div>
                     </div>
                 </div>
             );
         };
 
-        // --- ENTERPRISE LOGIN (SIMPLE ID) ---
+        // --- ENTERPRISE LOGIN ---
         const EnterpriseLogin = ({ onLogin, loading }) => {
             const [id, setId] = useState('');
-            const submit = () => { if(id.length > 2) onLogin(id.trim().toLowerCase().replace(/\s/g,'-')); };
             return (
                 <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600 rounded-full blur-[150px] opacity-10 animate-pulse"></div>
-                    <div className="z-10 w-full max-w-sm mx-auto animate-in">
-                        <div className="mb-10 text-center">
-                            <h1 className="text-4xl font-black text-white mb-2 italic tracking-tighter">GASTRO<span className="text-indigo-500">.APP</span></h1>
-                            <p className="text-slate-400 text-sm font-medium">Enterprise Login v11.0</p>
-                        </div>
+                    <div className="z-10 w-full max-w-sm mx-auto animate-in text-center space-y-8">
+                        <div><h1 className="text-4xl font-black text-white italic tracking-tighter mb-2">GASTRO<span className="text-indigo-500">.APP</span></h1><p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Platinum v12.0</p></div>
                         <div className="bg-white/10 backdrop-blur-lg border border-white/10 p-6 rounded-3xl shadow-2xl space-y-4">
-                            <div><label className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest ml-1">Restaurant ID</label><div className="relative"><Store className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/><input value={id} onChange={e=>setId(e.target.value)} placeholder="z.B. berlin-mitte" className="w-full pl-12 p-4 rounded-xl bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 font-mono" onKeyDown={e=>e.key==='Enter'&&submit()}/></div></div>
-                            <Button onClick={submit} loading={loading} className="shadow-indigo-500/20 mt-2">Filiale Öffnen</Button>
+                            <div><label className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest ml-1">Restaurant ID</label><input value={id} onChange={e=>setId(e.target.value)} placeholder="z.B. berlin-01" className="w-full mt-1 p-4 rounded-xl bg-slate-800/50 border border-slate-700 text-white text-center font-mono outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" onKeyDown={e=>e.key==='Enter'&&id.length>2&&onLogin(id.trim().toLowerCase().replace(/\s/g,'-'))}/></div>
+                            <Button onClick={()=>id.length>2&&onLogin(id.trim().toLowerCase().replace(/\s/g,'-'))} loading={loading} className="shadow-indigo-500/20">Filiale Öffnen</Button>
                         </div>
                     </div>
                 </div>
             );
         };
 
-        // --- MAIN APP ---
+        // --- APP CONTROLLER ---
         function App() {
             const [user, setUser] = useState(null);
             const [appUser, setAppUser] = useState(null);
@@ -171,82 +158,69 @@
             const [view, setView] = useState('login'); 
             const [loading, setLoading] = useState(true);
             const [toast, setToast] = useState(null);
+            const [adminAlert, setAdminAlert] = useState(false); // Security Warning for Admin
             
-            const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [], company: {} });
-            const [status, setStatus] = useState({ tempLogs: [], cleaningLogs: {}, oilLogs: {}, shoppingList: [], yesterdayOil: {} });
+            const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [], prep: [], company: {} });
+            const [status, setStatus] = useState({ tempLogs: [], cleaningLogs: {}, oilLogs: {}, prepLogs: {}, shoppingList: [], yesterdayOil: {} });
             const [debugMode, setDebugMode] = useState(false);
 
             const showToast = (msg, type='success') => { setToast({msg, type}); setTimeout(() => setToast(null), 3000); };
 
-            // 1. AUTH & RESTAURANT LOGIN
-            const handleRestaurantLogin = async (id) => {
-                setLoading(true);
-                // In v11: We just trust the ID and try to load data. 
-                // If data exists, good. If not, LoginScreen will offer seeding.
-                localStorage.setItem('gastro_app_id', id);
-                setAppId(id);
-                setLoading(false);
+            // --- LOGIN LOGIC ---
+            const handleRestaurantLogin = (id) => { setLoading(true); localStorage.setItem('gastro_app_id', id); setAppId(id); setLoading(false); };
+            const handleUserLogin = (u) => {
+                setAppUser(u);
+                setView('dashboard');
+                if(u.role === 'admin' && u.pin === '1234') { setAdminAlert(true); } // Trigger Security Alert
             };
 
-            const logoutSystem = () => {
-                if(confirm("Filiale wirklich wechseln?")) {
-                    localStorage.removeItem('gastro_app_id');
-                    setAppId(null);
-                    setAppUser(null);
-                }
-            };
+            // --- FIREBASE SYNC ---
+            useEffect(() => { signInAnonymously(auth).catch(e=>console.error(e)); return onAuthStateChanged(auth, u => { setUser(u); if(!u) setLoading(false); }); }, []);
 
-            useEffect(() => {
-                signInAnonymously(auth).catch(e=>console.error(e));
-                return onAuthStateChanged(auth, u => { setUser(u); if(!u) setLoading(false); });
-            }, []);
-
-            // 2. DATA SYNC
             useEffect(() => {
                 if (!user || !appId) { if(appId===null) setLoading(false); return; }
-                
                 setLoading(true);
                 const pub = (c) => collection(db, 'artifacts', appId, 'public', 'data', c);
                 
-                const unsubs = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'suppliers', 'settings', 'company'].map(c => 
+                // Master Data
+                const unsubs = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'prep_tasks', 'suppliers', 'settings', 'company'].map(c => 
                     onSnapshot(query(pub(c)), s => {
-                        if(c === 'settings') {
-                            const settings = s.docs.find(d => d.id === 'global')?.data();
-                            if(settings?.debugMode !== undefined) setDebugMode(settings.debugMode);
-                        } else if (c === 'company') {
-                             const info = s.docs.find(d => d.id === 'info')?.data();
-                             setData(p => ({ ...p, company: info || {} }));
-                        } else {
-                            const key = c === 'cooling_devices' ? 'cooling' : c === 'cleaning_tasks' ? 'tasks' : c;
+                        if(c === 'settings') { setDebugMode(s.docs.find(d => d.id === 'global')?.data()?.debugMode || false); }
+                        else if (c === 'company') { setData(p => ({ ...p, company: s.docs.find(d => d.id === 'info')?.data() || {} })); }
+                        else {
+                            const key = c === 'cooling_devices' ? 'cooling' : c === 'cleaning_tasks' ? 'tasks' : c === 'prep_tasks' ? 'prep' : c;
                             setData(p => ({ ...p, [key]: s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.name||'').localeCompare(b.name||'')) }));
                         }
-                        if(c === 'staff') setLoading(false);
+                        if(c==='staff') setLoading(false);
                     })
                 );
 
+                // Logs
                 const today = getTodayStr();
                 const unsubsLive = [
                     onSnapshot(query(pub('logs_temp'), where('dateStr', '==', today)), s => setStatus(p => ({...p, tempLogs: s.docs.map(d=>d.data())}))),
                     onSnapshot(query(pub('logs_cleaning'), where('dateStr', '==', today)), s => { const l = {}; s.docs.forEach(d => l[d.data().taskId] = d.data()); setStatus(p => ({...p, cleaningLogs: l})); }),
+                    onSnapshot(query(pub('logs_prep'), where('dateStr', '==', today)), s => { const l = {}; s.docs.forEach(d => l[d.data().taskId] = d.data()); setStatus(p => ({...p, prepLogs: l})); }),
                     onSnapshot(query(pub('logs_oil'), orderBy('createdAt', 'desc'), limit(20)), s => { const l = {}; s.docs.forEach(d => { if(!l[d.data().deviceId]) l[d.data().deviceId] = d.data(); }); setStatus(p => ({...p, oilLogs: l})); }),
                     onSnapshot(pub('shopping_list'), s => setStatus(p => ({...p, shoppingList: s.docs.map(d=>({...d.data(), id:d.id}))})))
                 ];
 
+                // Yesterday
                 const fetchYesterday = async () => {
                     try {
                         const yStr = getYesterdayStr();
-                        const q = query(pub('logs_oil'), where('dateStr', '==', yStr));
-                        const snap = await getDocs(q);
+                        const snap = await getDocs(query(pub('logs_oil'), where('dateStr', '==', yStr)));
                         const yLogs = {};
                         snap.docs.forEach(d => { const data = d.data(); if(!yLogs[data.deviceId] || data.createdAt > yLogs[data.deviceId].createdAt) yLogs[data.deviceId] = data; });
                         setStatus(p => ({...p, yesterdayOil: yLogs}));
-                    } catch(e) { }
+                    } catch(e) {}
                 };
                 fetchYesterday();
 
                 return () => { [...unsubs, ...unsubsLive].forEach(u => u()); };
             }, [user, appId]);
 
+            // --- SEEDING (NEW STRUCTURE) ---
             const seedDB = async () => {
                 if(!appId) return;
                 try {
@@ -255,6 +229,18 @@
                         { col: 'suppliers', data: { name: 'Metro' } },
                         { col: 'cooling_devices', data: { name: 'Kühlhaus', status: 'active' } },
                         { col: 'fryers', data: { name: 'Fritteuse 1', status: 'active' } },
+                        // Prep Tasks (Mise en Place)
+                        { col: 'prep_tasks', data: { name: 'Gurken schneiden', target: '2 Behälter', category: 'prep', dept: 'kitchen' } },
+                        { col: 'prep_tasks', data: { name: 'Tomaten schneiden', target: '1 Behälter', category: 'prep', dept: 'kitchen' } },
+                        { col: 'prep_tasks', data: { name: 'Frühlingszwiebeln', target: '4 Behälter', category: 'prep', dept: 'kitchen' } },
+                        { col: 'prep_tasks', data: { name: 'Sauce: Hollandaise', target: 'Flaschen auffüllen', category: 'prep', dept: 'kitchen' } },
+                        { col: 'prep_tasks', data: { name: 'Sauce: Käsesoße', target: 'Flaschen auffüllen', category: 'prep', dept: 'kitchen' } },
+                        { col: 'prep_tasks', data: { name: 'Mayopumpen & Ketchup', target: 'Reinigen & Füllen', category: 'prep', dept: 'service' } },
+                        // Stock Tasks (Auffüllen)
+                        { col: 'prep_tasks', data: { name: 'TK-Truhe: Pommes', target: 'Voll machen', category: 'stock', dept: 'kitchen' } },
+                        { col: 'prep_tasks', data: { name: 'Schublade 1: Bestecke', target: 'Sortieren', category: 'stock', dept: 'service' } },
+                        { col: 'prep_tasks', data: { name: 'Auftauen: Burger Buns', target: 'TK -> Kühlhaus', category: 'stock', dept: 'kitchen' } },
+                        
                         { col: 'cleaning_tasks', data: { name: 'Boden', area: 'Küche', dept: 'kitchen', schedule: {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true} } },
                         { col: 'company', id:'info', data: { name: 'Mein Restaurant', address: '' } }
                     ];
@@ -262,13 +248,13 @@
                         const ref = item.id ? doc(db, 'artifacts', appId, 'public', 'data', item.col, item.id) : collection(db, 'artifacts', appId, 'public', 'data', item.col);
                         if(item.id) await setDoc(ref, item.data); else await addDoc(ref, {...item.data, createdAt: serverTimestamp()});
                     }
-                    showToast("Basis-Daten angelegt.");
+                    showToast("Filiale initialisiert. ACHTUNG: Admin PIN ist 1234. Bitte ändern!", "error");
                 } catch(e) { console.error(e); }
             };
 
             if (!appId) return <EnterpriseLogin onLogin={handleRestaurantLogin} loading={loading} />;
             if (loading) return <Loading />;
-            if (!appUser) return <LoginScreen staff={data.staff} restaurantId={appId} yesterdayOil={status.yesterdayOil} fryers={data.fryers} onLogin={u => { setAppUser(u); setView('dashboard'); }} onLogoutSystem={logoutSystem} onSeed={seedDB} />;
+            if (!appUser) return <LoginScreen staff={data.staff} restaurantId={appId} yesterdayOil={status.yesterdayOil} fryers={data.fryers} onLogin={handleUserLogin} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} onSeed={seedDB} showToast={showToast} />;
 
             const common = { user: appUser, appId, showToast, data, status };
             const hasAccess = (dept) => appUser.role === 'admin' || (appUser.departments || []).includes(dept);
@@ -276,25 +262,51 @@
             return (
                 <ErrorBoundary>
                     <div className="min-h-full bg-slate-50 font-sans text-slate-800 pb-20">
+                        {/* HEADER */}
                         <header className="bg-slate-900 text-white pt-[max(1rem,env(safe-area-inset-top))] pb-4 px-5 sticky top-0 z-50 shadow-lg flex justify-between items-center">
                             <div><h2 className="font-black text-xl italic tracking-tighter cursor-pointer" onClick={()=>setView('dashboard')}>GASTRO<span className="text-indigo-400">.PLATINUM</span></h2><div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none flex items-center gap-1"><Store size={8}/> {appId} • {appUser.name}</div></div>
                             <div className="flex gap-2"><button onClick={() => setAppUser(null)} className="bg-white/10 p-2 rounded-full hover:bg-red-600 transition-colors"><LogOut size={18}/></button></div>
                         </header>
+
+                        {/* SECURITY MODAL FOR ADMIN */}
+                        {adminAlert && (
+                            <div className="fixed inset-0 z-[100] bg-slate-900/95 flex items-center justify-center p-6 animate-in">
+                                <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
+                                    <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-2"><ShieldCheck size={32}/></div>
+                                    <h3 className="font-black text-2xl text-slate-800">Sicherheits-Warnung</h3>
+                                    <p className="text-sm text-slate-500 leading-relaxed">Du benutzt noch die Standard-PIN <strong>1234</strong>. Das ist unsicher!</p>
+                                    <div className="bg-slate-50 p-4 rounded-xl text-left text-xs border border-slate-200">
+                                        <strong>Anleitung zum Ändern:</strong>
+                                        <ol className="list-decimal ml-4 mt-2 space-y-1 text-slate-500">
+                                            <li>Gehe im Menü auf <strong>Admin</strong></li>
+                                            <li>Wähle den Reiter <strong>Team</strong></li>
+                                            <li>Klicke bei deinem Namen auf das <strong>Zahnrad</strong></li>
+                                            <li>Gib eine neue <strong>PIN</strong> ein und speichere.</li>
+                                        </ol>
+                                    </div>
+                                    <Button onClick={()=>setAdminAlert(false)} className="w-full">Verstanden, ich ändere das.</Button>
+                                </div>
+                            </div>
+                        )}
+
                         {toast && <Toast {...toast} />}
+                        
                         <main className="max-w-lg mx-auto p-5 space-y-6 safe-bottom">
                             {view === 'dashboard' && <Dashboard {...common} setView={setView} hasAccess={hasAccess} />}
+                            {view === 'prep' && <SmartPrep {...common} />}
                             {view === 'cleaning' && <Cleaning {...common} />}
                             {view === 'cooling' && <Cooling {...common} />}
                             {view === 'oil' && hasAccess('kitchen') && <Oil {...common} />}
                             {view === 'inventory' && <Inventory {...common} />}
-                            {view === 'admin' && hasAccess('admin') && <Admin {...common} debugMode={debugMode} setView={setView} onLogoutSystem={logoutSystem} />}
+                            {view === 'admin' && hasAccess('admin') && <Admin {...common} debugMode={debugMode} setView={setView} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} />}
                             {view === 'history' && hasAccess('admin') && <SmartHistory {...common} setView={setView} />}
                         </main>
+
                         <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-100 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex justify-around items-end shadow-[0_-4px_10px_rgba(0,0,0,0.03)] z-40">
-                            <NavBtn icon={<Menu/>} label="Home" active={view==='dashboard'} onClick={()=>setView('dashboard')}/>
+                            <NavBtn icon={<Menu/>} label="Start" active={view==='dashboard'} onClick={()=>setView('dashboard')}/>
+                            <NavBtn icon={<ClipboardList/>} label="Mise en Place" active={view==='prep'} onClick={()=>setView('prep')}/>
                             <NavBtn icon={<Sparkles/>} label="Putz" active={view==='cleaning'} onClick={()=>setView('cleaning')}/>
-                            <NavBtn icon={<Truck/>} label="Einkauf" active={view==='inventory'} onClick={()=>setView('inventory')}/>
-                            {hasAccess('kitchen') && <NavBtn icon={<Droplet/>} label="Öl" active={view==='oil'} onClick={()=>setView('oil')}/>}
+                            {hasAccess('kitchen') && <NavBtn icon={<Droplet/>} label="Fett" active={view==='oil'} onClick={()=>setView('oil')}/>}
                             {hasAccess('admin') && <NavBtn icon={<Settings/>} label="Admin" active={view==='admin'} onClick={()=>setView('admin')}/>}
                         </nav>
                     </div>
@@ -303,54 +315,97 @@
         }
 
         // --- SUB COMPONENTS ---
-        const LoginScreen = ({ staff, onLogin, restaurantId, onLogoutSystem, yesterdayOil, fryers, onSeed }) => {
+
+        const LoginScreen = ({ staff, restaurantId, onLogoutSystem, yesterdayOil, fryers, onSeed, onLogin, showToast }) => {
             const [selectedUser, setSelectedUser] = useState(null); const [showPin, setShowPin] = useState(false);
             const alerts = []; Object.entries(yesterdayOil || {}).forEach(([id, log]) => { if(log.tpm >= 20) { const fname = (fryers||[]).find(f=>f.id===id)?.name || 'Fritteuse'; alerts.push({ msg: `${fname}: ${log.tpm >= 24 ? 'Wechseln!' : 'Filtern!'}`, type: log.tpm>=24?'red':'amber' }); } });
             
-            const handleUserClick = (u) => { 
-                // Only show pin pad if pin is defined AND not empty
+            const clickUser = (u) => {
                 if(u.pin && u.pin.length > 0) { setSelectedUser(u); setShowPin(true); } 
-                else { onLogin(u); } 
+                else { showToast("Login ohne PIN. Bitte beim Chef melden.", "error"); onLogin(u); }
             };
-            const handlePinSuccess = () => { setShowPin(false); onLogin(selectedUser); };
 
             return (
-                <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden"><div className="absolute top-[-20%] right-[-20%] w-[80%] h-[80%] bg-indigo-600 rounded-full blur-[150px] opacity-20 animate-pulse"></div>{showPin && (<PinPad title={`PIN für ${selectedUser.name}`} targetPin={selectedUser.pin} onClose={()=>setShowPin(false)} onSuccess={handlePinSuccess} />)}<div className="z-10 w-full max-w-sm mx-auto space-y-6 animate-in"><div className="flex justify-between items-start"><div><h1 className="text-4xl font-black text-white mb-2 italic tracking-tighter">GASTRO<span className="text-indigo-500">.APP</span></h1><p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.3em] flex items-center gap-1"><Store size={10}/> {restaurantId}</p></div><button onClick={onLogoutSystem} className="text-slate-500 hover:text-white transition-colors bg-white/5 p-2 rounded-full"><LogOut size={20}/></button></div>{alerts.length > 0 && (<div className="bg-slate-800/80 border border-slate-700 p-4 rounded-2xl backdrop-blur-sm shadow-xl"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1"><AlertTriangle size={10}/> Frühschicht Info</div><div className="space-y-2">{alerts.map((a,i) => (<div key={i} className={`text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-2 ${a.type==='red'?'bg-red-500/20 text-red-200 border border-red-500/30':'bg-amber-500/20 text-amber-200 border border-amber-500/30'}`}><div className={`w-2 h-2 rounded-full ${a.type==='red'?'bg-red-500':'bg-amber-500'}`}/> {a.msg}</div>))}</div></div>)}<div className="space-y-3"><div className="text-slate-500 text-xs font-bold uppercase ml-2">Wer bist du?</div>{staff.map(s => (<button key={s.id} onClick={() => handleUserClick(s)} className="w-full bg-white/5 hover:bg-indigo-600 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm"><div className="bg-indigo-500/20 p-2.5 rounded-xl"><User size={20} className="text-indigo-300 group-hover:text-white"/></div><div className="flex-1 text-left"><div className="font-bold text-lg">{s.name}</div><div className="text-[11px] opacity-60 uppercase font-medium">{s.role==='admin'?'Betriebsleiter':(s.departments||[]).join(' • ')}</div></div>{s.pin && s.pin.length>0 ? <Lock size={16} className="opacity-50"/> : <Unlock size={16} className="opacity-30"/>}</button>))}</div>{staff.length===0 && <div className="text-center pt-8"><p className="text-slate-500 text-sm mb-4">Erster Start?</p><button onClick={onSeed} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg">Datenbank Initialisieren</button></div>}</div></div>
+                <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden"><div className="absolute top-[-20%] right-[-20%] w-[80%] h-[80%] bg-indigo-600 rounded-full blur-[150px] opacity-20 animate-pulse"></div>{showPin && (<PinPad title={`PIN für ${selectedUser.name}`} targetPin={selectedUser.pin} onClose={()=>setShowPin(false)} onSuccess={()=>{setShowPin(false); onLogin(selectedUser);}} />)}<div className="z-10 w-full max-w-sm mx-auto space-y-6 animate-in"><div className="flex justify-between items-start"><div><h1 className="text-4xl font-black text-white mb-2 italic tracking-tighter">GASTRO<span className="text-indigo-500">.APP</span></h1><p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.3em] flex items-center gap-1"><Store size={10}/> {restaurantId}</p></div><button onClick={onLogoutSystem} className="text-slate-500 hover:text-white transition-colors bg-white/5 p-2 rounded-full"><LogOut size={20}/></button></div>{alerts.length > 0 && (<div className="bg-slate-800/80 border border-slate-700 p-4 rounded-2xl backdrop-blur-sm shadow-xl"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1"><AlertTriangle size={10}/> Frühschicht Info (Vortag)</div><div className="space-y-2">{alerts.map((a,i) => (<div key={i} className={`text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-2 ${a.type==='red'?'bg-red-500/20 text-red-200 border border-red-500/30':'bg-amber-500/20 text-amber-200 border border-amber-500/30'}`}><div className={`w-2 h-2 rounded-full ${a.type==='red'?'bg-red-500':'bg-amber-500'}`}/> {a.msg}</div>))}</div></div>)}<div className="space-y-3"><div className="text-slate-500 text-xs font-bold uppercase ml-2">Team Login</div>{(staff||[]).map(s => (<button key={s.id} onClick={() => clickUser(s)} className="w-full bg-white/5 hover:bg-indigo-600 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm"><div className="bg-indigo-500/20 p-2.5 rounded-xl"><User size={20} className="text-indigo-300 group-hover:text-white"/></div><div className="flex-1 text-left"><div className="font-bold text-lg">{s.name}</div><div className="text-[11px] opacity-60 uppercase font-medium">{s.role==='admin'?'Betriebsleiter':(s.departments||[]).join(' • ')}</div></div>{s.pin && s.pin.length>0 ? <Lock size={16} className="opacity-50"/> : <Unlock size={16} className="opacity-30 text-red-400"/>}</button>))}</div>{(staff||[]).length===0 && <div className="text-center pt-8"><p className="text-slate-500 text-sm mb-4">Erster Start?</p><button onClick={onSeed} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg">Datenbank Initialisieren</button></div>}</div></div>
             );
         };
 
         const Dashboard = ({ user, data, status, setView }) => {
             const day = getWeekdayShort(); const longDay = getWeekdayLong();
-            // SAFEGUARD: data.tasks might be undefined if not loaded yet
-            const tasks = data.tasks || [];
-            const relevantTasks = tasks.filter(t => t.schedule?.[day] && (user.role==='admin' || t.dept==='all' || (user.departments||[]).includes(t.dept)));
+            const relevantTasks = (data.tasks || []).filter(t => t.schedule?.[day] && (user.role==='admin' || t.dept==='all' || (user.departments||[]).includes(t.dept)));
             const done = relevantTasks.filter(t => status.cleaningLogs[t.id]).length;
             const openTemp = (data.cooling || []).filter(d => d.status!=='defekt').length - status.tempLogs.length;
+            const prepCount = (data.prep || []).length;
+            const prepDone = Object.keys(status.prepLogs || {}).length;
+
             return (
-                <div className="animate-in space-y-6"><div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl flex justify-between items-center relative overflow-hidden"><div className="relative z-10"><div className="text-xs font-bold text-indigo-400 uppercase mb-1">{longDay}</div><div className="text-3xl font-black tracking-tight">Übersicht</div><div className="text-slate-400 text-sm mt-1 font-medium">{done} / {relevantTasks.length} Aufgaben erledigt</div></div><div className="bg-slate-800 p-4 rounded-2xl shadow-inner relative z-10"><Activity className="text-indigo-500" size={32}/></div><div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500 rounded-full blur-[60px] opacity-20"></div></div><div className="grid grid-cols-2 gap-4"><DashCard title="Putzplan" val={relevantTasks.length - done} icon={<Sparkles/>} col="bg-indigo-500" onClick={()=>setView('cleaning')} sub="Offene Tasks" /><DashCard title="HACCP Kühl" val={openTemp} icon={<Snowflake/>} col="bg-sky-500" onClick={()=>setView('cooling')} sub="Temperatur" /><DashCard title="Smart Order" val={status.shoppingList.length} icon={<ShoppingBag/>} col="bg-emerald-500" onClick={()=>setView('inventory')} sub="Einkaufsliste" /><DashCard title="Qualität" val={(data.fryers || []).length - Object.keys(status.oilLogs).length} icon={<Droplet/>} col="bg-amber-500" onClick={()=>setView('oil')} sub="Öl Messung" /></div></div>
+                <div className="animate-in space-y-6"><div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl flex justify-between items-center relative overflow-hidden"><div className="relative z-10"><div className="text-xs font-bold text-indigo-400 uppercase mb-1">{longDay}</div><div className="text-3xl font-black tracking-tight">Hallo, {user.name}</div><div className="text-slate-400 text-sm mt-1 font-medium">{done} Tasks • {prepDone} Prep erledigt</div></div><div className="bg-slate-800 p-4 rounded-2xl shadow-inner relative z-10"><Activity className="text-indigo-500" size={32}/></div><div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500 rounded-full blur-[60px] opacity-20"></div></div><div className="grid grid-cols-2 gap-4"><DashCard title="Mise en Place" val={prepCount - prepDone} icon={<ClipboardList/>} col="bg-indigo-500" onClick={()=>setView('prep')} sub="Prep & Stock" /><DashCard title="Putzplan" val={relevantTasks.length - done} icon={<Sparkles/>} col="bg-violet-500" onClick={()=>setView('cleaning')} sub="Sauberkeit" /><DashCard title="HACCP Kühl" val={openTemp} icon={<Snowflake/>} col="bg-sky-500" onClick={()=>setView('cooling')} sub="Temperatur" /><DashCard title="Qualität" val={(data.fryers || []).length - Object.keys(status.oilLogs).length} icon={<Droplet/>} col="bg-amber-500" onClick={()=>setView('oil')} sub="Öl Messung" /></div></div>
             );
         };
         const DashCard = ({ title, val, icon, col, onClick, sub }) => (
             <button onClick={onClick} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm text-left hover:shadow-lg transition-all active:scale-[0.98] relative overflow-hidden group"><div className={`absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity ${col} text-white rounded-bl-3xl scale-150`}>{icon}</div><div className="relative z-10"><div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white mb-4 shadow-md ${col} group-hover:scale-110 transition-transform`}>{React.cloneElement(icon, {size:22})}</div><div className="font-black text-slate-700 text-lg leading-none mb-1">{title}</div><div className="text-[10px] uppercase font-bold text-slate-400 mb-3">{sub}</div>{val > 0 ? <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-bold"><AlertTriangle size={12}/> {val} Offen</div> : <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-bold"><CheckCircle size={12}/> Fertig</div>}</div></button>
         );
 
-        // --- MODULES ---
-        const SmartHistory = ({ appId, setView, data }) => {
-            const [date, setDate] = useState(getTodayStr()); const [historyData, setHistoryData] = useState({ cleaning: [], temp: [], oil: [] }); const [loading, setLoading] = useState(false);
-            useEffect(() => { const loadHistory = async () => { setLoading(true); try { const [sClean, sTemp, sOil] = await Promise.all([getDocs(query(collection(db,'artifacts',appId,'public','data','logs_cleaning'), where('dateStr','==',date))), getDocs(query(collection(db,'artifacts',appId,'public','data','logs_temp'), where('dateStr','==',date))), getDocs(query(collection(db,'artifacts',appId,'public','data','logs_oil'), where('dateStr','==',date)))]); setHistoryData({ cleaning: sClean.docs.map(d=>d.data()), temp: sTemp.docs.map(d=>d.data()), oil: sOil.docs.map(d=>d.data()) }); } catch(e) { console.error(e); } setLoading(false); }; loadHistory(); }, [date]);
-            const exportPDF = () => { if(!window.jspdf) return alert("PDF Lib loading..."); const doc = new window.jspdf.jsPDF(); const comp = data.company || {}; doc.setFontSize(18); doc.text(comp.name || "Gastronomie Betrieb", 14, 20); doc.setFontSize(10); doc.text(comp.address || "Adresse nicht hinterlegt", 14, 26); doc.text(`Datum: ${formatDateDE(date)}`, 150, 20); doc.setFontSize(14); doc.text("HACCP TAGESPROTOKOLL", 14, 40); let yPos = 50; const addTable = (title, cols, rows) => { doc.setFontSize(12); doc.text(title, 14, yPos); doc.autoTable({ startY: yPos + 5, head: [cols], body: rows, theme: 'grid', headStyles: { fillColor: [30, 41, 59] }, styles: { fontSize: 9 } }); yPos = doc.lastAutoTable.finalY + 15; }; addTable("Temperaturkontrolle (Kühl/TK)", ["Gerät", "Wert", "Status", "Mitarbeiter", "Uhrzeit"], historyData.temp.map(t => [t.deviceName, `${t.temp}°C`, t.temp > 8 ? "KRITISCH" : "OK", t.user, new Date(t.createdAt.seconds*1000).toLocaleTimeString()])); addTable("Fett & Öl Qualität", ["Gerät", "Temp", "TPM", "Status", "Mitarbeiter"], historyData.oil.map(t => [t.deviceName, `${t.temp}°C`, `${t.tpm}%`, t.tpm>=20?"ACHTUNG":"OK", t.user])); addTable("Reinigungsnachweis", ["Aufgabe", "Status", "Mitarbeiter", "Uhrzeit"], historyData.cleaning.map(t => [t.taskName, "Erledigt", t.user, new Date(t.createdAt.seconds*1000).toLocaleTimeString()])); doc.setFontSize(10); doc.text("__________________________", 14, yPos + 20); doc.text("Unterschrift Betriebsleiter", 14, yPos + 26); doc.save(`HACCP_Protokoll_${date}.pdf`); };
-            const Empty = () => <div className="text-center p-4 text-slate-400 text-xs italic">Keine Einträge für diesen Tag.</div>;
-            return (<div className="animate-in space-y-5 pb-10"><div className="flex items-center gap-3 mb-2"><button onClick={()=>setView('admin')} className="p-2 bg-slate-100 rounded-full"><ChevronLeft/></button><div><h2 className="text-3xl font-black text-slate-800">HACCP Protokoll</h2><p className="text-slate-400 text-sm font-medium">Rechtssichere Dokumentation</p></div></div><div className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4"><div className="bg-indigo-50 p-3 rounded-2xl text-indigo-600"><Calendar size={24}/></div><div className="flex-1"><div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Datum wählen</div><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full font-bold text-lg bg-transparent outline-none text-slate-800"/></div></div><Button onClick={exportPDF} variant="success" className="shadow-emerald-200"><FileText size={20}/> Amtliches PDF exportieren</Button>{loading ? <div className="p-10 text-center"><Loader2 className="animate-spin inline text-indigo-500"/></div> : (<div className="space-y-6"><div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm"><div className="bg-emerald-50 px-6 py-3 border-b border-emerald-100 flex items-center gap-2 text-emerald-800 font-bold uppercase tracking-wider text-sm"><Sparkles size={16}/> Hygiene & Reinigung</div>{historyData.cleaning.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.cleaning.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.taskName}</span><span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold flex gap-1 items-center"><User size={10}/> {c.user}</span></div>))}</div>)}</div><div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm"><div className="bg-sky-50 px-6 py-3 border-b border-sky-100 flex items-center gap-2 text-sky-800 font-bold uppercase tracking-wider text-sm"><Snowflake size={16}/> Temperatur (HACCP)</div>{historyData.temp.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.temp.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.deviceName}</span><div className="flex flex-col items-end"><span className={`font-mono font-black text-lg ${c.temp>8||c.temp<0?'text-red-500':'text-sky-600'}`}>{c.temp}°C</span><span className="text-[10px] text-slate-400 font-bold">{c.user}</span></div></div>))}</div>)}</div><div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm"><div className="bg-amber-50 px-6 py-3 border-b border-amber-100 flex items-center gap-2 text-amber-800 font-bold uppercase tracking-wider text-sm"><Droplet size={16}/> Öl-Qualität</div>{historyData.oil.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.oil.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.deviceName}</span><div className="flex flex-col items-end"><span className={`font-mono font-black text-lg ${c.tpm>=20?'text-red-500':'text-emerald-600'}`}>{c.tpm}% TPM</span><span className="text-[10px] text-slate-400 font-bold">{c.temp}°C • {c.user}</span></div></div>))}</div>)}</div></div>)}</div>);
+        // --- NEW MODULE: SMART PREP (Mise en Place) ---
+        const SmartPrep = ({ data, status, user, appId, showToast }) => {
+            const list = data.prep || [];
+            const myDepts = user.departments || [];
+            
+            // Filter categories
+            const prepItems = list.filter(i => i.category === 'prep' && (user.role==='admin' || myDepts.includes(i.dept))).sort((a,b) => (status.prepLogs[a.id]?1:0) - (status.prepLogs[b.id]?1:0));
+            const stockItems = list.filter(i => i.category === 'stock' && (user.role==='admin' || myDepts.includes(i.dept))).sort((a,b) => (status.prepLogs[a.id]?1:0) - (status.prepLogs[b.id]?1:0));
+
+            const toggle = async (item) => {
+                const id = `${getTodayStr()}_${item.id}`;
+                const ref = doc(db,'artifacts',appId,'public','data','logs_prep',id);
+                if(status.prepLogs[item.id]) await deleteDoc(ref);
+                else { await setDoc(ref, {taskId:item.id, taskName:item.name, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()}); showToast("Erledigt!"); }
+            };
+
+            const ItemRow = ({ item }) => {
+                const done = status.prepLogs[item.id];
+                return (
+                    <div onClick={()=>toggle(item)} className={`p-4 rounded-2xl border flex justify-between items-center cursor-pointer card-press ${done?'bg-slate-50 border-slate-100 opacity-60 grayscale':'bg-white border-slate-100 shadow-sm hover:border-indigo-200'}`}>
+                        <div>
+                            <div className={`font-bold text-base leading-tight ${done?'text-slate-400 line-through':'text-slate-800'}`}>{item.name}</div>
+                            <div className="text-[11px] font-bold uppercase text-indigo-500 mt-1 flex items-center gap-1"><Box size={10}/> {item.target}</div>
+                        </div>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${done?'bg-emerald-500 text-white':'bg-slate-100 text-slate-300'}`}><CheckCircle size={16}/></div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="animate-in space-y-8">
+                    <div className="flex justify-between items-end">
+                        <div><h2 className="text-3xl font-black text-slate-800">Mise en Place</h2><p className="text-slate-400 text-sm font-medium">Vorbereitung & Lager</p></div>
+                    </div>
+
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-400 tracking-widest mb-2"><ChefHat size={14}/> Vorbereitung (Erledigungsliste)</div>
+                        {prepItems.map(item => <ItemRow key={item.id} item={item}/>)}
+                        {prepItems.length===0 && <div className="text-center p-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Nichts zu tun.</div>}
+                    </div>
+
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-400 tracking-widest mb-2"><Layers size={14}/> Auffüllen & Bestand (Aufliste)</div>
+                        {stockItems.map(item => <ItemRow key={item.id} item={item}/>)}
+                        {stockItems.length===0 && <div className="text-center p-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Alles voll.</div>}
+                    </div>
+                </div>
+            );
         };
 
+        // --- SUBMODULES (HISTORY, ADMIN, ETC) ---
+        const SmartHistory = ({ appId, setView, data }) => { const [date, setDate] = useState(getTodayStr()); const [historyData, setHistoryData] = useState({ cleaning: [], temp: [], oil: [], prep: [] }); const [loading, setLoading] = useState(false); useEffect(() => { const loadHistory = async () => { setLoading(true); try { const [sClean, sTemp, sOil, sPrep] = await Promise.all([getDocs(query(collection(db,'artifacts',appId,'public','data','logs_cleaning'), where('dateStr','==',date))), getDocs(query(collection(db,'artifacts',appId,'public','data','logs_temp'), where('dateStr','==',date))), getDocs(query(collection(db,'artifacts',appId,'public','data','logs_oil'), where('dateStr','==',date))), getDocs(query(collection(db,'artifacts',appId,'public','data','logs_prep'), where('dateStr','==',date)))]); setHistoryData({ cleaning: sClean.docs.map(d=>d.data()), temp: sTemp.docs.map(d=>d.data()), oil: sOil.docs.map(d=>d.data()), prep: sPrep.docs.map(d=>d.data()) }); } catch(e) { console.error(e); } setLoading(false); }; loadHistory(); }, [date]); const exportPDF = () => { if(!window.jspdf) return; const doc = new window.jspdf.jsPDF(); const comp = data.company || {}; doc.setFontSize(18); doc.text(comp.name || "Gastronomie Betrieb", 14, 20); doc.setFontSize(10); doc.text(comp.address || "Adresse nicht hinterlegt", 14, 26); doc.text(`Datum: ${formatDateDE(date)}`, 150, 20); doc.setFontSize(14); doc.text("TAGESPROTOKOLL", 14, 40); let yPos = 50; const addTable = (title, cols, rows) => { doc.setFontSize(12); doc.text(title, 14, yPos); doc.autoTable({ startY: yPos + 5, head: [cols], body: rows, theme: 'grid', headStyles: { fillColor: [30, 41, 59] }, styles: { fontSize: 9 } }); yPos = doc.lastAutoTable.finalY + 15; }; addTable("Mise en Place (Vorbereitung & Bestand)", ["Aufgabe", "Mitarbeiter"], historyData.prep.map(t => [t.taskName, t.user])); addTable("Temperaturkontrolle (Kühl/TK)", ["Gerät", "Wert", "Status", "Mitarbeiter", "Uhrzeit"], historyData.temp.map(t => [t.deviceName, `${t.temp}°C`, t.temp > 8 ? "KRITISCH" : "OK", t.user, new Date(t.createdAt.seconds*1000).toLocaleTimeString()])); addTable("Fett & Öl Qualität", ["Gerät", "Temp", "TPM", "Status", "Mitarbeiter"], historyData.oil.map(t => [t.deviceName, `${t.temp}°C`, `${t.tpm}%`, t.tpm>=20?"ACHTUNG":"OK", t.user])); addTable("Reinigungsnachweis", ["Aufgabe", "Status", "Mitarbeiter"], historyData.cleaning.map(t => [t.taskName, "Erledigt", t.user])); doc.setFontSize(10); doc.text("__________________________", 14, yPos + 20); doc.text("Unterschrift Betriebsleiter", 14, yPos + 26); doc.save(`HACCP_Protokoll_${date}.pdf`); }; const Empty = () => <div className="text-center p-4 text-slate-400 text-xs italic">Keine Einträge für diesen Tag.</div>; return (<div className="animate-in space-y-5 pb-10"><div className="flex items-center gap-3 mb-2"><button onClick={()=>setView('admin')} className="p-2 bg-slate-100 rounded-full"><ChevronLeft/></button><div><h2 className="text-3xl font-black text-slate-800">Protokoll</h2><p className="text-slate-400 text-sm font-medium">Rechtssichere Dokumentation</p></div></div><div className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4"><div className="bg-indigo-50 p-3 rounded-2xl text-indigo-600"><Calendar size={24}/></div><div className="flex-1"><div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Datum wählen</div><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full font-bold text-lg bg-transparent outline-none text-slate-800"/></div></div><Button onClick={exportPDF} variant="success" className="shadow-emerald-200"><FileText size={20}/> Amtliches PDF exportieren</Button>{loading ? <div className="p-10 text-center"><Loader2 className="animate-spin inline text-indigo-500"/></div> : (<div className="space-y-6"><div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm"><div className="bg-indigo-50 px-6 py-3 border-b border-indigo-100 flex items-center gap-2 text-indigo-800 font-bold uppercase tracking-wider text-sm"><ClipboardList size={16}/> Vorbereitung & Bestand</div>{historyData.prep.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.prep.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.taskName}</span><span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded font-bold flex gap-1 items-center"><User size={10}/> {c.user}</span></div>))}</div>)}</div><div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm"><div className="bg-emerald-50 px-6 py-3 border-b border-emerald-100 flex items-center gap-2 text-emerald-800 font-bold uppercase tracking-wider text-sm"><Sparkles size={16}/> Hygiene & Reinigung</div>{historyData.cleaning.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.cleaning.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.taskName}</span><span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold flex gap-1 items-center"><User size={10}/> {c.user}</span></div>))}</div>)}</div></div>)}</div>); };
         const NavBtn = ({ icon, label, active, onClick }) => (<button onClick={onClick} className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl transition-all duration-300 ${active ? 'text-indigo-600 bg-indigo-50 scale-105 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>{React.cloneElement(icon, { size: 24, strokeWidth: active ? 2.5 : 2 })}<span className="text-[10px] font-bold">{label}</span></button>);
         const Inventory = ({ data, status, appId, showToast, user }) => { const [newItem, setNewItem] = useState(''); const [supplier, setSupplier] = useState(''); const [loading, setLoading] = useState(false); const groupedList = useMemo(() => { const grp = {}; status.shoppingList.forEach(item => { const sup = item.supplier || 'Sonstige'; if(!grp[sup]) grp[sup] = []; grp[sup].push(item); }); return grp; }, [status.shoppingList]); const add = async () => { if(!newItem) return; setLoading(true); try { await addDoc(collection(db,'artifacts',appId,'public','data','shopping_list'), { name: newItem, supplier: supplier || 'Sonstige', createdBy: user.name, createdAt: serverTimestamp() }); setNewItem(''); showToast("Hinzugefügt"); } catch(e){ console.error(e); } setLoading(false); }; const del = async (id) => await deleteDoc(doc(db,'artifacts',appId,'public','data','shopping_list',id)); return (<div className="animate-in space-y-6"><div className="flex justify-between items-end"><div><h2 className="text-3xl font-black text-slate-800">Einkauf</h2><p className="text-slate-400 text-sm font-medium">Bestellungen managen</p></div><span className="bg-slate-900 text-white px-3 py-1 rounded-full text-xs font-bold">{status.shoppingList.length}</span></div><div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 space-y-3"><Input value={newItem} onChange={e=>setNewItem(e.target.value)} placeholder="Produktname..." /><div className="flex gap-2"><Select value={supplier} onChange={e=>setSupplier(e.target.value)}><option value="">Lieferant wählen...</option>{(data.suppliers||[]).map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</Select><Button onClick={add} loading={loading} className="w-auto px-6 rounded-xl"><Plus/></Button></div></div><div className="space-y-6">{Object.entries(groupedList).map(([sup, items]) => (<div key={sup} className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm"><div className="bg-slate-50/80 px-6 py-4 border-b border-slate-100 font-black text-sm text-slate-600 uppercase tracking-widest flex justify-between items-center">{sup} <span className="bg-white px-2 py-1 rounded-lg text-xs border">{items.length}</span></div><div className="divide-y divide-slate-50">{items.map(item => (<div key={item.id} className="p-4 pl-6 flex justify-between items-center group active:bg-slate-50 transition-colors"><span className="font-bold text-slate-700 text-base">{item.name}</span><button onClick={()=>del(item.id)} className="text-slate-300 hover:text-red-500 p-3 rounded-xl hover:bg-red-50 transition-all"><Trash2 size={18}/></button></div>))}</div></div>))}{status.shoppingList.length === 0 && <div className="text-center text-slate-400 py-12 flex flex-col items-center gap-2"><div className="bg-slate-100 p-4 rounded-full"><CheckCircle size={32} className="text-slate-300"/></div><span className="font-medium">Alles bestellt!</span></div>}</div></div>); };
-        const Cleaning = ({ data, status, user, appId, showToast }) => { const day = getWeekdayShort(); const myDepts = user.departments || []; const tasks = (data.tasks || []).filter(t => t.schedule?.[day] && (user.role==='admin' || t.dept==='all' || myDepts.includes(t.dept))).sort((a,b) => (status.cleaningLogs[a.id]?1:0)-(status.cleaningLogs[b.id]?1:0)); const toggle = async (t) => { const id = `${getTodayStr()}_${t.id}`; const ref = doc(db,'artifacts',appId,'public','data','logs_cleaning',id); if(status.cleaningLogs[t.id]) await deleteDoc(ref); else { await setDoc(ref, {taskId:t.id, taskName:t.name, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()}); showToast("Sauber!"); } }; return (<div className="animate-in space-y-5"><div className="flex justify-between items-end"><div><h2 className="text-3xl font-black text-slate-800">Putzplan</h2><p className="text-indigo-500 font-bold uppercase tracking-widest text-xs mt-1">{getWeekdayLong()}</p></div></div><div className="space-y-3">{tasks.map(t => { const done = status.cleaningLogs[t.id]; return (<div key={t.id} onClick={()=>toggle(t)} className={`p-5 rounded-[1.5rem] border flex justify-between items-center cursor-pointer transition-all active:scale-[0.98] ${done?'bg-slate-50 border-slate-100 opacity-60 grayscale':'bg-white border-slate-100 shadow-sm hover:border-indigo-200'}`}><div><div className={`font-bold text-lg leading-tight ${done?'text-slate-400 line-through':'text-slate-800'}`}>{t.name}</div><div className="text-[11px] font-black uppercase text-slate-400 mt-1.5 flex gap-2"><span className="bg-slate-100 px-1.5 py-0.5 rounded">{t.area}</span>{done && <span className="text-emerald-500 flex items-center gap-1"><User size={10}/> {done.user}</span>}</div></div><div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-colors ${done?'bg-emerald-500 text-white':'bg-slate-100 text-slate-300'}`}><CheckCircle size={20} className={done ? 'scale-110' : ''}/></div></div>); })}{tasks.length===0 && (<div className="text-center p-10 border-2 border-dashed border-slate-200 rounded-[2rem] text-slate-400 flex flex-col items-center gap-2"><Sparkles size={32} className="text-slate-200"/><span>Keine Aufgaben für Heute.</span></div>)}</div></div>); };
+        const Cleaning = ({ data, status, user, appId, showToast }) => { const day = getWeekdayShort(); const myDepts = user.departments || []; const tasks = (data.tasks || []).filter(t => t.schedule?.[day] && (user.role==='admin' || t.dept==='all' || myDepts.includes(t.dept))).sort((a,b) => (status.cleaningLogs[a.id]?1:0)-(status.cleaningLogs[b.id]?1:0)); const toggle = async (t) => { const id = `${getTodayStr()}_${t.id}`; const ref = doc(db,'artifacts',appId,'public','data','logs_cleaning',id); if(status.cleaningLogs[t.id]) await deleteDoc(ref); else { await setDoc(ref, {taskId:t.id, taskName:t.name, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()}); showToast("Sauber!"); } }; return (<div className="animate-in space-y-5"><div className="flex justify-between items-end"><div><h2 className="text-3xl font-black text-slate-800">Putzplan</h2><p className="text-indigo-500 font-bold uppercase tracking-widest text-xs mt-1">{getWeekdayLong()}</p></div></div><div className="space-y-3">{tasks.map(t => { const done = status.cleaningLogs[t.id]; return (<div key={t.id} onClick={()=>toggle(t)} className={`p-5 rounded-[1.5rem] border flex justify-between items-center cursor-pointer card-press ${done?'bg-slate-50 border-slate-100 opacity-60 grayscale':'bg-white border-slate-100 shadow-sm hover:border-indigo-200'}`}><div><div className={`font-bold text-lg leading-tight ${done?'text-slate-400 line-through':'text-slate-800'}`}>{t.name}</div><div className="text-[11px] font-black uppercase text-slate-400 mt-1.5 flex gap-2"><span className="bg-slate-100 px-1.5 py-0.5 rounded">{t.area}</span>{done && <span className="text-emerald-500 flex items-center gap-1"><User size={10}/> {done.user}</span>}</div></div><div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-colors ${done?'bg-emerald-500 text-white':'bg-slate-100 text-slate-300'}`}><CheckCircle size={20} className={done ? 'scale-110' : ''}/></div></div>); })}{tasks.length===0 && (<div className="text-center p-10 border-2 border-dashed border-slate-200 rounded-[2rem] text-slate-400 flex flex-col items-center gap-2"><Sparkles size={32} className="text-slate-200"/><span>Keine Aufgaben für Heute.</span></div>)}</div></div>); };
         const Cooling = ({ data, status, user, appId, showToast }) => { const [val, setVal] = useState({}); const active = (data.cooling || []).filter(d => d.status!=='defekt'); const save = async (dev) => { if(!val[dev.id]) return; try { await addDoc(collection(db,'artifacts',appId,'public','data','logs_temp'), { deviceId:dev.id, deviceName:dev.name, temp: val[dev.id], user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); setVal(p=>({...p,[dev.id]:''})); showToast("Temperatur erfasst"); } catch(e){ console.error(e); } }; return (<div className="animate-in space-y-6"><div><h2 className="text-3xl font-black text-slate-800">Kühlung</h2><p className="text-slate-400 text-sm font-medium">HACCP Dokumentation</p></div><div className="grid gap-4">{active.map(dev => { const done = status.tempLogs.find(l=>l.deviceId===dev.id); const v = val[dev.id] || ''; const isHigh = v && (parseFloat(v)>8 || parseFloat(v)<0); return (<div key={dev.id} className={`p-6 rounded-[2rem] border shadow-sm transition-all ${done?'bg-emerald-50/50 border-emerald-100':'bg-white border-slate-100'}`}><div className="flex justify-between mb-4 font-black text-lg text-slate-700 items-center"><span>{dev.name}</span>{done ? <span className="text-emerald-600 bg-emerald-100 px-2 py-1 rounded-lg text-sm">{done.temp}°C</span> : <Thermometer size={20} className="text-slate-300"/>}</div>{!done && (<div className="flex gap-3 h-14"><div className="relative flex-1 h-full"><input type="number" inputMode="decimal" value={v} onChange={e=>setVal({...val,[dev.id]:e.target.value})} placeholder="0.0" className={`w-full h-full rounded-2xl border-2 font-black text-2xl text-center outline-none transition-colors ${isHigh?'border-red-300 bg-red-50 text-red-600 placeholder-red-300':'border-slate-100 focus:border-indigo-500 placeholder-slate-200'}`} /></div><button onClick={()=>save(dev)} className="bg-slate-900 active:bg-slate-800 text-white w-16 h-full rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/20"><Save size={24}/></button></div>)}{isHigh && <div className="text-red-500 text-xs font-bold mt-2 flex items-center gap-1"><AlertTriangle size={12}/> Achtung: Kritischer Bereich</div>}</div>); })}</div></div>); };
         const Oil = ({ data, status, user, appId, showToast }) => { const [inp, setInp] = useState({}); const active = (data.fryers || []).filter(d => d.status!=='defekt'); const save = async (dev) => { const t = inp[dev.id]?.t, p = inp[dev.id]?.p; if(!t || !p) return; await addDoc(collection(db,'artifacts',appId,'public','data','logs_oil'), { deviceId:dev.id, deviceName:dev.name, temp:t, tpm:p, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); showToast("Gespeichert"); }; return (<div className="animate-in space-y-6"><div><h2 className="text-3xl font-black text-slate-800">Fett & Öl</h2><p className="text-slate-400 text-sm font-medium">TPM Messung</p></div><div className="space-y-4">{active.map(dev => { const l = status.oilLogs[dev.id]; const quality = l ? (l.tpm>=24?'bad':l.tpm>=20?'warn':'good') : null; const colors = { bad: 'bg-red-500 shadow-red-200', warn: 'bg-amber-500 shadow-amber-200', good: 'bg-emerald-500 shadow-emerald-200' }; const labels = { bad: 'Wechseln', warn: 'Filtern', good: 'OK' }; return (<div key={dev.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm"><div className="flex justify-between items-center mb-6"><span className="font-bold text-lg text-slate-700">{dev.name}</span>{l ? <span className={`text-white text-xs font-black px-3 py-1.5 rounded-xl uppercase shadow-lg ${colors[quality]}`}>{labels[quality]}</span> : <span className="bg-slate-100 text-slate-400 text-xs font-bold px-2 py-1 rounded-lg">Messung offen</span>}</div>{!l ? (<div className="flex gap-3"><div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">Temp</div><Input type="number" inputMode="decimal" placeholder="°C" className="text-center h-14 font-bold text-xl" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],t:e.target.value}})} /></div><div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">TPM %</div><Input type="number" inputMode="decimal" placeholder="%" className="text-center h-14 font-bold text-xl" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],p:e.target.value}})} /></div><div className="space-y-1"><div className="h-[17px]"></div><button onClick={()=>save(dev)} className="bg-slate-900 text-white h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg"><Save size={24}/></button></div></div>) : (<div className="grid grid-cols-2 gap-3"><div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Temp</div><div className="font-black text-xl text-slate-700">{l.temp}°C</div></div><div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">TPM</div><div className="font-black text-xl text-slate-700">{l.tpm}%</div></div></div>)}</div>); })}</div></div>); };
-        const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView, onLogoutSystem }) => { const [tab, setTab] = useState('staff'); const [edit, setEdit] = useState(null); const tabs = { staff: 'Team', tasks: 'Putz', cooling: 'Kühl', fryers: 'Frit', suppliers: 'Lief', company: 'Firma', system: 'Sys' }; const del = async (id) => { if(!confirm("Löschen?")) return; const col = tab==='tasks'?'cleaning_tasks':tab==='cooling'?'cooling_devices':tab==='fryers'?'fryers':tab==='suppliers'?'suppliers':'staff'; await deleteDoc(doc(db,'artifacts',appId,'public','data',col,id)); showToast("Gelöscht"); }; const toggleDebug = async () => { const n=!debugMode; await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { debugMode: n }, {merge:true}); setDebugMode(n); }; return (<div className="animate-in space-y-6"><h2 className="text-3xl font-black text-slate-800">Verwaltung</h2><div className="flex gap-2 overflow-x-auto no-scrollbar -mx-5 px-5 pb-2">{Object.entries(tabs).map(([k,l])=><button key={k} onClick={()=>{setTab(k);setEdit(null)}} className={`px-6 py-3 rounded-2xl font-bold text-sm whitespace-nowrap transition-all ${tab===k?'bg-slate-900 text-white shadow-lg shadow-slate-900/20':'bg-white border text-slate-500'}`}>{l}</button>)}</div><div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 min-h-[400px]">{tab === 'system' ? (<div className="space-y-4 animate-in"><div className="text-sm font-bold uppercase text-slate-400 tracking-wider">Erweiterte Tools</div><button onClick={()=>setView('history')} className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-5 rounded-2xl flex items-center justify-between group transition-all"><div className="flex items-center gap-3 font-bold"><History size={20}/> HACCP Protokolle (PDF)</div><ChevronRight className="opacity-50 group-hover:translate-x-1 transition-transform"/></button><div className="flex items-center justify-between p-5 bg-slate-50 rounded-2xl border border-slate-100 mt-4"><div className="font-bold flex gap-3 items-center text-slate-700"><Bug size={20}/> Debug Konsole</div><button onClick={toggleDebug} className={`w-14 h-8 rounded-full p-1 transition-colors duration-300 ${debugMode?'bg-emerald-500':'bg-slate-200'}`}><div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-transform duration-300 ${debugMode?'translate-x-6':''}`}/></button></div><button onClick={onLogoutSystem} className="w-full mt-10 p-4 border border-red-200 bg-red-50 text-red-600 rounded-2xl font-bold flex justify-center items-center gap-2"><LogOut size={18}/> Restaurant Abmelden</button></div>) : tab==='company' ? (<CompanyEditor data={data.company} appId={appId} showToast={showToast}/>) : edit ? (<Editor type={tab} data={edit} close={()=>setEdit(null)} appId={appId} showToast={showToast} />) : (<div className="space-y-4 animate-in"><Button variant="ghost" onClick={()=>setEdit({isNew:true})} className="border-dashed py-5 text-slate-400 bg-slate-50 hover:bg-slate-100 hover:text-slate-600"><Plus size={20}/> Neuen Eintrag hinzufügen</Button><div className="divide-y divide-slate-100">{(data[tab]||[]).map(item => (<div key={item.id} className="py-4 flex justify-between items-center group"><div><div className="font-bold text-slate-700 text-lg">{item.name}</div>{tab==='tasks' && <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mt-1">{item.area} • {Object.keys(item.schedule||{}).filter(k=>item.schedule[k]).length} Tage</div>}</div><div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"><button onClick={()=>setEdit(item)} className="p-3 bg-indigo-50 text-indigo-500 rounded-xl hover:bg-indigo-100"><Settings size={18}/></button><button onClick={()=>del(item.id)} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-100"><Trash2 size={18}/></button></div></div>))}</div></div>)}</div></div>); };
+        const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView, onLogoutSystem }) => { const [tab, setTab] = useState('staff'); const [edit, setEdit] = useState(null); const tabs = { staff: 'Team', prep: 'Prep', tasks: 'Putz', cooling: 'Kühl', fryers: 'Frit', suppliers: 'Lief', company: 'Firma', system: 'Sys' }; const del = async (id) => { if(!confirm("Löschen?")) return; const col = tab==='tasks'?'cleaning_tasks':tab==='cooling'?'cooling_devices':tab==='fryers'?'fryers':tab==='suppliers'?'suppliers':tab==='prep'?'prep_tasks':'staff'; await deleteDoc(doc(db,'artifacts',appId,'public','data',col,id)); showToast("Gelöscht"); }; const toggleDebug = async () => { const n=!debugMode; await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { debugMode: n }, {merge:true}); setDebugMode(n); }; return (<div className="animate-in space-y-6"><h2 className="text-3xl font-black text-slate-800">Verwaltung</h2><div className="flex gap-2 overflow-x-auto no-scrollbar -mx-5 px-5 pb-2">{Object.entries(tabs).map(([k,l])=><button key={k} onClick={()=>{setTab(k);setEdit(null)}} className={`px-6 py-3 rounded-2xl font-bold text-sm whitespace-nowrap transition-all ${tab===k?'bg-slate-900 text-white shadow-lg shadow-slate-900/20':'bg-white border text-slate-500'}`}>{l}</button>)}</div><div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 min-h-[400px]">{tab === 'system' ? (<div className="space-y-4 animate-in"><div className="text-sm font-bold uppercase text-slate-400 tracking-wider">Erweiterte Tools</div><button onClick={()=>setView('history')} className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-5 rounded-2xl flex items-center justify-between group transition-all"><div className="flex items-center gap-3 font-bold"><History size={20}/> HACCP Protokolle (PDF)</div><ChevronRight className="opacity-50 group-hover:translate-x-1 transition-transform"/></button><div className="flex items-center justify-between p-5 bg-slate-50 rounded-2xl border border-slate-100 mt-4"><div className="font-bold flex gap-3 items-center text-slate-700"><Bug size={20}/> Debug Konsole</div><button onClick={toggleDebug} className={`w-14 h-8 rounded-full p-1 transition-colors duration-300 ${debugMode?'bg-emerald-500':'bg-slate-200'}`}><div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-transform duration-300 ${debugMode?'translate-x-6':''}`}/></button></div><button onClick={onLogoutSystem} className="w-full mt-10 p-4 border border-red-200 bg-red-50 text-red-600 rounded-2xl font-bold flex justify-center items-center gap-2"><LogOut size={18}/> Restaurant Abmelden</button></div>) : tab==='company' ? (<CompanyEditor data={data.company} appId={appId} showToast={showToast}/>) : edit ? (<Editor type={tab} data={edit} close={()=>setEdit(null)} appId={appId} showToast={showToast} />) : (<div className="space-y-4 animate-in"><Button variant="ghost" onClick={()=>setEdit({isNew:true})} className="border-dashed py-5 text-slate-400 bg-slate-50 hover:bg-slate-100 hover:text-slate-600"><Plus size={20}/> Neuen Eintrag hinzufügen</Button><div className="divide-y divide-slate-100">{(data[tab]||[]).map(item => (<div key={item.id} className="py-4 flex justify-between items-center group"><div><div className="font-bold text-slate-700 text-lg">{item.name}</div>{tab==='tasks' && <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mt-1">{item.area} • {Object.keys(item.schedule||{}).filter(k=>item.schedule[k]).length} Tage</div>}</div><div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"><button onClick={()=>setEdit(item)} className="p-3 bg-indigo-50 text-indigo-500 rounded-xl hover:bg-indigo-100"><Settings size={18}/></button><button onClick={()=>del(item.id)} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-100"><Trash2 size={18}/></button></div></div>))}</div></div>)}</div></div>); };
         const CompanyEditor = ({ data, appId, showToast }) => { const [f, setF] = useState(data||{}); const save = async () => { await setDoc(doc(db,'artifacts',appId,'public','data','company','info'), f); showToast("Firmendaten gespeichert"); }; return <div className="space-y-4 animate-in"><div className="text-xs text-slate-400">Diese Daten erscheinen auf den HACCP PDFs.</div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Betriebsname</span><Input value={f.name||''} onChange={e=>setF({...f,name:e.target.value})} /></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Anschrift</span><Input value={f.address||''} onChange={e=>setF({...f,address:e.target.value})} /></div><Button onClick={save}>Speichern</Button></div> };
-        const Editor = ({ type, data, close, appId, showToast }) => { const [form, setForm] = useState({...data}); const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); const [loading, setLoading] = useState(false); const save = async () => { if(!form.name) return; setLoading(true); const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':'staff'; const payload = { ...form }; if(type==='tasks') { payload.schedule = sched; payload.dept = form.dept||'kitchen'; payload.area = form.area||'General'; } if(type==='staff') { payload.role = form.role||'user'; payload.departments = form.departments||[]; payload.pin = form.pin||''; } if(['cooling','fryers'].includes(type)) payload.status = form.status||'active'; delete payload.id; delete payload.isNew; const ref = collection(db,'artifacts',appId,'public','data',col); if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()}); else await updateDoc(doc(ref, data.id), payload); showToast("Gespeichert"); setLoading(false); close(); }; const toggleDept = (d) => { const cur = form.departments || []; setForm({...form, departments: cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]}); }; return (<div className="space-y-6 animate-in"><div className="flex justify-between items-center mb-2"><h3 className="font-black text-xl text-slate-800">{data.isNew?'Neu':'Bearbeiten'}</h3><button onClick={close} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bezeichnung</span><Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." /></div>{type==='staff' && (<div className="space-y-4"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Abteilungen</span><div className="flex gap-3"><button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('kitchen')?'border-orange-500 bg-orange-50 text-orange-600':'border-slate-100 bg-white text-slate-400'}`}>Küche</button><button onClick={()=>toggleDept('service')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('service')?'border-purple-500 bg-purple-50 text-purple-600':'border-slate-100 bg-white text-slate-400'}`}>Service</button></div></div><div className="flex gap-3"><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Rolle</span><Select value={form.role||'user'} onChange={e=>setForm({...form,role:e.target.value})}><option value="user">Mitarbeiter</option><option value="admin">Betriebsleiter</option></Select></div><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">PIN (Optional für MA)</span><Input value={form.pin||''} onChange={e=>setForm({...form,pin:e.target.value})} className="text-center font-mono tracking-widest" maxLength={4}/></div></div></div>)}{type==='tasks' && (<div className="space-y-4"><div className="flex gap-3"><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bereich</span><Input value={form.area||''} onChange={e=>setForm({...form,area:e.target.value})} placeholder="z.B. Bar"/></div><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Dept</span><Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}><option value="kitchen">Küche</option><option value="service">Service</option><option value="all">Alle</option></Select></div></div><div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Wochentage</span><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'bg-indigo-600 text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`}>{d.slice(0,2)}</button>)}</div></div></div>)}<Button onClick={save} loading={loading} className="mt-6 shadow-xl shadow-slate-900/10">Speichern</Button></div>); };
+        const Editor = ({ type, data, close, appId, showToast }) => { const [form, setForm] = useState({...data}); const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); const [loading, setLoading] = useState(false); const save = async () => { if(!form.name) return; setLoading(true); const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':type==='prep'?'prep_tasks':'staff'; const payload = { ...form }; if(type==='tasks') { payload.schedule = sched; payload.dept = form.dept||'kitchen'; payload.area = form.area||'General'; } if(type==='staff') { payload.role = form.role||'user'; payload.departments = form.departments||[]; payload.pin = form.pin||''; } if(['cooling','fryers'].includes(type)) payload.status = form.status||'active'; if(type==='prep') { payload.category = form.category||'prep'; payload.target = form.target||''; payload.dept = form.dept||'kitchen'; } delete payload.id; delete payload.isNew; const ref = collection(db,'artifacts',appId,'public','data',col); if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()}); else await updateDoc(doc(ref, data.id), payload); showToast("Gespeichert"); setLoading(false); close(); }; const toggleDept = (d) => { const cur = form.departments || []; setForm({...form, departments: cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]}); }; return (<div className="space-y-6 animate-in"><div className="flex justify-between items-center mb-2"><h3 className="font-black text-xl text-slate-800">{data.isNew?'Neu':'Bearbeiten'}</h3><button onClick={close} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bezeichnung</span><Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." /></div>{type==='prep' && (<div className="space-y-4"><div className="grid grid-cols-2 gap-3"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Kategorie</span><Select value={form.category||'prep'} onChange={e=>setForm({...form,category:e.target.value})}><option value="prep">Vorbereitung (Mise en Place)</option><option value="stock">Lager/Auffüllen</option></Select></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Zuständigkeit</span><Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}><option value="kitchen">Küche</option><option value="service">Service</option></Select></div></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Ziel / Menge</span><Input value={form.target||''} onChange={e=>setForm({...form,target:e.target.value})} placeholder="z.B. 2 Behälter, Voll machen..." /></div></div>)}{type==='staff' && (<div className="space-y-4"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Abteilungen</span><div className="flex gap-3"><button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('kitchen')?'border-orange-500 bg-orange-50 text-orange-600':'border-slate-100 bg-white text-slate-400'}`}>Küche</button><button onClick={()=>toggleDept('service')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('service')?'border-purple-500 bg-purple-50 text-purple-600':'border-slate-100 bg-white text-slate-400'}`}>Service</button></div></div><div className="flex gap-3"><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Rolle</span><Select value={form.role||'user'} onChange={e=>setForm({...form,role:e.target.value})}><option value="user">Mitarbeiter</option><option value="admin">Betriebsleiter</option></Select></div><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">PIN (Optional)</span><Input value={form.pin||''} onChange={e=>setForm({...form,pin:e.target.value})} className="text-center font-mono tracking-widest" maxLength={4}/></div></div></div>)}{type==='tasks' && (<div className="space-y-4"><div className="flex gap-3"><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bereich</span><Input value={form.area||''} onChange={e=>setForm({...form,area:e.target.value})} placeholder="z.B. Bar"/></div><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Dept</span><Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}><option value="kitchen">Küche</option><option value="service">Service</option><option value="all">Alle</option></Select></div></div><div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Wochentage</span><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'bg-indigo-600 text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`}>{d.slice(0,2)}</button>)}</div></div></div>)}<Button onClick={save} loading={loading} className="mt-6 shadow-xl shadow-slate-900/10">Speichern</Button></div>); };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
