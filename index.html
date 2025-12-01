@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>GastroManager Platinum v3.0</title>
+    <title>GastroManager Platinum v6.0 (HACCP)</title>
     
     <!-- Styles & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -15,36 +15,39 @@
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
-        @keyframes slide-up { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .animate-in { animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes slide-up { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .animate-in { animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         .safe-bottom { padding-bottom: calc(90px + var(--sab)); }
         
         input, select, button { touch-action: manipulation; }
-        
-        /* Debug Console Styles */
-        .debug-overlay { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px); }
+        .debug-overlay { background: rgba(15, 23, 42, 0.98); }
     </style>
+
+    <!-- PDF Generation Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 
     <!-- React & Babel -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
-<body class="h-full text-slate-800">
+<body class="h-full text-slate-800 bg-slate-50">
     <div id="root" class="h-full"></div>
 
     <script type="text/babel" data-type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { 
             getFirestore, collection, addDoc, deleteDoc, doc, setDoc, updateDoc,
-            onSnapshot, query, orderBy, limit, serverTimestamp, where 
+            onSnapshot, query, orderBy, limit, serverTimestamp, where, getDocs 
         } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { 
             Thermometer, Droplet, Settings, LogOut, Plus, Trash2, User, 
             CheckCircle, Snowflake, Loader2, Save, Truck, Menu, X, Sparkles, 
             ChefHat, Coffee, AlertTriangle, Bug, Terminal, Eraser, 
-            ChevronDown, ShoppingBag, Box, Activity, Database
+            ChevronDown, ShoppingBag, Activity, Database, Calendar, AlertOctagon, Info,
+            History, FileText, ChevronRight, ChevronLeft, Building2, ShieldCheck, Download
         } from "https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0";
 
         const { useState, useEffect, useRef, useMemo } = React;
@@ -62,13 +65,17 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = 'gastro-platinum-v3'; 
+        const appId = 'gastro-platinum-v6'; 
 
+        // --- UTILS ---
         const getTodayStr = () => new Date().toISOString().slice(0, 10);
+        const getYesterdayStr = () => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); };
         const getWeekdayShort = () => ['So','Mo','Di','Mi','Do','Fr','Sa'][new Date().getDay()];
+        const getWeekdayLong = () => ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'][new Date().getDay()];
+        const formatDateDE = (str) => { if(!str) return '-'; const [y,m,d] = str.split('-'); return `${d}.${m}.${y}`; };
 
         // --- COMPONENTS ---
-        const Loading = () => <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={40}/></div>;
+        const Loading = () => <div className="h-full flex items-center justify-center bg-slate-50"><div className="flex flex-col items-center gap-4"><Loader2 className="animate-spin text-indigo-600" size={48}/><span className="text-slate-400 text-xs font-bold tracking-widest uppercase">Lade System...</span></div></div>;
         
         const Input = (props) => <input {...props} className={`w-full p-4 rounded-2xl border border-slate-200 bg-white text-base font-medium focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all ${props.className}`} />;
         
@@ -79,13 +86,14 @@
              const variants = {
                  primary: "bg-slate-900 text-white shadow-xl shadow-slate-900/20 hover:bg-slate-800 disabled:bg-slate-400",
                  danger: "bg-red-50 text-red-600 hover:bg-red-100",
-                 ghost: "bg-transparent text-slate-500 hover:bg-slate-100 border border-slate-200"
+                 ghost: "bg-transparent text-slate-500 hover:bg-slate-100 border border-slate-200",
+                 success: "bg-emerald-600 text-white shadow-emerald-900/20 hover:bg-emerald-700"
              };
              return <button onClick={onClick} disabled={loading} className={`${base} ${variants[variant]} ${className}`}>{loading ? <Loader2 className="animate-spin" size={20}/> : children}</button>
         };
 
         const Toast = ({ msg, type }) => (
-            <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-full shadow-2xl font-bold text-sm animate-in flex items-center gap-3 border ${type==='error'?'bg-red-50 border-red-100 text-red-600':'bg-emerald-50 border-emerald-100 text-emerald-700'}`}>
+            <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-full shadow-2xl font-bold text-sm animate-in flex items-center gap-3 border backdrop-blur-md ${type==='error'?'bg-red-50/90 border-red-200 text-red-700':'bg-emerald-50/90 border-emerald-200 text-emerald-700'}`}>
                 {type==='error' ? <AlertTriangle size={18}/> : <CheckCircle size={18}/>} {msg}
             </div>
         );
@@ -96,16 +104,16 @@
             useEffect(() => { if(visible) endRef.current?.scrollIntoView({behavior:'smooth'}); }, [logs, visible]);
             if (!visible) return null;
             return (
-                <div className="fixed bottom-0 left-0 right-0 h-[40vh] debug-overlay z-[200] border-t border-slate-700 flex flex-col font-mono text-xs text-green-400 animate-in">
-                    <div className="flex justify-between items-center p-2 bg-slate-800 border-b border-slate-700">
-                        <span className="font-bold flex gap-2 items-center"><Terminal size={14}/> SYSTEM LOG</span>
+                <div className="fixed bottom-0 left-0 right-0 h-[40vh] debug-overlay z-[200] border-t border-slate-700 flex flex-col font-mono text-xs text-green-400 animate-in shadow-2xl">
+                    <div className="flex justify-between items-center p-2 bg-slate-800/50 border-b border-slate-700/50 backdrop-blur">
+                        <span className="font-bold flex gap-2 items-center text-indigo-400"><Terminal size={14}/> SYSTEM KERNEL</span>
                         <div className="flex gap-2">
-                            <button onClick={onClear} className="p-1 hover:text-white"><Eraser size={14}/></button>
-                            <button onClick={onClose} className="p-1 hover:text-red-400"><X size={16}/></button>
+                            <button onClick={onClear} className="p-1 hover:text-white transition-colors"><Eraser size={14}/></button>
+                            <button onClick={onClose} className="p-1 hover:text-red-400 transition-colors"><X size={16}/></button>
                         </div>
                     </div>
-                    <div className="flex-1 overflow-auto p-2 space-y-1">
-                        {logs.map((l,i) => <div key={i} className="break-all border-b border-slate-800/50 pb-1"><span className="opacity-50 mr-2">[{l.time}]</span>{l.msg}</div>)}
+                    <div className="flex-1 overflow-auto p-3 space-y-1.5 scroll-smooth">
+                        {logs.map((l,i) => <div key={i} className="break-all border-b border-slate-800/30 pb-1 flex gap-2"><span className="opacity-40 min-w-[60px]">[{l.time}]</span><span>{l.msg}</span></div>)}
                         <div ref={endRef}/>
                     </div>
                 </div>
@@ -114,47 +122,46 @@
 
         // --- MAIN APP ---
         function App() {
-            const [user, setUser] = useState(null); // Firebase User
-            const [appUser, setAppUser] = useState(null); // App User (Staff)
+            const [user, setUser] = useState(null);
+            const [appUser, setAppUser] = useState(null);
             const [view, setView] = useState('login'); 
             const [loading, setLoading] = useState(true);
             const [toast, setToast] = useState(null);
             
-            // Data State
-            const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [] });
-            const [status, setStatus] = useState({ tempLogs: [], cleaningLogs: {}, oilLogs: {}, shoppingList: [] });
+            // Data
+            const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [], company: {} });
+            const [status, setStatus] = useState({ tempLogs: [], cleaningLogs: {}, oilLogs: {}, shoppingList: [], yesterdayOil: {} });
             
-            // Debug State
+            // Debug
             const [logs, setLogs] = useState([]);
             const [debugMode, setDebugMode] = useState(false);
             const [showDebug, setShowDebug] = useState(false);
 
-            // Logging Interceptor
             const log = (msg) => {
-                const time = new Date().toLocaleTimeString();
+                const time = new Date().toLocaleTimeString('de-DE', {hour12:false});
                 setLogs(p => [...p.slice(-99), {time, msg: String(msg)}]);
-                console.log(`[APP] ${msg}`);
             };
 
             const showToast = (msg, type='success') => { setToast({msg, type}); setTimeout(() => setToast(null), 3000); };
 
-            // Initialize
             useEffect(() => {
-                signInAnonymously(auth).then(()=>log("Firebase Connected")).catch(e=>log("Auth Error: "+e));
+                signInAnonymously(auth).then(()=>log("Verbindung hergestellt")).catch(e=>log("Auth Fehler: "+e));
                 return onAuthStateChanged(auth, u => { setUser(u); if(!u) setLoading(false); });
             }, []);
 
-            // Data Sync
             useEffect(() => {
                 if (!user) return;
                 const pub = (c) => collection(db, 'artifacts', appId, 'public', 'data', c);
                 
-                // Master Data
-                ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'suppliers', 'settings'].forEach(c => 
+                // Stammdaten laden
+                ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'suppliers', 'settings', 'company'].forEach(c => 
                     onSnapshot(query(pub(c)), s => {
                         if(c === 'settings') {
                             const settings = s.docs.find(d => d.id === 'global')?.data();
                             if(settings?.debugMode !== undefined) setDebugMode(settings.debugMode);
+                        } else if (c === 'company') {
+                             const info = s.docs.find(d => d.id === 'info')?.data();
+                             setData(p => ({ ...p, company: info || {} }));
                         } else {
                             const key = c === 'cooling_devices' ? 'cooling' : c === 'cleaning_tasks' ? 'tasks' : c;
                             setData(p => ({ ...p, [key]: s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.name||'').localeCompare(b.name||'')) }));
@@ -163,62 +170,78 @@
                     })
                 );
 
-                // Logs (Live)
                 const today = getTodayStr();
+
+                // Live-Daten (Heute)
                 onSnapshot(query(pub('logs_temp'), where('dateStr', '==', today)), s => setStatus(p => ({...p, tempLogs: s.docs.map(d=>d.data())})));
                 onSnapshot(query(pub('logs_cleaning'), where('dateStr', '==', today)), s => {
                     const l = {}; s.docs.forEach(d => l[d.data().taskId] = d.data());
                     setStatus(p => ({...p, cleaningLogs: l}));
                 });
-                onSnapshot(query(pub('logs_oil'), orderBy('createdAt', 'desc'), limit(15)), s => {
+                onSnapshot(query(pub('logs_oil'), orderBy('createdAt', 'desc'), limit(20)), s => {
                     const l = {}; s.docs.forEach(d => { if(!l[d.data().deviceId]) l[d.data().deviceId] = d.data(); });
                     setStatus(p => ({...p, oilLogs: l}));
                 });
                 onSnapshot(pub('shopping_list'), s => setStatus(p => ({...p, shoppingList: s.docs.map(d=>({...d.data(), id:d.id}))})));
 
+                // Vortag für Dashboard Alerts
+                const fetchYesterday = async () => {
+                    try {
+                        const yStr = getYesterdayStr();
+                        const q = query(pub('logs_oil'), where('dateStr', '==', yStr));
+                        const snap = await getDocs(q);
+                        const yLogs = {};
+                        snap.docs.forEach(d => {
+                             const data = d.data();
+                             if(!yLogs[data.deviceId] || data.createdAt > yLogs[data.deviceId].createdAt) yLogs[data.deviceId] = data;
+                        });
+                        setStatus(p => ({...p, yesterdayOil: yLogs}));
+                        log("Daten vom Vortag geladen: " + Object.keys(yLogs).length);
+                    } catch(e) { /* silent fail */ }
+                };
+                fetchYesterday();
+
             }, [user]);
 
-            // Database Seed
             const seedDB = async () => {
-                log("Seeding Database...");
+                log("Initialisiere Datenbank...");
                 try {
                     const batch = [
                         { col: 'staff', data: { name: 'Chef', role: 'admin', departments: ['kitchen','service'], pin: '0000' } },
-                        { col: 'suppliers', data: { name: 'Metro' } },
-                        { col: 'suppliers', data: { name: 'Transgourmet' } },
-                        { col: 'suppliers', data: { name: 'Sonstige' } },
-                        { col: 'cooling_devices', data: { name: 'Kühlhaus', status: 'active' } },
-                        { col: 'fryers', data: { name: 'Fritteuse Links', status: 'active' } },
+                        { col: 'suppliers', data: { name: 'Metro' } }, { col: 'suppliers', data: { name: 'Transgourmet' } }, { col: 'suppliers', data: { name: 'Markt' } },
+                        { col: 'cooling_devices', data: { name: 'Kühlhaus', status: 'active' } }, { col: 'cooling_devices', data: { name: 'TK-Truhe', status: 'active' } },
+                        { col: 'fryers', data: { name: 'Fritteuse Links', status: 'active' } }, { col: 'fryers', data: { name: 'Fritteuse Rechts', status: 'active' } },
                         { col: 'cleaning_tasks', data: { name: 'Boden wischen', area: 'Küche', dept: 'kitchen', schedule: {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true} } },
-                        { col: 'settings', id:'global', data: { debugMode: true } }
+                        { col: 'cleaning_tasks', data: { name: 'Abzugshaube reinigen', area: 'Küche', dept: 'kitchen', schedule: {Mo:true, Do:true} } }, 
+                        { col: 'cleaning_tasks', data: { name: 'Theke polieren', area: 'Service', dept: 'service', schedule: {Fr:true, Sa:true} } },
+                        { col: 'settings', id:'global', data: { debugMode: true } },
+                        { col: 'company', id:'info', data: { name: 'Mein Restaurant', address: 'Musterstraße 1, 12345 Berlin' } }
                     ];
                     
                     for (const item of batch) {
-                        const ref = item.id 
-                            ? doc(db, 'artifacts', appId, 'public', 'data', item.col, item.id)
-                            : collection(db, 'artifacts', appId, 'public', 'data', item.col);
-                        
-                        if(item.id) await setDoc(ref, item.data);
-                        else await addDoc(ref, {...item.data, createdAt: serverTimestamp()});
+                        const ref = item.id ? doc(db, 'artifacts', appId, 'public', 'data', item.col, item.id) : collection(db, 'artifacts', appId, 'public', 'data', item.col);
+                        if(item.id) await setDoc(ref, item.data); else await addDoc(ref, {...item.data, createdAt: serverTimestamp()});
                     }
-                    showToast("Datenbank wurde initialisiert");
-                    log("Seed Complete");
-                } catch(e) { log("Seed Error: "+e); showToast("Fehler beim Seeding", "error"); }
+                    showToast("System erfolgreich zurückgesetzt");
+                    log("Seed Fertig");
+                } catch(e) { log("Seed Error: "+e); showToast("Fehler beim Reset", "error"); }
             };
 
             if (loading) return <Loading />;
-            if (!appUser) return <LoginScreen staff={data.staff} onLogin={u => { setAppUser(u); setView('dashboard'); log("User Login: "+u.name); }} onSeed={seedDB} />;
+            if (!appUser) return <LoginScreen staff={data.staff} onLogin={u => { setAppUser(u); setView('dashboard'); log("Login: "+u.name); }} onSeed={seedDB} />;
 
             const common = { user: appUser, appId, showToast, data, status, log };
             const hasAccess = (dept) => appUser.role === 'admin' || (appUser.departments||[]).includes(dept);
 
             return (
                 <div className="min-h-full bg-slate-50 font-sans text-slate-800 pb-20">
-                    {/* Header */}
                     <header className="bg-slate-900 text-white pt-[max(1rem,env(safe-area-inset-top))] pb-4 px-5 sticky top-0 z-50 shadow-lg flex justify-between items-center">
-                        <h2 className="font-black text-xl italic tracking-tighter" onClick={()=>setView('dashboard')}>GASTRO<span className="text-indigo-400">.PLATINUM</span></h2>
+                        <div>
+                            <h2 className="font-black text-xl italic tracking-tighter cursor-pointer" onClick={()=>setView('dashboard')}>GASTRO<span className="text-indigo-400">.PLATINUM</span></h2>
+                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none">V6.0 • {appUser.name}</div>
+                        </div>
                         <div className="flex gap-2">
-                             {debugMode && <button onClick={()=>setShowDebug(!showDebug)} className={`p-2 rounded-full ${showDebug?'bg-green-500 text-slate-900':'bg-white/10 text-green-400'}`}><Bug size={18}/></button>}
+                             {debugMode && <button onClick={()=>setShowDebug(!showDebug)} className={`p-2 rounded-full transition-all ${showDebug?'bg-green-500 text-slate-900':'bg-white/10 text-green-400'}`}><Bug size={18}/></button>}
                             <button onClick={() => setAppUser(null)} className="bg-white/10 p-2 rounded-full hover:bg-red-600 transition-colors"><LogOut size={18}/></button>
                         </div>
                     </header>
@@ -232,7 +255,8 @@
                         {view === 'cooling' && <Cooling {...common} />}
                         {view === 'oil' && hasAccess('kitchen') && <Oil {...common} />}
                         {view === 'inventory' && <Inventory {...common} />}
-                        {view === 'admin' && hasAccess('admin') && <Admin {...common} setDebugMode={setDebugMode} debugMode={debugMode} />}
+                        {view === 'admin' && hasAccess('admin') && <Admin {...common} setDebugMode={setDebugMode} debugMode={debugMode} setView={setView} />}
+                        {view === 'history' && hasAccess('admin') && <SmartHistory {...common} setView={setView} />}
                     </main>
 
                     <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-100 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex justify-around items-end shadow-[0_-4px_10px_rgba(0,0,0,0.03)] z-40">
@@ -246,10 +270,9 @@
             );
         }
 
-        // --- SUB-COMPONENTS ---
-        
+        // --- COMPONENTS ---
         const NavBtn = ({ icon, label, active, onClick }) => (
-            <button onClick={onClick} className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl transition-all ${active ? 'text-indigo-600 bg-indigo-50 scale-105' : 'text-slate-400'}`}>
+            <button onClick={onClick} className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl transition-all duration-300 ${active ? 'text-indigo-600 bg-indigo-50 scale-105 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
                 {React.cloneElement(icon, { size: 24, strokeWidth: active ? 2.5 : 2 })}
                 <span className="text-[10px] font-bold">{label}</span>
             </button>
@@ -257,29 +280,29 @@
 
         const LoginScreen = ({ staff, onLogin, onSeed }) => (
             <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-600 rounded-full blur-[100px] opacity-20 animate-pulse"></div>
-                <div className="z-10 w-full max-w-sm mx-auto space-y-8">
+                <div className="absolute top-[-20%] right-[-20%] w-[80%] h-[80%] bg-indigo-600 rounded-full blur-[150px] opacity-20 animate-pulse"></div>
+                <div className="z-10 w-full max-w-sm mx-auto space-y-8 animate-in">
                     <div>
-                        <h1 className="text-5xl font-black text-white mb-2 italic">GASTRO<span className="text-indigo-500">.APP</span></h1>
-                        <p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.3em]">Platinum Edition v3.0</p>
+                        <h1 className="text-5xl font-black text-white mb-2 italic tracking-tighter">GASTRO<span className="text-indigo-500">.APP</span></h1>
+                        <p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.3em]">Platinum V6.0</p>
                     </div>
                     <div className="space-y-3">
                         {staff.map(s => (
-                            <button key={s.id} onClick={() => onLogin(s)} className="w-full bg-white/10 hover:bg-indigo-600 border border-white/5 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group">
+                            <button key={s.id} onClick={() => onLogin(s)} className="w-full bg-white/5 hover:bg-indigo-600 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm">
                                 <div className="bg-indigo-500/20 p-2.5 rounded-xl"><User size={20} className="text-indigo-300 group-hover:text-white"/></div>
                                 <div className="flex-1 text-left">
                                     <div className="font-bold text-lg">{s.name}</div>
-                                    <div className="text-[11px] opacity-60 uppercase font-medium">{s.role==='admin'?'Administrator':(s.departments||[]).join(', ')}</div>
+                                    <div className="text-[11px] opacity-60 uppercase font-medium">{s.role==='admin'?'Betriebsleiter':(s.departments||[]).join(' • ')}</div>
                                 </div>
                                 <ChevronDown className="-rotate-90 opacity-50"/>
                             </button>
                         ))}
                         {staff.length === 0 && (
-                            <div className="pt-10">
-                                <button onClick={onSeed} className="w-full py-5 border-2 border-dashed border-slate-700 hover:border-indigo-500 text-slate-500 hover:text-indigo-400 rounded-2xl font-bold uppercase tracking-wider flex justify-center items-center gap-3 transition-all">
+                            <div className="pt-8 text-center space-y-4">
+                                <div className="p-4 bg-white/5 rounded-2xl text-slate-400 text-sm border border-dashed border-slate-700">Datenbank ist leer.</div>
+                                <button onClick={onSeed} className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-bold uppercase tracking-wider flex justify-center items-center gap-3 shadow-lg shadow-indigo-900/50">
                                     <Database size={20}/> System Initialisieren
                                 </button>
-                                <p className="text-center text-slate-600 text-xs mt-3">Erstellt Admin-User & Beispieldaten</p>
                             </div>
                         )}
                     </div>
@@ -287,361 +310,287 @@
             </div>
         );
 
-        // --- DASHBOARD ---
         const Dashboard = ({ user, data, status, setView }) => {
             const day = getWeekdayShort();
+            const longDay = getWeekdayLong();
             const relevantTasks = data.tasks.filter(t => t.schedule?.[day] && (user.role==='admin' || t.dept==='all' || (user.departments||[]).includes(t.dept)));
             const done = relevantTasks.filter(t => status.cleaningLogs[t.id]).length;
             const openTemp = data.cooling.filter(d => d.status!=='defekt').length - status.tempLogs.length;
-            
+
+            const oilAlerts = [];
+            Object.entries(status.yesterdayOil).forEach(([devId, log]) => {
+                if(log.tpm >= 20) {
+                    const devName = data.fryers.find(f=>f.id===devId)?.name || 'Fritteuse';
+                    const isCritical = log.tpm >= 24;
+                    oilAlerts.push({ id: devId, msg: `${devName} ${isCritical ? 'MUSS GEWECHSELT' : 'sollte gefiltert'} werden!`, val: `${log.tpm}% TPM (Gestern)`, critical: isCritical });
+                }
+            });
+
             return (
                 <div className="animate-in space-y-6">
-                    <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl flex justify-between items-center">
-                        <div>
-                            <div className="text-xs font-bold text-indigo-400 uppercase mb-1">Hallo {user.name}</div>
-                            <div className="text-3xl font-black">Übersicht</div>
-                            <div className="text-slate-400 text-sm mt-1">{done}/{relevantTasks.length} Aufgaben erledigt</div>
+                    <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl flex justify-between items-center relative overflow-hidden">
+                        <div className="relative z-10">
+                            <div className="text-xs font-bold text-indigo-400 uppercase mb-1">{longDay}</div>
+                            <div className="text-3xl font-black tracking-tight">Übersicht</div>
+                            <div className="text-slate-400 text-sm mt-1 font-medium">{done} / {relevantTasks.length} Aufgaben erledigt</div>
                         </div>
-                        <div className="bg-slate-800 p-4 rounded-2xl"><Activity className="text-indigo-500" size={32}/></div>
+                        <div className="bg-slate-800 p-4 rounded-2xl shadow-inner relative z-10"><Activity className="text-indigo-500" size={32}/></div>
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500 rounded-full blur-[60px] opacity-20"></div>
                     </div>
+                    {oilAlerts.length > 0 && (
+                        <div className="space-y-2 animate-in">
+                            <div className="text-xs font-bold text-slate-400 uppercase tracking-widest px-2">Kritisch (Vortag)</div>
+                            {oilAlerts.map(alert => (
+                                <div key={alert.id} onClick={()=>setView('oil')} className={`p-4 rounded-2xl border-l-4 shadow-sm flex gap-3 items-center cursor-pointer ${alert.critical ? 'bg-red-50 border-red-500 text-red-800' : 'bg-amber-50 border-amber-500 text-amber-800'}`}>
+                                    <AlertOctagon size={24} className={alert.critical ? 'text-red-500' : 'text-amber-500'} />
+                                    <div><div className="font-bold text-sm leading-tight">{alert.msg}</div><div className="text-xs opacity-80 mt-1 font-medium">{alert.val}</div></div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                     <div className="grid grid-cols-2 gap-4">
-                        <DashCard title="Putzplan" val={relevantTasks.length - done} icon={<Sparkles/>} col="bg-indigo-500" onClick={()=>setView('cleaning')} />
-                        <DashCard title="Kühlung" val={openTemp} icon={<Snowflake/>} col="bg-sky-500" onClick={()=>setView('cooling')} />
-                        <DashCard title="Einkauf" val={status.shoppingList.length} icon={<ShoppingBag/>} col="bg-emerald-500" onClick={()=>setView('inventory')} />
-                        <DashCard title="Öl Check" val={data.fryers.length - Object.keys(status.oilLogs).length} icon={<Droplet/>} col="bg-amber-500" onClick={()=>setView('oil')} />
+                        <DashCard title="Putzplan" val={relevantTasks.length - done} icon={<Sparkles/>} col="bg-indigo-500" onClick={()=>setView('cleaning')} sub="Offene Tasks" />
+                        <DashCard title="HACCP Kühl" val={openTemp} icon={<Snowflake/>} col="bg-sky-500" onClick={()=>setView('cooling')} sub="Temperatur" />
+                        <DashCard title="Smart Order" val={status.shoppingList.length} icon={<ShoppingBag/>} col="bg-emerald-500" onClick={()=>setView('inventory')} sub="Einkaufsliste" />
+                        <DashCard title="Qualität" val={data.fryers.length - Object.keys(status.oilLogs).length} icon={<Droplet/>} col="bg-amber-500" onClick={()=>setView('oil')} sub="Öl Messung" />
                     </div>
                 </div>
             );
         };
-        const DashCard = ({ title, val, icon, col, onClick }) => (
-            <button onClick={onClick} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm text-left hover:shadow-lg transition-all active:scale-95 relative overflow-hidden">
-                <div className={`absolute top-0 right-0 p-4 opacity-10 ${col} text-white rounded-bl-3xl scale-150`}>{icon}</div>
+        
+        const DashCard = ({ title, val, icon, col, onClick, sub }) => (
+            <button onClick={onClick} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm text-left hover:shadow-lg transition-all active:scale-[0.98] relative overflow-hidden group">
+                <div className={`absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity ${col} text-white rounded-bl-3xl scale-150`}>{icon}</div>
                 <div className="relative z-10">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white mb-3 shadow-md ${col}`}>{React.cloneElement(icon, {size:20})}</div>
-                    <div className="font-bold text-slate-700">{title}</div>
-                    {val > 0 ? <div className="text-xs font-bold text-red-500 mt-1">{val} Offen</div> : <div className="text-xs font-bold text-emerald-500 mt-1">OK</div>}
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white mb-4 shadow-md ${col} group-hover:scale-110 transition-transform`}>{React.cloneElement(icon, {size:22})}</div>
+                    <div className="font-black text-slate-700 text-lg leading-none mb-1">{title}</div>
+                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-3">{sub}</div>
+                    {val > 0 ? 
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-bold"><AlertTriangle size={12}/> {val} Offen</div> : 
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-bold"><CheckCircle size={12}/> Fertig</div>
+                    }
                 </div>
             </button>
         );
 
-        // --- INVENTORY (NEW & IMPROVED) ---
+        // --- HISTORY & PDF EXPORT ---
+        const SmartHistory = ({ appId, setView, log, data }) => {
+            const [date, setDate] = useState(getTodayStr());
+            const [historyData, setHistoryData] = useState({ cleaning: [], temp: [], oil: [] });
+            const [loading, setLoading] = useState(false);
+
+            useEffect(() => {
+                const loadHistory = async () => {
+                    setLoading(true);
+                    try {
+                        const [sClean, sTemp, sOil] = await Promise.all([
+                            getDocs(query(collection(db,'artifacts',appId,'public','data','logs_cleaning'), where('dateStr','==',date))),
+                            getDocs(query(collection(db,'artifacts',appId,'public','data','logs_temp'), where('dateStr','==',date))),
+                            getDocs(query(collection(db,'artifacts',appId,'public','data','logs_oil'), where('dateStr','==',date)))
+                        ]);
+                        setHistoryData({ cleaning: sClean.docs.map(d=>d.data()), temp: sTemp.docs.map(d=>d.data()), oil: sOil.docs.map(d=>d.data()) });
+                    } catch(e) { log(e); }
+                    setLoading(false);
+                };
+                loadHistory();
+            }, [date]);
+
+            // PDF GENERATOR
+            const exportPDF = () => {
+                if(!window.jspdf) return alert("PDF Lib loading...");
+                const doc = new window.jspdf.jsPDF();
+                const comp = data.company || {};
+                
+                // HEADER
+                doc.setFontSize(18); doc.text(comp.name || "Gastronomie Betrieb", 14, 20);
+                doc.setFontSize(10); doc.text(comp.address || "Adresse nicht hinterlegt", 14, 26);
+                doc.text(`Datum: ${formatDateDE(date)}`, 150, 20);
+                doc.setFontSize(14); doc.text("HACCP TAGESPROTOKOLL", 14, 40);
+
+                let yPos = 50;
+                const addTable = (title, cols, rows) => {
+                    doc.setFontSize(12); doc.text(title, 14, yPos);
+                    doc.autoTable({
+                        startY: yPos + 5,
+                        head: [cols],
+                        body: rows,
+                        theme: 'grid',
+                        headStyles: { fillColor: [30, 41, 59] },
+                        styles: { fontSize: 9 }
+                    });
+                    yPos = doc.lastAutoTable.finalY + 15;
+                };
+
+                // TEMP TABLE
+                const tempRows = historyData.temp.map(t => [t.deviceName, `${t.temp}°C`, t.temp > 8 ? "KRITISCH" : "OK", t.user, new Date(t.createdAt.seconds*1000).toLocaleTimeString()]);
+                addTable("Temperaturkontrolle (Kühl/TK)", ["Gerät", "Wert", "Status", "Mitarbeiter", "Uhrzeit"], tempRows);
+
+                // OIL TABLE
+                const oilRows = historyData.oil.map(t => [t.deviceName, `${t.temp}°C`, `${t.tpm}%`, t.tpm>=20?"ACHTUNG":"OK", t.user]);
+                addTable("Fett & Öl Qualität", ["Gerät", "Temp", "TPM", "Status", "Mitarbeiter"], oilRows);
+
+                // CLEANING TABLE
+                const cleanRows = historyData.cleaning.map(t => [t.taskName, "Erledigt", t.user, new Date(t.createdAt.seconds*1000).toLocaleTimeString()]);
+                addTable("Reinigungsnachweis", ["Aufgabe", "Status", "Mitarbeiter", "Uhrzeit"], cleanRows);
+
+                // FOOTER
+                doc.setFontSize(10);
+                doc.text("__________________________", 14, yPos + 20);
+                doc.text("Unterschrift Betriebsleiter", 14, yPos + 26);
+                
+                doc.save(`HACCP_Protokoll_${date}.pdf`);
+            };
+
+            const Empty = () => <div className="text-center p-4 text-slate-400 text-xs italic">Keine Einträge für diesen Tag.</div>;
+
+            return (
+                <div className="animate-in space-y-5 pb-10">
+                     <div className="flex items-center gap-3 mb-2">
+                        <button onClick={()=>setView('admin')} className="p-2 bg-slate-100 rounded-full"><ChevronLeft/></button>
+                        <div>
+                            <h2 className="text-3xl font-black text-slate-800">HACCP Protokoll</h2>
+                            <p className="text-slate-400 text-sm font-medium">Rechtssichere Dokumentation</p>
+                        </div>
+                    </div>
+                    
+                    <div className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4">
+                         <div className="bg-indigo-50 p-3 rounded-2xl text-indigo-600"><Calendar size={24}/></div>
+                         <div className="flex-1">
+                             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Datum wählen</div>
+                             <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full font-bold text-lg bg-transparent outline-none text-slate-800"/>
+                         </div>
+                    </div>
+
+                    <Button onClick={exportPDF} variant="success" className="shadow-emerald-200"><FileText size={20}/> Amtliches PDF exportieren</Button>
+
+                    {loading ? <div className="p-10 text-center"><Loader2 className="animate-spin inline text-indigo-500"/></div> : (
+                        <div className="space-y-6">
+                            <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+                                <div className="bg-emerald-50 px-6 py-3 border-b border-emerald-100 flex items-center gap-2 text-emerald-800 font-bold uppercase tracking-wider text-sm"><Sparkles size={16}/> Hygiene & Reinigung</div>
+                                {historyData.cleaning.length === 0 ? <Empty/> : (
+                                    <div className="divide-y divide-slate-50">
+                                        {historyData.cleaning.map((c,i)=>(
+                                            <div key={i} className="p-4 flex justify-between items-center">
+                                                <span className="font-bold text-slate-700">{c.taskName}</span>
+                                                <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold flex gap-1 items-center"><User size={10}/> {c.user}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+                                <div className="bg-sky-50 px-6 py-3 border-b border-sky-100 flex items-center gap-2 text-sky-800 font-bold uppercase tracking-wider text-sm"><Snowflake size={16}/> Temperatur (HACCP)</div>
+                                {historyData.temp.length === 0 ? <Empty/> : (
+                                    <div className="divide-y divide-slate-50">
+                                        {historyData.temp.map((c,i)=>(
+                                            <div key={i} className="p-4 flex justify-between items-center">
+                                                <span className="font-bold text-slate-700">{c.deviceName}</span>
+                                                <div className="flex flex-col items-end">
+                                                    <span className={`font-mono font-black text-lg ${c.temp>8||c.temp<0?'text-red-500':'text-sky-600'}`}>{c.temp}°C</span>
+                                                    <span className="text-[10px] text-slate-400 font-bold">{c.user}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+                                <div className="bg-amber-50 px-6 py-3 border-b border-amber-100 flex items-center gap-2 text-amber-800 font-bold uppercase tracking-wider text-sm"><Droplet size={16}/> Öl-Qualität</div>
+                                {historyData.oil.length === 0 ? <Empty/> : (
+                                    <div className="divide-y divide-slate-50">
+                                        {historyData.oil.map((c,i)=>(
+                                            <div key={i} className="p-4 flex justify-between items-center">
+                                                <span className="font-bold text-slate-700">{c.deviceName}</span>
+                                                <div className="flex flex-col items-end">
+                                                    <span className={`font-mono font-black text-lg ${c.tpm>=20?'text-red-500':'text-emerald-600'}`}>{c.tpm}% TPM</span>
+                                                    <span className="text-[10px] text-slate-400 font-bold">{c.temp}°C • {c.user}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // --- OTHER MODULES (UNCHANGED BUT INCLUDED) ---
         const Inventory = ({ data, status, appId, showToast, user, log }) => {
             const [newItem, setNewItem] = useState('');
             const [supplier, setSupplier] = useState('');
             const [loading, setLoading] = useState(false);
 
-            // Group by Supplier
             const groupedList = useMemo(() => {
-                const grp = {};
-                status.shoppingList.forEach(item => {
-                    const sup = item.supplier || 'Sonstige';
-                    if(!grp[sup]) grp[sup] = [];
-                    grp[sup].push(item);
-                });
-                return grp;
+                const grp = {}; status.shoppingList.forEach(item => { const sup = item.supplier || 'Sonstige'; if(!grp[sup]) grp[sup] = []; grp[sup].push(item); }); return grp;
             }, [status.shoppingList]);
 
             const add = async () => {
-                if(!newItem) return;
-                setLoading(true);
-                try {
-                    await addDoc(collection(db,'artifacts',appId,'public','data','shopping_list'), {
-                        name: newItem,
-                        supplier: supplier || 'Sonstige',
-                        createdBy: user.name,
-                        createdAt: serverTimestamp()
-                    });
-                    setNewItem(''); showToast("Hinzugefügt");
-                } catch(e){ log(e); }
-                setLoading(false);
+                if(!newItem) return; setLoading(true);
+                try { await addDoc(collection(db,'artifacts',appId,'public','data','shopping_list'), { name: newItem, supplier: supplier || 'Sonstige', createdBy: user.name, createdAt: serverTimestamp() }); setNewItem(''); showToast("Hinzugefügt"); } catch(e){ log(e); } setLoading(false);
             };
-
             const del = async (id) => await deleteDoc(doc(db,'artifacts',appId,'public','data','shopping_list',id));
 
             return (
                 <div className="animate-in space-y-6">
-                    <div className="flex justify-between items-center"><h2 className="text-2xl font-black">Einkauf</h2><span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold">{status.shoppingList.length} Artikel</span></div>
-                    
-                    {/* Add Box */}
-                    <div className="bg-white p-4 rounded-[1.5rem] shadow-sm border border-slate-100 space-y-3">
-                        <Input value={newItem} onChange={e=>setNewItem(e.target.value)} placeholder="Produktname..." />
-                        <div className="flex gap-2">
-                            <Select value={supplier} onChange={e=>setSupplier(e.target.value)}>
-                                <option value="">Lieferant wählen...</option>
-                                {data.suppliers.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}
-                            </Select>
-                            <Button onClick={add} loading={loading} className="w-auto px-6"><Plus/></Button>
-                        </div>
-                    </div>
-
-                    {/* List */}
-                    <div className="space-y-4">
-                        {Object.entries(groupedList).map(([sup, items]) => (
-                            <div key={sup} className="bg-white rounded-[1.5rem] border border-slate-100 overflow-hidden">
-                                <div className="bg-slate-50 px-5 py-3 border-b border-slate-100 font-bold text-sm text-slate-500 uppercase tracking-wider flex justify-between items-center">
-                                    {sup} <span className="bg-white px-2 py-0.5 rounded-md shadow-sm text-xs text-slate-800">{items.length}</span>
-                                </div>
-                                <div className="divide-y divide-slate-50">
-                                    {items.map(item => (
-                                        <div key={item.id} className="p-4 flex justify-between items-center group hover:bg-slate-50 transition-colors">
-                                            <span className="font-bold text-slate-700">{item.name}</span>
-                                            <button onClick={()=>del(item.id)} className="text-slate-300 hover:text-red-500 p-2"><Trash2 size={18}/></button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
-                        {status.shoppingList.length === 0 && <div className="text-center text-slate-400 py-10 opacity-50">Einkaufsliste ist leer.</div>}
-                    </div>
+                    <div className="flex justify-between items-end"><div><h2 className="text-3xl font-black text-slate-800">Einkauf</h2><p className="text-slate-400 text-sm font-medium">Bestellungen managen</p></div><span className="bg-slate-900 text-white px-3 py-1 rounded-full text-xs font-bold">{status.shoppingList.length}</span></div>
+                    <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 space-y-3"><Input value={newItem} onChange={e=>setNewItem(e.target.value)} placeholder="Produktname..." /><div className="flex gap-2"><Select value={supplier} onChange={e=>setSupplier(e.target.value)}><option value="">Lieferant wählen...</option>{data.suppliers.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</Select><Button onClick={add} loading={loading} className="w-auto px-6 rounded-xl"><Plus/></Button></div></div>
+                    <div className="space-y-6">{Object.entries(groupedList).map(([sup, items]) => (<div key={sup} className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm"><div className="bg-slate-50/80 px-6 py-4 border-b border-slate-100 font-black text-sm text-slate-600 uppercase tracking-widest flex justify-between items-center">{sup} <span className="bg-white px-2 py-1 rounded-lg text-xs border">{items.length}</span></div><div className="divide-y divide-slate-50">{items.map(item => (<div key={item.id} className="p-4 pl-6 flex justify-between items-center group active:bg-slate-50 transition-colors"><span className="font-bold text-slate-700 text-base">{item.name}</span><button onClick={()=>del(item.id)} className="text-slate-300 hover:text-red-500 p-3 rounded-xl hover:bg-red-50 transition-all"><Trash2 size={18}/></button></div>))}</div></div>))}{status.shoppingList.length === 0 && <div className="text-center text-slate-400 py-12 flex flex-col items-center gap-2"><div className="bg-slate-100 p-4 rounded-full"><CheckCircle size={32} className="text-slate-300"/></div><span className="font-medium">Alles bestellt!</span></div>}</div>
                 </div>
             );
         };
 
-        // --- CLEANING ---
         const Cleaning = ({ data, status, user, appId, showToast }) => {
             const day = getWeekdayShort();
             const myDepts = user.departments || [];
-            const tasks = data.tasks.filter(t => t.schedule?.[day] && (user.role==='admin' || t.dept==='all' || myDepts.includes(t.dept)))
-                .sort((a,b) => (status.cleaningLogs[a.id]?1:0)-(status.cleaningLogs[b.id]?1:0));
-
-            const toggle = async (t) => {
-                const id = `${getTodayStr()}_${t.id}`;
-                const ref = doc(db,'artifacts',appId,'public','data','logs_cleaning',id);
-                if(status.cleaningLogs[t.id]) await deleteDoc(ref);
-                else { await setDoc(ref, {taskId:t.id, taskName:t.name, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()}); showToast("Erledigt!"); }
-            };
-
+            const tasks = data.tasks.filter(t => t.schedule?.[day] && (user.role==='admin' || t.dept==='all' || myDepts.includes(t.dept))).sort((a,b) => (status.cleaningLogs[a.id]?1:0)-(status.cleaningLogs[b.id]?1:0));
+            const toggle = async (t) => { const id = `${getTodayStr()}_${t.id}`; const ref = doc(db,'artifacts',appId,'public','data','logs_cleaning',id); if(status.cleaningLogs[t.id]) await deleteDoc(ref); else { await setDoc(ref, {taskId:t.id, taskName:t.name, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()}); showToast("Sauber!"); } };
             return (
-                <div className="animate-in space-y-4">
-                    <h2 className="text-2xl font-black">Putzplan <span className="text-indigo-500">{day}</span></h2>
-                    {tasks.map(t => {
-                        const done = status.cleaningLogs[t.id];
-                        return (
-                            <div key={t.id} onClick={()=>toggle(t)} className={`p-4 rounded-2xl border flex justify-between items-center cursor-pointer transition-all active:scale-[0.98] ${done?'bg-slate-50 border-slate-200 opacity-60':'bg-white border-slate-100 hover:border-indigo-300 shadow-sm'}`}>
-                                <div>
-                                    <div className={`font-bold ${done?'line-through text-slate-400':'text-slate-800'}`}>{t.name}</div>
-                                    <div className="text-[10px] font-bold uppercase text-slate-400 mt-1">{t.area}</div>
-                                </div>
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${done?'bg-emerald-500 text-white':'bg-slate-100 text-slate-300'}`}><CheckCircle size={18}/></div>
-                            </div>
-                        );
-                    })}
-                    {tasks.length===0 && <div className="text-center p-10 border-2 border-dashed rounded-3xl text-slate-400">Keine Aufgaben für heute.</div>}
-                </div>
+                <div className="animate-in space-y-5"><div className="flex justify-between items-end"><div><h2 className="text-3xl font-black text-slate-800">Putzplan</h2><p className="text-indigo-500 font-bold uppercase tracking-widest text-xs mt-1">{getWeekdayLong()}</p></div></div><div className="space-y-3">{tasks.map(t => { const done = status.cleaningLogs[t.id]; return (<div key={t.id} onClick={()=>toggle(t)} className={`p-5 rounded-[1.5rem] border flex justify-between items-center cursor-pointer transition-all active:scale-[0.98] ${done?'bg-slate-50 border-slate-100 opacity-60 grayscale':'bg-white border-slate-100 shadow-sm hover:border-indigo-200'}`}><div><div className={`font-bold text-lg leading-tight ${done?'text-slate-400 line-through':'text-slate-800'}`}>{t.name}</div><div className="text-[11px] font-black uppercase text-slate-400 mt-1.5 flex gap-2"><span className="bg-slate-100 px-1.5 py-0.5 rounded">{t.area}</span>{done && <span className="text-emerald-500 flex items-center gap-1"><User size={10}/> {done.user}</span>}</div></div><div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-colors ${done?'bg-emerald-500 text-white':'bg-slate-100 text-slate-300'}`}><CheckCircle size={20} className={done ? 'scale-110' : ''}/></div></div>); })}{tasks.length===0 && (<div className="text-center p-10 border-2 border-dashed border-slate-200 rounded-[2rem] text-slate-400 flex flex-col items-center gap-2"><Sparkles size={32} className="text-slate-200"/><span>Keine Aufgaben für Heute.</span></div>)}</div></div>
             );
         };
 
-        // --- COOLING ---
         const Cooling = ({ data, status, user, appId, showToast, log }) => {
-            const [val, setVal] = useState({});
-            const active = data.cooling.filter(d => d.status!=='defekt');
-
-            const save = async (dev) => {
-                if(!val[dev.id]) return;
-                try {
-                    await addDoc(collection(db,'artifacts',appId,'public','data','logs_temp'), {
-                        deviceId:dev.id, deviceName:dev.name, temp: val[dev.id], user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()
-                    });
-                    setVal(p=>({...p,[dev.id]:''})); showToast("Gespeichert");
-                } catch(e){ log(e); }
-            };
-
+            const [val, setVal] = useState({}); const active = data.cooling.filter(d => d.status!=='defekt');
+            const save = async (dev) => { if(!val[dev.id]) return; try { await addDoc(collection(db,'artifacts',appId,'public','data','logs_temp'), { deviceId:dev.id, deviceName:dev.name, temp: val[dev.id], user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); setVal(p=>({...p,[dev.id]:''})); showToast("Temperatur erfasst"); } catch(e){ log(e); } };
             return (
-                <div className="animate-in space-y-4">
-                    <h2 className="text-2xl font-black">Temperaturen</h2>
-                    {active.map(dev => {
-                        const done = status.tempLogs.find(l=>l.deviceId===dev.id);
-                        const v = val[dev.id] || '';
-                        const isHigh = v && (parseFloat(v)>8 || parseFloat(v)<0); // Simple logic
-                        
-                        return (
-                            <div key={dev.id} className={`p-5 rounded-[1.5rem] border shadow-sm ${done?'bg-emerald-50/50 border-emerald-100':'bg-white border-slate-100'}`}>
-                                <div className="flex justify-between mb-3 font-bold text-lg">
-                                    <span>{dev.name}</span>
-                                    {done && <span className="text-emerald-600">{done.temp}°C</span>}
-                                </div>
-                                {!done && (
-                                    <div className="flex gap-3">
-                                        <div className="relative flex-1">
-                                            <input type="number" value={v} onChange={e=>setVal({...val,[dev.id]:e.target.value})} placeholder="°C" className={`w-full p-3 rounded-xl border-2 font-bold text-lg text-center outline-none ${isHigh?'border-red-300 bg-red-50 text-red-600':'border-slate-200 focus:border-indigo-500'}`} />
-                                            {isHigh && <AlertTriangle className="absolute right-3 top-3.5 text-red-500" size={20}/>}
-                                        </div>
-                                        <button onClick={()=>save(dev)} className="bg-slate-900 text-white px-6 rounded-xl"><Save/></button>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
+                <div className="animate-in space-y-6"><div><h2 className="text-3xl font-black text-slate-800">Kühlung</h2><p className="text-slate-400 text-sm font-medium">HACCP Dokumentation</p></div><div className="grid gap-4">{active.map(dev => { const done = status.tempLogs.find(l=>l.deviceId===dev.id); const v = val[dev.id] || ''; const isHigh = v && (parseFloat(v)>8 || parseFloat(v)<0); return (<div key={dev.id} className={`p-6 rounded-[2rem] border shadow-sm transition-all ${done?'bg-emerald-50/50 border-emerald-100':'bg-white border-slate-100'}`}><div className="flex justify-between mb-4 font-black text-lg text-slate-700 items-center"><span>{dev.name}</span>{done ? <span className="text-emerald-600 bg-emerald-100 px-2 py-1 rounded-lg text-sm">{done.temp}°C</span> : <Thermometer size={20} className="text-slate-300"/>}</div>{!done && (<div className="flex gap-3 h-14"><div className="relative flex-1 h-full"><input type="number" inputMode="decimal" value={v} onChange={e=>setVal({...val,[dev.id]:e.target.value})} placeholder="0.0" className={`w-full h-full rounded-2xl border-2 font-black text-2xl text-center outline-none transition-colors ${isHigh?'border-red-300 bg-red-50 text-red-600 placeholder-red-300':'border-slate-100 focus:border-indigo-500 placeholder-slate-200'}`} /></div><button onClick={()=>save(dev)} className="bg-slate-900 active:bg-slate-800 text-white w-16 h-full rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/20"><Save size={24}/></button></div>)}{isHigh && <div className="text-red-500 text-xs font-bold mt-2 flex items-center gap-1"><AlertTriangle size={12}/> Achtung: Kritischer Bereich</div>}</div>); })}</div></div>
             );
         };
 
-        // --- OIL ---
         const Oil = ({ data, status, user, appId, showToast }) => {
-            const [inp, setInp] = useState({});
-            const active = data.fryers.filter(d => d.status!=='defekt');
-
-            const save = async (dev) => {
-                const t = inp[dev.id]?.t, p = inp[dev.id]?.p;
-                if(!t || !p) return;
-                await addDoc(collection(db,'artifacts',appId,'public','data','logs_oil'), {
-                    deviceId:dev.id, deviceName:dev.name, temp:t, tpm:p, user:user.name, createdAt:serverTimestamp()
-                });
-                showToast("Gespeichert");
-            };
-
+            const [inp, setInp] = useState({}); const active = data.fryers.filter(d => d.status!=='defekt');
+            const save = async (dev) => { const t = inp[dev.id]?.t, p = inp[dev.id]?.p; if(!t || !p) return; await addDoc(collection(db,'artifacts',appId,'public','data','logs_oil'), { deviceId:dev.id, deviceName:dev.name, temp:t, tpm:p, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); showToast("Gespeichert"); };
             return (
-                <div className="animate-in space-y-4">
-                    <h2 className="text-2xl font-black">Fett & Öl</h2>
-                    {active.map(dev => {
-                        const l = status.oilLogs[dev.id];
-                        const quality = l ? (l.tpm>=24?'bad':l.tpm>=20?'warn':'good') : null;
-                        const colors = { bad: 'bg-red-500', warn: 'bg-amber-500', good: 'bg-emerald-500' };
-                        
-                        return (
-                            <div key={dev.id} className="bg-white p-5 rounded-[1.5rem] border border-slate-100 shadow-sm">
-                                <div className="flex justify-between items-center mb-4">
-                                    <span className="font-bold text-lg">{dev.name}</span>
-                                    {l && <span className={`text-white text-[10px] font-black px-2 py-1 rounded uppercase ${colors[quality]}`}>{quality==='bad'?'Wechseln':quality==='warn'?'Filtern':'OK'}</span>}
-                                </div>
-                                {!l ? (
-                                    <div className="flex gap-2">
-                                        <Input type="number" placeholder="Tmp" className="text-center" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],t:e.target.value}})} />
-                                        <Input type="number" placeholder="TPM" className="text-center" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],p:e.target.value}})} />
-                                        <button onClick={()=>save(dev)} className="bg-slate-900 text-white px-4 rounded-2xl"><Save/></button>
-                                    </div>
-                                ) : (
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div className="bg-slate-50 p-2 rounded-xl text-center"><div className="text-[10px] uppercase font-bold text-slate-400">Temp</div><div className="font-mono font-bold">{l.temp}°C</div></div>
-                                        <div className="bg-slate-50 p-2 rounded-xl text-center"><div className="text-[10px] uppercase font-bold text-slate-400">TPM</div><div className="font-mono font-bold">{l.tpm}%</div></div>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
+                <div className="animate-in space-y-6"><div><h2 className="text-3xl font-black text-slate-800">Fett & Öl</h2><p className="text-slate-400 text-sm font-medium">TPM Messung</p></div><div className="space-y-4">{active.map(dev => { const l = status.oilLogs[dev.id]; const quality = l ? (l.tpm>=24?'bad':l.tpm>=20?'warn':'good') : null; const colors = { bad: 'bg-red-500 shadow-red-200', warn: 'bg-amber-500 shadow-amber-200', good: 'bg-emerald-500 shadow-emerald-200' }; const labels = { bad: 'Wechseln', warn: 'Filtern', good: 'OK' }; return (<div key={dev.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm"><div className="flex justify-between items-center mb-6"><span className="font-bold text-lg text-slate-700">{dev.name}</span>{l ? <span className={`text-white text-xs font-black px-3 py-1.5 rounded-xl uppercase shadow-lg ${colors[quality]}`}>{labels[quality]}</span> : <span className="bg-slate-100 text-slate-400 text-xs font-bold px-2 py-1 rounded-lg">Messung offen</span>}</div>{!l ? (<div className="flex gap-3"><div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">Temp</div><Input type="number" inputMode="decimal" placeholder="°C" className="text-center h-14 font-bold text-xl" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],t:e.target.value}})} /></div><div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">TPM %</div><Input type="number" inputMode="decimal" placeholder="%" className="text-center h-14 font-bold text-xl" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],p:e.target.value}})} /></div><div className="space-y-1"><div className="h-[17px]"></div><button onClick={()=>save(dev)} className="bg-slate-900 text-white h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg"><Save size={24}/></button></div></div>) : (<div className="grid grid-cols-2 gap-3"><div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Temp</div><div className="font-black text-xl text-slate-700">{l.temp}°C</div></div><div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">TPM</div><div className="font-black text-xl text-slate-700">{l.tpm}%</div></div></div>)}</div>); })}</div></div>
             );
         };
 
-        // --- ADMIN ---
-        const Admin = ({ data, appId, showToast, debugMode, setDebugMode }) => {
-            const [tab, setTab] = useState('staff');
-            const [edit, setEdit] = useState(null);
-            
-            const tabs = { staff: 'Team', tasks: 'Putz', cooling: 'Kühl', fryers: 'Frit', suppliers: 'Lief', system: 'Sys' };
-
-            const del = async (id) => {
-                if(!confirm("Löschen?")) return;
-                const col = tab==='tasks'?'cleaning_tasks':tab==='cooling'?'cooling_devices':tab==='fryers'?'fryers':tab==='suppliers'?'suppliers':'staff';
-                await deleteDoc(doc(db,'artifacts',appId,'public','data',col,id));
-                showToast("Gelöscht");
-            };
-            
-            const toggleDebug = async () => {
-                const newState = !debugMode;
-                await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { debugMode: newState }, {merge:true});
-                setDebugMode(newState);
-            }
-
+        const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView }) => {
+            const [tab, setTab] = useState('staff'); const [edit, setEdit] = useState(null);
+            const tabs = { staff: 'Team', tasks: 'Putz', cooling: 'Kühl', fryers: 'Frit', suppliers: 'Lief', company: 'Firma', system: 'Sys' };
+            const del = async (id) => { if(!confirm("Löschen?")) return; const col = tab==='tasks'?'cleaning_tasks':tab==='cooling'?'cooling_devices':tab==='fryers'?'fryers':tab==='suppliers'?'suppliers':'staff'; await deleteDoc(doc(db,'artifacts',appId,'public','data',col,id)); showToast("Gelöscht"); };
+            const toggleDebug = async () => { const n=!debugMode; await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { debugMode: n }, {merge:true}); setDebugMode(n); }
             return (
-                <div className="animate-in space-y-5">
-                    <h2 className="text-2xl font-black">Admin</h2>
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-5 px-5 pb-2">
-                        {Object.entries(tabs).map(([k,l])=><button key={k} onClick={()=>{setTab(k);setEdit(null)}} className={`px-5 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${tab===k?'bg-slate-900 text-white':'bg-white border text-slate-500'}`}>{l}</button>)}
-                    </div>
-
-                    <div className="bg-white rounded-[1.5rem] p-5 shadow-sm border border-slate-100 min-h-[300px]">
-                        {tab === 'system' ? (
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                                    <div className="font-bold flex gap-2 items-center"><Bug size={18}/> Debug Konsole</div>
-                                    <button onClick={toggleDebug} className={`w-12 h-7 rounded-full p-1 transition-colors ${debugMode?'bg-green-500':'bg-slate-300'}`}><div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${debugMode?'translate-x-5':''}`}/></button>
-                                </div>
-                                <div className="text-xs text-slate-400 p-2">Hier können Systemeinstellungen vorgenommen werden. Debug Mode erlaubt Entwicklern Einblick in die Logs.</div>
-                            </div>
-                        ) : edit ? (
-                            <Editor type={tab} data={edit} close={()=>setEdit(null)} appId={appId} showToast={showToast} />
-                        ) : (
-                            <div className="space-y-3">
-                                <Button variant="ghost" onClick={()=>setEdit({isNew:true})} className="border-dashed py-4"><Plus size={18}/> Neu Anlegen</Button>
-                                <div className="divide-y divide-slate-100">
-                                    {(data[tab]||[]).map(item => (
-                                        <div key={item.id} className="py-3 flex justify-between items-center">
-                                            <span className="font-bold text-slate-700">{item.name}</span>
-                                            <div className="flex gap-2">
-                                                <button onClick={()=>setEdit(item)} className="p-2 bg-indigo-50 text-indigo-500 rounded-lg"><Settings size={16}/></button>
-                                                <button onClick={()=>del(item.id)} className="p-2 bg-red-50 text-red-500 rounded-lg"><Trash2 size={16}/></button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
+                <div className="animate-in space-y-6"><h2 className="text-3xl font-black text-slate-800">Verwaltung</h2><div className="flex gap-2 overflow-x-auto no-scrollbar -mx-5 px-5 pb-2">{Object.entries(tabs).map(([k,l])=><button key={k} onClick={()=>{setTab(k);setEdit(null)}} className={`px-6 py-3 rounded-2xl font-bold text-sm whitespace-nowrap transition-all ${tab===k?'bg-slate-900 text-white shadow-lg shadow-slate-900/20':'bg-white border text-slate-500'}`}>{l}</button>)}</div><div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 min-h-[400px]">{tab === 'system' ? (<div className="space-y-4 animate-in"><div className="text-sm font-bold uppercase text-slate-400 tracking-wider">Erweiterte Tools</div><button onClick={()=>setView('history')} className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-5 rounded-2xl flex items-center justify-between group transition-all"><div className="flex items-center gap-3 font-bold"><History size={20}/> HACCP Protokolle (PDF)</div><ChevronRight className="opacity-50 group-hover:translate-x-1 transition-transform"/></button><div className="flex items-center justify-between p-5 bg-slate-50 rounded-2xl border border-slate-100 mt-4"><div className="font-bold flex gap-3 items-center text-slate-700"><Bug size={20}/> Debug Konsole</div><button onClick={toggleDebug} className={`w-14 h-8 rounded-full p-1 transition-colors duration-300 ${debugMode?'bg-emerald-500':'bg-slate-200'}`}><div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-transform duration-300 ${debugMode?'translate-x-6':''}`}/></button></div></div>) : tab==='company' ? (<CompanyEditor data={data.company} appId={appId} showToast={showToast}/>) : edit ? (<Editor type={tab} data={edit} close={()=>setEdit(null)} appId={appId} showToast={showToast} />) : (<div className="space-y-4 animate-in"><Button variant="ghost" onClick={()=>setEdit({isNew:true})} className="border-dashed py-5 text-slate-400 bg-slate-50 hover:bg-slate-100 hover:text-slate-600"><Plus size={20}/> Neuen Eintrag hinzufügen</Button><div className="divide-y divide-slate-100">{(data[tab]||[]).map(item => (<div key={item.id} className="py-4 flex justify-between items-center group"><div><div className="font-bold text-slate-700 text-lg">{item.name}</div>{tab==='tasks' && <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mt-1">{item.area} • {Object.keys(item.schedule||{}).filter(k=>item.schedule[k]).length} Tage</div>}</div><div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"><button onClick={()=>setEdit(item)} className="p-3 bg-indigo-50 text-indigo-500 rounded-xl hover:bg-indigo-100"><Settings size={18}/></button><button onClick={()=>del(item.id)} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-100"><Trash2 size={18}/></button></div></div>))}</div></div>)}</div></div>
             );
         };
+
+        const CompanyEditor = ({ data, appId, showToast }) => {
+             const [f, setF] = useState(data||{});
+             const save = async () => { await setDoc(doc(db,'artifacts',appId,'public','data','company','info'), f); showToast("Firmendaten gespeichert"); }
+             return <div className="space-y-4 animate-in"><div className="text-xs text-slate-400">Diese Daten erscheinen auf den HACCP PDFs.</div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Betriebsname</span><Input value={f.name||''} onChange={e=>setF({...f,name:e.target.value})} /></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Anschrift</span><Input value={f.address||''} onChange={e=>setF({...f,address:e.target.value})} /></div><Button onClick={save}>Speichern</Button></div>
+        }
 
         const Editor = ({ type, data, close, appId, showToast }) => {
-            const [form, setForm] = useState({...data});
-            const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true});
-            const [loading, setLoading] = useState(false);
-
-            const save = async () => {
-                if(!form.name) return;
-                setLoading(true);
-                const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':'staff';
-                const payload = { ...form };
-                if(type==='tasks') { payload.schedule = sched; payload.dept = form.dept||'kitchen'; payload.area = form.area||'General'; }
-                if(type==='staff') { payload.role = form.role||'user'; payload.departments = form.departments||[]; payload.pin = form.pin||'0000'; }
-                if(['cooling','fryers'].includes(type)) payload.status = form.status||'active';
-
-                delete payload.id; delete payload.isNew;
-                const ref = collection(db,'artifacts',appId,'public','data',col);
-                
-                if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()});
-                else await updateDoc(doc(ref, data.id), payload);
-                
-                showToast("Gespeichert"); setLoading(false); close();
-            };
-
-            const toggleDept = (d) => {
-                const cur = form.departments || [];
-                setForm({...form, departments: cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]});
-            };
-
+            const [form, setForm] = useState({...data}); const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); const [loading, setLoading] = useState(false);
+            const save = async () => { if(!form.name) return; setLoading(true); const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':'staff'; const payload = { ...form }; if(type==='tasks') { payload.schedule = sched; payload.dept = form.dept||'kitchen'; payload.area = form.area||'General'; } if(type==='staff') { payload.role = form.role||'user'; payload.departments = form.departments||[]; payload.pin = form.pin||'0000'; } if(['cooling','fryers'].includes(type)) payload.status = form.status||'active'; delete payload.id; delete payload.isNew; const ref = collection(db,'artifacts',appId,'public','data',col); if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()}); else await updateDoc(doc(ref, data.id), payload); showToast("Gespeichert"); setLoading(false); close(); };
+            const toggleDept = (d) => { const cur = form.departments || []; setForm({...form, departments: cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]}); };
             return (
-                <div className="space-y-4">
-                    <div className="flex justify-between items-center mb-2"><h3 className="font-bold text-lg">{data.isNew?'Neu':'Bearbeiten'}</h3><button onClick={close}><X/></button></div>
-                    <div className="space-y-1"><span className="text-xs font-bold uppercase text-slate-400">Name</span><Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})}/></div>
-                    
-                    {type==='suppliers' && <div className="text-xs text-slate-400">Lieferanten erscheinen in der Einkaufsliste zur Auswahl.</div>}
-
-                    {type==='staff' && (
-                        <>
-                            <div className="flex gap-2">
-                                <button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-3 rounded-xl border-2 font-bold ${(form.departments||[]).includes('kitchen')?'border-orange-500 bg-orange-50 text-orange-600':'border-slate-100'}`}>Küche</button>
-                                <button onClick={()=>toggleDept('service')} className={`flex-1 py-3 rounded-xl border-2 font-bold ${(form.departments||[]).includes('service')?'border-purple-500 bg-purple-50 text-purple-600':'border-slate-100'}`}>Service</button>
-                            </div>
-                            <div className="flex gap-2">
-                                <div className="flex-1"><span className="text-xs font-bold uppercase text-slate-400">Rolle</span><Select value={form.role||'user'} onChange={e=>setForm({...form,role:e.target.value})}><option value="user">User</option><option value="admin">Admin</option></Select></div>
-                                <div className="flex-1"><span className="text-xs font-bold uppercase text-slate-400">PIN</span><Input value={form.pin||''} onChange={e=>setForm({...form,pin:e.target.value})}/></div>
-                            </div>
-                        </>
-                    )}
-
-                    {type==='tasks' && (
-                        <>
-                           <div className="flex gap-2">
-                                <div className="flex-1"><span className="text-xs font-bold uppercase text-slate-400">Bereich</span><Input value={form.area||''} onChange={e=>setForm({...form,area:e.target.value})}/></div>
-                                <div className="flex-1"><span className="text-xs font-bold uppercase text-slate-400">Dept</span><Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}><option value="kitchen">Küche</option><option value="service">Service</option><option value="all">Alle</option></Select></div>
-                           </div>
-                           <div className="bg-slate-50 p-2 rounded-xl flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-8 h-8 rounded-lg text-xs font-bold ${sched[d]?'bg-indigo-600 text-white':'bg-white border'}`}>{d.slice(0,1)}</button>)}</div>
-                        </>
-                    )}
-
-                    <Button onClick={save} loading={loading}>Speichern</Button>
-                </div>
+                <div className="space-y-6 animate-in"><div className="flex justify-between items-center mb-2"><h3 className="font-black text-xl text-slate-800">{data.isNew?'Neu':'Bearbeiten'}</h3><button onClick={close} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bezeichnung</span><Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." /></div>{type==='staff' && (<div className="space-y-4"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Abteilungen</span><div className="flex gap-3"><button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('kitchen')?'border-orange-500 bg-orange-50 text-orange-600':'border-slate-100 bg-white text-slate-400'}`}>Küche</button><button onClick={()=>toggleDept('service')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('service')?'border-purple-500 bg-purple-50 text-purple-600':'border-slate-100 bg-white text-slate-400'}`}>Service</button></div></div><div className="flex gap-3"><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Rolle</span><Select value={form.role||'user'} onChange={e=>setForm({...form,role:e.target.value})}><option value="user">Mitarbeiter</option><option value="admin">Betriebsleiter</option></Select></div><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">PIN</span><Input value={form.pin||''} onChange={e=>setForm({...form,pin:e.target.value})} className="text-center font-mono tracking-widest"/></div></div></div>)}{type==='tasks' && (<div className="space-y-4"><div className="flex gap-3"><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bereich</span><Input value={form.area||''} onChange={e=>setForm({...form,area:e.target.value})} placeholder="z.B. Bar"/></div><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Dept</span><Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}><option value="kitchen">Küche</option><option value="service">Service</option><option value="all">Alle</option></Select></div></div><div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Wochentage</span><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'bg-indigo-600 text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`}>{d.slice(0,2)}</button>)}</div></div></div>)}<Button onClick={save} loading={loading} className="mt-6 shadow-xl shadow-slate-900/10">Speichern</Button></div>
             );
         };
 
