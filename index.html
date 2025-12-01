@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Gastromaster v31.0</title>
+    <title>Gastromaster v30.2</title>
     
     <!-- Styles & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -86,6 +86,7 @@
 
         const DEFAULT_MODULES = ['prep', 'cleaning', 'cooling', 'oil', 'inventory'];
         const MODULE_ICONS = { prep: <ClipboardList/>, cleaning: <Sparkles/>, cooling: <Snowflake/>, oil: <Droplet/>, inventory: <Truck/>, dashboard: <Menu/>, admin: <Settings/> };
+        // FIX: Added missing MODULE_NAMES constant
         const MODULE_NAMES = { prep: "Mise en Place", cleaning: "Putzplan", cooling: "Kühlung", oil: "Fett & Öl", inventory: "Einkauf" };
         
         const DICTIONARY = {
@@ -120,6 +121,7 @@
             </div>
         );
 
+        // --- ERROR BOUNDARY ---
         class ErrorBoundary extends React.Component {
             constructor(props) { super(props); this.state = { hasError: false, error: null }; }
             static getDerivedStateFromError(error) { return { hasError: true, error }; }
@@ -139,6 +141,7 @@
             }
         }
 
+        // --- PIN PAD ---
         const PinPad = ({ title, onClose, onSuccess, targetPin }) => {
             const [pin, setPin] = useState('');
             const handleNum = (n) => {
@@ -162,6 +165,7 @@
             );
         };
 
+        // --- LANGUAGE SWITCHER ---
         const LanguageSwitcher = ({ current, set }) => (
             <div className="absolute top-6 right-6 z-50">
                 <div className="relative group">
@@ -177,6 +181,7 @@
             </div>
         );
 
+        // --- LOGO COMPONENT ---
         const AppLogo = ({ company, large }) => {
             if (company?.logoUrl) {
                 return <img src={company.logoUrl} alt="Logo" className={`${large ? 'h-24' : 'h-8'} object-contain mx-auto rounded-lg transition-all`} />;
@@ -184,11 +189,12 @@
             return (
                 <div>
                     <h1 className={`${large ? 'text-4xl' : 'text-xl'} font-black text-white italic tracking-tighter`}>{company?.appName || 'GASTROMASTER'}</h1>
-                    {large && <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v31.0</p>}
+                    {large && <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v30.2</p>}
                 </div>
             );
         };
 
+        // --- ENTERPRISE LOGIN & REGISTRATION ---
         const EnterpriseLogin = ({ onLogin, onRegister, loading, lang, setLang }) => {
             const [id, setId] = useState('');
             const [regCode, setRegCode] = useState('');
@@ -249,6 +255,7 @@
             );
         };
 
+        // --- HEAD ADMIN PANEL ---
         const HeadAdminPanel = ({ onLogout, showToast }) => {
             const [activeId, setActiveId] = useState('');
             const [token, setToken] = useState(null);
@@ -257,6 +264,7 @@
 
             const normalizedActiveId = normalizeId(activeId);
 
+            // FIX: Correct Path to store tokens
             const createToken = async () => {
                 const t = generateToken();
                 await setDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'tokens', t), { created: serverTimestamp(), active: true });
@@ -347,6 +355,7 @@
             const [adminAlert, setAdminAlert] = useState(false);
             const [seedSuccess, setSeedSuccess] = useState(false);
             
+            // Default Data
             const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [], prep: [], company: {} });
             const [status, setStatus] = useState({ tempLogs: [], cleaningLogs: {}, oilLogs: {}, prepLogs: {}, shoppingList: [], yesterdayOil: {}, signatures: {} });
             const [debugMode, setDebugMode] = useState(false);
@@ -434,6 +443,23 @@
                 return () => { [...unsubs, ...unsubsLive].forEach(u => u()); };
             }, [user, appId, isHeadAdmin]);
 
+            const deleteBranch = async () => {
+                if(!appId) return;
+                setLoading(true);
+                try {
+                    const collections = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'prep_tasks', 'suppliers', 'settings', 'company', 'logs_temp', 'logs_cleaning', 'logs_prep', 'logs_oil', 'shopping_list', 'logs_signatures'];
+                    for (const col of collections) {
+                        const ref = collection(db, 'artifacts', appId, 'public', 'data', col);
+                        const snap = await getDocs(ref);
+                        const batch = writeBatch(db);
+                        snap.docs.forEach(doc => batch.delete(doc.ref));
+                        await batch.commit();
+                    }
+                    localStorage.removeItem('gastro_app_id');
+                    window.location.reload();
+                } catch(e) { console.error(e); showToast("Fehler beim Löschen", "error"); setLoading(false); }
+            };
+
             const seedDB = async (targetId, masterKey = null) => {
                 const id = targetId || appId;
                 if(!id) return;
@@ -461,6 +487,7 @@
             if (view === 'head-panel') return <HeadAdminPanel onLogout={()=>{setIsHeadAdmin(false); setView('login');}} showToast={showToast} />;
             if (!appId) return <EnterpriseLogin onLogin={handleRestaurantLogin} onRegister={handleRegistration} loading={loading} lang={lang} setLang={setLang} />;
             if (loading) return <Loading />;
+            // IMPORTANT: Added missing LoginScreen definition check.
             if (!appUser) return <LoginScreen staff={data.staff} restaurantId={appId} company={data.company} yesterdayOil={status.yesterdayOil} fryers={data.fryers} onLogin={handleUserLogin} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} onSeed={()=>seedDB()} showToast={showToast} seedSuccess={seedSuccess} onCloseSeed={()=>setSeedSuccess(false)} lang={lang} onMasterRecovery={handleMasterKeyRecovery} />;
 
             const common = { user: appUser, appId, showToast, data, status, lang, moduleOrder };
@@ -597,7 +624,6 @@
             const t = DICTIONARY[lang];
             const list = data.prep || [];
             const myDepts = user.departments || [];
-            // Updated filter logic for new roles
             const relevant = list.filter(i => i.schedule?.[day] && (user.role==='admin' || ['kitchen_lead','service_lead'].includes(user.role) || myDepts.includes(i.dept)));
             const prepItems = relevant.filter(i => i.category === 'prep').sort((a,b) => (status.prepLogs[a.id]?1:0) - (status.prepLogs[b.id]?1:0));
             const stockItems = relevant.filter(i => i.category === 'stock').sort((a,b) => (status.prepLogs[a.id]?1:0) - (status.prepLogs[b.id]?1:0));
