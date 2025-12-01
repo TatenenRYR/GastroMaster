@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>GastroManager Platinum v15.0</title>
+    <title>Gastromaster v16.0</title>
     
     <!-- Styles & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -21,14 +21,14 @@
         
         input, select, button { touch-action: manipulation; }
         .pin-btn { @apply active:scale-90 transition-transform bg-slate-100 rounded-full w-16 h-16 flex items-center justify-center text-xl font-bold text-slate-700 shadow-sm border border-slate-200; }
-        .debug-overlay { background: rgba(15, 23, 42, 0.98); }
+        .card-press { @apply active:scale-[0.98] transition-all duration-200; }
     </style>
 
     <!-- PDF Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 
-    <!-- React -->
+    <!-- React & Babel -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -49,7 +49,7 @@
             ChefHat, Coffee, AlertTriangle, Bug, Terminal, Eraser, 
             ChevronDown, ShoppingBag, Activity, Database, Calendar, AlertOctagon, Info,
             History, FileText, ChevronRight, ChevronLeft, Store, Key, ShieldCheck, Lock, Unlock, Zap,
-            ClipboardList, Box, Layers, PenTool, ShieldAlert, BadgeCheck
+            ClipboardList, Box, Layers, PenTool, ShieldAlert, BadgeCheck, Code
         } from "https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0";
 
         const { useState, useEffect, useRef, useMemo } = React;
@@ -79,7 +79,7 @@
         const formatDateDE = (str) => { if(!str) return '-'; const [y,m,d] = str.split('-'); return `${d}.${m}.${y}`; };
 
         // --- COMPONENTS ---
-        const Loading = () => <div className="h-full flex items-center justify-center bg-slate-50"><div className="flex flex-col items-center gap-4"><Loader2 className="animate-spin text-indigo-600" size={48}/><span className="text-slate-400 text-xs font-bold tracking-widest uppercase">Lade System...</span></div></div>;
+        const Loading = () => <div className="h-full flex items-center justify-center bg-slate-50"><div className="flex flex-col items-center gap-4"><Loader2 className="animate-spin text-indigo-600" size={48}/><span className="text-slate-400 text-xs font-bold tracking-widest uppercase">Lade Gastromaster...</span></div></div>;
         const Input = (props) => <input {...props} className={`w-full p-4 rounded-2xl border border-slate-200 bg-white text-base font-medium focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all ${props.className}`} />;
         const Select = (props) => <div className="relative"><select {...props} className={`w-full p-4 pr-10 rounded-2xl border border-slate-200 bg-white text-base font-medium appearance-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all ${props.className}`}>{props.children}</select><ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={20}/></div>;
         const Button = ({ children, loading, variant='primary', onClick, disabled, className='' }) => {
@@ -100,10 +100,20 @@
 
         // --- ERROR BOUNDARY ---
         class ErrorBoundary extends React.Component {
-            constructor(props) { super(props); this.state = { hasError: false }; }
-            static getDerivedStateFromError(error) { return { hasError: true }; }
+            constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+            static getDerivedStateFromError(error) { return { hasError: true, error }; }
+            componentDidCatch(error, info) { console.error("Crash:", error, info); }
             render() {
-                if (this.state.hasError) return <div className="p-10 text-center"><h1 className="font-bold">Systemfehler.</h1><button onClick={()=>window.location.reload()} className="mt-4 bg-slate-900 text-white px-4 py-2 rounded">Neustart</button></div>;
+                if (this.state.hasError) return (
+                    <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+                        <div className="bg-red-50 p-6 rounded-3xl border border-red-100 max-w-sm">
+                            <h2 className="text-xl font-black text-red-600 mb-2">Ups, ein Fehler!</h2>
+                            <p className="text-sm text-red-400 mb-4">Das System musste neu gestartet werden.</p>
+                            <pre className="text-[10px] bg-white p-2 rounded border border-red-100 text-left mb-4 overflow-auto max-h-32">{this.state.error?.toString()}</pre>
+                            <Button onClick={()=>window.location.reload()} variant="danger">Neustart erzwingen</Button>
+                        </div>
+                    </div>
+                );
                 return this.props.children;
             }
         }
@@ -140,11 +150,12 @@
                 <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600 rounded-full blur-[150px] opacity-10 animate-pulse"></div>
                     <div className="z-10 w-full max-w-sm mx-auto animate-in text-center space-y-8">
-                        <div><h1 className="text-4xl font-black text-white italic tracking-tighter mb-2">GASTRO<span className="text-indigo-500">.APP</span></h1><p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Platinum v15.0</p></div>
+                        <div><h1 className="text-4xl font-black text-white italic tracking-tighter mb-2">GASTROMASTER</h1><p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v16.0</p></div>
                         <div className="bg-white/10 backdrop-blur-lg border border-white/10 p-6 rounded-3xl shadow-2xl space-y-4">
                             <div><label className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest ml-1">Restaurant ID</label><div className="relative"><Store className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/><input value={id} onChange={e=>setId(e.target.value)} placeholder="z.B. berlin-01" className="w-full pl-12 p-4 rounded-xl bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 font-mono" onKeyDown={e=>e.key==='Enter'&&submit()}/></div></div>
                             <Button onClick={submit} loading={loading} className="shadow-indigo-500/20 mt-2">Filiale Öffnen</Button>
                         </div>
+                        <div className="text-[10px] text-slate-600 font-medium opacity-50 flex items-center justify-center gap-1"><Code size={10}/> Entwickelt von Marvin Ringer</div>
                     </div>
                 </div>
             );
@@ -160,8 +171,9 @@
             const [loading, setLoading] = useState(true);
             const [toast, setToast] = useState(null);
             const [adminAlert, setAdminAlert] = useState(false);
-            const [seedSuccess, setSeedSuccess] = useState(false); // New state for initial success modal
+            const [seedSuccess, setSeedSuccess] = useState(false);
             
+            // Defensiv initialisiert
             const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [], prep: [], company: {} });
             const [status, setStatus] = useState({ tempLogs: [], cleaningLogs: {}, oilLogs: {}, prepLogs: {}, shoppingList: [], yesterdayOil: {}, signatures: {} });
             const [debugMode, setDebugMode] = useState(false);
@@ -219,7 +231,6 @@
                 return () => { [...unsubs, ...unsubsLive].forEach(u => u()); };
             }, [user, appId]);
 
-            // --- FULL DELETE BRANCH ---
             const deleteBranch = async () => {
                 if(!appId) return;
                 setLoading(true);
@@ -254,7 +265,7 @@
                         const ref = item.id ? doc(db, 'artifacts', appId, 'public', 'data', item.col, item.id) : collection(db, 'artifacts', appId, 'public', 'data', item.col);
                         if(item.id) await setDoc(ref, item.data); else await addDoc(ref, {...item.data, createdAt: serverTimestamp()});
                     }
-                    setSeedSuccess(true); // SHOW SUCCESS MODAL
+                    setSeedSuccess(true);
                 } catch(e) { console.error(e); }
                 setLoading(false);
             };
@@ -264,23 +275,22 @@
             if (!appUser) return <LoginScreen staff={data.staff} restaurantId={appId} yesterdayOil={status.yesterdayOil} fryers={data.fryers} onLogin={handleUserLogin} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} onSeed={seedDB} showToast={showToast} seedSuccess={seedSuccess} onCloseSeed={()=>setSeedSuccess(false)} />;
 
             const common = { user: appUser, appId, showToast, data, status };
-            const hasAccess = (dept) => appUser.role === 'admin' || (appUser.departments || []).includes(dept);
+            const hasAccess = (dept) => appUser?.role === 'admin' || (appUser?.departments || []).includes(dept); // FIX: Safe Access Check
 
             return (
                 <ErrorBoundary>
                     <div className="min-h-full bg-slate-50 font-sans text-slate-800 pb-20">
                         <header className="bg-slate-900 text-white pt-[max(1rem,env(safe-area-inset-top))] pb-4 px-5 sticky top-0 z-50 shadow-lg flex justify-between items-center">
-                            <div><h2 className="font-black text-xl italic tracking-tighter cursor-pointer" onClick={()=>setView('dashboard')}>GASTRO<span className="text-indigo-400">.PLATINUM</span></h2><div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none flex items-center gap-1"><Store size={8}/> {appId} • {appUser.name}</div></div>
+                            <div><h2 className="font-black text-xl italic tracking-tighter cursor-pointer" onClick={()=>setView('dashboard')}>GASTROMASTER</h2><div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none flex items-center gap-1"><Store size={8}/> {appId} • {appUser.name}</div></div>
                             <div className="flex gap-2"><button onClick={() => setAppUser(null)} className="bg-white/10 p-2 rounded-full hover:bg-red-600 transition-colors"><LogOut size={18}/></button></div>
                         </header>
 
-                        {/* SECURITY WARNING OVERLAY FOR ADMIN */}
                         {adminAlert && (
                             <div className="fixed inset-0 z-[100] bg-red-900/95 flex items-center justify-center p-6 animate-in">
                                 <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl text-center space-y-6">
                                     <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto shadow-lg animate-pulse"><ShieldAlert size={40}/></div>
                                     <div><h3 className="font-black text-2xl text-red-600 mb-1">SICHERHEITSRISIKO!</h3><p className="text-sm font-bold text-slate-600">Standard-PIN 1234 ist aktiv.</p></div>
-                                    <p className="text-xs text-slate-500 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-200 text-left">Bitte ändern Sie Ihre PIN sofort im Admin-Bereich unter "Team". Solange dies nicht geschieht, ist das System unsicher.</p>
+                                    <p className="text-xs text-slate-500 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-200 text-left">Bitte ändern Sie Ihre PIN sofort im Admin-Bereich unter "Team".</p>
                                     <Button onClick={()=>setAdminAlert(false)} className="w-full bg-red-600 hover:bg-red-700 shadow-red-200 text-white">Ich habe verstanden</Button>
                                 </div>
                             </div>
@@ -315,7 +325,6 @@
         const LoginScreen = ({ staff, restaurantId, onLogoutSystem, yesterdayOil, fryers, onSeed, onLogin, showToast, seedSuccess, onCloseSeed }) => {
             const [selectedUser, setSelectedUser] = useState(null); const [showPin, setShowPin] = useState(false);
             const oilLogs = Object.values(yesterdayOil || {});
-            // Only show Yesterday Oil warning if we actually have fryers configured (don't show for empty branch)
             const showOilWarning = (fryers||[]).length > 0;
             
             const handleUserClick = (u) => { 
@@ -326,7 +335,6 @@
             return (
                 <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden"><div className="absolute top-[-20%] right-[-20%] w-[80%] h-[80%] bg-indigo-600 rounded-full blur-[150px] opacity-20 animate-pulse"></div>{showPin && (<PinPad title={`PIN für ${selectedUser.name}`} targetPin={selectedUser.pin} onClose={()=>setShowPin(false)} onSuccess={()=>{setShowPin(false); onLogin(selectedUser);}} />)}
                 
-                {/* SEED SUCCESS MODAL */}
                 {seedSuccess && (
                     <div className="fixed inset-0 z-[100] bg-slate-900/90 flex items-center justify-center p-6 animate-in">
                         <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center">
@@ -334,37 +342,26 @@
                             <h3 className="font-black text-2xl text-slate-800">Filiale Bereit!</h3>
                             <p className="text-slate-500 mb-6">Die Datenbank wurde erfolgreich angelegt.</p>
                             <div className="bg-slate-100 p-4 rounded-xl text-left text-sm mb-6 border border-slate-200">
-                                <div className="text-xs uppercase font-bold text-slate-400">Dein Login:</div>
-                                <div className="font-bold text-lg text-indigo-600">Betriebsleiter</div>
-                                <div className="text-xs uppercase font-bold text-slate-400 mt-2">Deine PIN:</div>
-                                <div className="font-bold text-lg text-indigo-600">1234</div>
+                                <div className="text-xs uppercase font-bold text-slate-400">Dein Login:</div><div className="font-bold text-lg text-indigo-600">Betriebsleiter</div>
+                                <div className="text-xs uppercase font-bold text-slate-400 mt-2">Deine PIN:</div><div className="font-bold text-lg text-indigo-600">1234</div>
                             </div>
                             <Button onClick={onCloseSeed}>Zum Login</Button>
                         </div>
                     </div>
                 )}
 
-                <div className="z-10 w-full max-w-sm mx-auto space-y-6 animate-in"><div className="flex justify-between items-start"><div><h1 className="text-4xl font-black text-white mb-2 italic tracking-tighter">GASTRO<span className="text-indigo-500">.APP</span></h1><p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.3em] flex items-center gap-1"><Store size={10}/> {restaurantId}</p></div><button onClick={onLogoutSystem} className="text-slate-500 hover:text-white transition-colors bg-white/5 p-2 rounded-full"><LogOut size={20}/></button></div>
+                <div className="z-10 w-full max-w-sm mx-auto space-y-6 animate-in"><div className="flex justify-between items-start"><div><h1 className="text-4xl font-black text-white mb-2 italic tracking-tighter">GASTROMASTER</h1><p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.3em] flex items-center gap-1"><Store size={10}/> {restaurantId}</p></div><button onClick={onLogoutSystem} className="text-slate-500 hover:text-white transition-colors bg-white/5 p-2 rounded-full"><LogOut size={20}/></button></div>
                 
-                {/* VORTAGS INFO (Nur wenn Fritteusen existieren) */}
                 {showOilWarning && (
                     <div className={`p-4 rounded-2xl backdrop-blur-sm shadow-xl border ${oilLogs.length === 0 ? 'bg-red-500/20 border-red-500/30 text-red-200' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
                         <div className="text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1"><AlertTriangle size={10}/> Info vom Vortag</div>
-                        {oilLogs.length === 0 ? (
-                            <div className="text-sm font-bold flex items-center gap-2"><X size={16}/> Fettliste wurde NICHT gemacht!</div>
-                        ) : (
-                            <div className="space-y-1">
-                                {oilLogs.map((l,i) => {
-                                    const fname = (fryers||[]).find(f=>f.id===l.deviceId)?.name || 'Fritteuse';
-                                    const crit = l.tpm >= 24; const warn = l.tpm >= 20;
-                                    return <div key={i} className="text-xs flex justify-between"><span>{fname}</span><span className={`font-bold ${crit?'text-red-400':warn?'text-amber-400':'text-emerald-400'}`}>{l.tpm}% TPM</span></div>
-                                })}
-                            </div>
-                        )}
+                        {oilLogs.length === 0 ? (<div className="text-sm font-bold flex items-center gap-2"><X size={16}/> Fettliste wurde NICHT gemacht!</div>) : (<div className="space-y-1">{oilLogs.map((l,i) => { const fname = (fryers||[]).find(f=>f.id===l.deviceId)?.name || 'Fritteuse'; const crit = l.tpm >= 24; const warn = l.tpm >= 20; return <div key={i} className="text-xs flex justify-between"><span>{fname}</span><span className={`font-bold ${crit?'text-red-400':warn?'text-amber-400':'text-emerald-400'}`}>{l.tpm}% TPM</span></div> })}</div>)}
                     </div>
                 )}
 
-                <div className="space-y-3"><div className="text-slate-500 text-xs font-bold uppercase ml-2">Team Login</div>{(staff||[]).map(s => (<button key={s.id} onClick={() => handleUserClick(s)} className="w-full bg-white/5 hover:bg-indigo-600 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm"><div className="bg-indigo-500/20 p-2.5 rounded-xl"><User size={20} className="text-indigo-300 group-hover:text-white"/></div><div className="flex-1 text-left"><div className="font-bold text-lg">{s.name}</div><div className="text-[11px] opacity-60 uppercase font-medium">{s.role==='admin'?'Betriebsleiter':(s.departments||[]).join(' • ')}</div></div>{s.pin && s.pin.length>0 ? <Lock size={16} className="opacity-50"/> : <Unlock size={16} className="opacity-30 text-red-400"/>}</button>))}</div>{(staff||[]).length===0 && <div className="text-center pt-8"><p className="text-slate-500 text-sm mb-4">Erster Start?</p><button onClick={onSeed} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg">Datenbank Initialisieren</button></div>}</div></div>
+                <div className="space-y-3"><div className="text-slate-500 text-xs font-bold uppercase ml-2">Team Login</div>{(staff||[]).map(s => (<button key={s.id} onClick={() => clickUser(s)} className="w-full bg-white/5 hover:bg-indigo-600 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm"><div className="bg-indigo-500/20 p-2.5 rounded-xl"><User size={20} className="text-indigo-300 group-hover:text-white"/></div><div className="flex-1 text-left"><div className="font-bold text-lg">{s.name}</div><div className="text-[11px] opacity-60 uppercase font-medium">{s.role==='admin'?'Betriebsleiter':(s.departments||[]).join(' • ')}</div></div>{s.pin && s.pin.length>0 ? <Lock size={16} className="opacity-50"/> : <Unlock size={16} className="opacity-30 text-red-400"/>}</button>))}</div>{(staff||[]).length===0 && <div className="text-center pt-8"><p className="text-slate-500 text-sm mb-4">Erster Start?</p><button onClick={onSeed} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg">Datenbank Initialisieren</button></div>}
+                <div className="text-[10px] text-slate-500 text-center mt-8 opacity-60 flex justify-center items-center gap-1"><Code size={10}/> Entwickelt von Marvin Ringer</div>
+                </div></div>
             );
         };
 
@@ -399,46 +396,20 @@
         const Cooling = ({ data, status, user, appId, showToast }) => { 
             const [val, setVal] = useState({}); const active = (data.cooling || []).filter(d => d.status!=='defekt'); 
             const signature = status.signatures['cooling'];
-            // Signature is only allowed if ALL devices have a log for today
             const canSign = active.length > 0 && active.every(d => status.tempLogs.find(l => l.deviceId === d.id));
-            
             const save = async (dev) => { if(!val[dev.id]) return; try { await addDoc(collection(db,'artifacts',appId,'public','data','logs_temp'), { deviceId:dev.id, deviceName:dev.name, temp: val[dev.id], user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); setVal(p=>({...p,[dev.id]:''})); showToast("Temperatur erfasst"); } catch(e){ console.error(e); } }; 
             const sign = async () => { if(confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) { await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_cooling`), { module:'cooling', user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); showToast("Protokoll signiert!"); } };
-            
-            return (<div className="animate-in space-y-6"><div><h2 className="text-3xl font-black text-slate-800">Kühlung</h2><p className="text-slate-400 text-sm font-medium">HACCP Dokumentation</p></div><div className="grid gap-4">{active.map(dev => { const done = status.tempLogs.find(l=>l.deviceId===dev.id); const v = val[dev.id] || ''; const isHigh = v && (parseFloat(v)>8 || parseFloat(v)<0); return (<div key={dev.id} className={`p-6 rounded-[2rem] border shadow-sm transition-all ${done?'bg-emerald-50/50 border-emerald-100':'bg-white border-slate-100'}`}><div className="flex justify-between mb-4 font-black text-lg text-slate-700 items-center"><span>{dev.name}</span>{done ? <span className="text-emerald-600 bg-emerald-100 px-2 py-1 rounded-lg text-sm">{done.temp}°C</span> : <Thermometer size={20} className="text-slate-300"/>}</div>{!done && (<div className="flex gap-3 h-14"><div className="relative flex-1 h-full"><input type="number" inputMode="decimal" value={v} onChange={e=>setVal({...val,[dev.id]:e.target.value})} placeholder="0.0" className={`w-full h-full rounded-2xl border-2 font-black text-2xl text-center outline-none transition-colors ${isHigh?'border-red-300 bg-red-50 text-red-600 placeholder-red-300':'border-slate-100 focus:border-indigo-500 placeholder-slate-200'}`} /></div><button onClick={()=>save(dev)} className="bg-slate-900 active:bg-slate-800 text-white w-16 h-full rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/20"><Save size={24}/></button></div>)}{isHigh && <div className="text-red-500 text-xs font-bold mt-2 flex items-center gap-1"><AlertTriangle size={12}/> Achtung: Kritischer Bereich</div>}</div>); })}</div>
-            {/* SIGNATURE SECTION */}
-            <div className="mt-8 pt-6 border-t border-slate-200">
-                {signature ? (
-                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold"><PenTool size={20}/><div className="flex-1"><div className="text-xs uppercase opacity-70">Digital Signiert von</div><div className="text-lg">{signature.user}</div></div></div>
-                ) : (
-                    <div className="space-y-2">
-                        <Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18}/> Tagesprotokoll Signieren</Button>
-                        {!canSign && <div className="text-center text-xs text-slate-400">Erst signieren, wenn alle Geräte erfasst sind. ({status.tempLogs.length}/{active.length})</div>}
-                    </div>
-                )}
-            </div></div>); 
+            return (<div className="animate-in space-y-6"><div><h2 className="text-3xl font-black text-slate-800">Kühlung</h2><p className="text-slate-400 text-sm font-medium">HACCP Dokumentation</p></div><div className="grid gap-4">{active.map(dev => { const done = status.tempLogs.find(l=>l.deviceId===dev.id); const v = val[dev.id] || ''; const isHigh = v && (parseFloat(v)>8 || parseFloat(v)<0); return (<div key={dev.id} className={`p-6 rounded-[2rem] border shadow-sm transition-all ${done?'bg-emerald-50/50 border-emerald-100':'bg-white border-slate-100'}`}><div className="flex justify-between mb-4 font-black text-lg text-slate-700 items-center"><span>{dev.name}</span>{done ? <span className="text-emerald-600 bg-emerald-100 px-2 py-1 rounded-lg text-sm">{done.temp}°C</span> : <Thermometer size={20} className="text-slate-300"/>}</div>{!done && (<div className="flex gap-3 h-14"><div className="relative flex-1 h-full"><input type="number" inputMode="decimal" value={v} onChange={e=>setVal({...val,[dev.id]:e.target.value})} placeholder="0.0" className={`w-full h-full rounded-2xl border-2 font-black text-2xl text-center outline-none transition-colors ${isHigh?'border-red-300 bg-red-50 text-red-600 placeholder-red-300':'border-slate-100 focus:border-indigo-500 placeholder-slate-200'}`} /></div><button onClick={()=>save(dev)} className="bg-slate-900 active:bg-slate-800 text-white w-16 h-full rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/20"><Save size={24}/></button></div>)}{isHigh && <div className="text-red-500 text-xs font-bold mt-2 flex items-center gap-1"><AlertTriangle size={12}/> Achtung: Kritischer Bereich</div>}</div>); })}</div><div className="mt-8 pt-6 border-t border-slate-200">{signature ? (<div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold"><PenTool size={20}/><div className="flex-1"><div className="text-xs uppercase opacity-70">Digital Signiert von</div><div className="text-lg">{signature.user}</div></div></div>) : (<div className="space-y-2"><Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18}/> Tagesprotokoll Signieren</Button>{!canSign && <div className="text-center text-xs text-slate-400">Erst signieren, wenn alle Geräte erfasst sind.</div>}</div>)}</div></div>); 
         };
 
         const Oil = ({ data, status, user, appId, showToast }) => { 
             const [inp, setInp] = useState({}); const active = (data.fryers || []).filter(d => d.status!=='defekt'); 
             const signature = status.signatures['oil'];
             const canSign = active.length > 0 && active.every(d => status.oilLogs[d.id]);
-
             const save = async (dev) => { const t = inp[dev.id]?.t, p = inp[dev.id]?.p; if(!t || !p) return; await addDoc(collection(db,'artifacts',appId,'public','data','logs_oil'), { deviceId:dev.id, deviceName:dev.name, temp:t, tpm:p, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); showToast("Gespeichert"); }; 
             const deleteLog = async (logId) => { if(confirm("Eintrag wirklich löschen?")) { await deleteDoc(doc(db,'artifacts',appId,'public','data','logs_oil', logId)); showToast("Gelöscht"); }};
             const sign = async () => { if(confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) { await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_oil`), { module:'oil', user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); showToast("Protokoll signiert!"); } };
-            
-            return (<div className="animate-in space-y-6"><div><h2 className="text-3xl font-black text-slate-800">Fett & Öl</h2><p className="text-slate-400 text-sm font-medium">TPM Messung</p></div><div className="space-y-4">{active.map(dev => { const l = status.oilLogs[dev.id]; const quality = l ? (l.tpm>=24?'bad':l.tpm>=20?'warn':'good') : null; const colors = { bad: 'bg-red-500 shadow-red-200', warn: 'bg-amber-500 shadow-amber-200', good: 'bg-emerald-500 shadow-emerald-200' }; const labels = { bad: 'Wechseln', warn: 'Filtern', good: 'OK' }; return (<div key={dev.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm"><div className="flex justify-between items-center mb-6"><span className="font-bold text-lg text-slate-700">{dev.name}</span>{l ? <div className="flex items-center gap-2"><span className={`text-white text-xs font-black px-3 py-1.5 rounded-xl uppercase shadow-lg ${colors[quality]}`}>{labels[quality]}</span><button onClick={()=>deleteLog(l.id)} className="p-2 bg-slate-100 rounded-full hover:bg-red-100 hover:text-red-500 transition-colors"><Trash2 size={14}/></button></div> : <span className="bg-slate-100 text-slate-400 text-xs font-bold px-2 py-1 rounded-lg">Messung offen</span>}</div>{!l ? (<div className="flex gap-3"><div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">Temp</div><Input type="number" inputMode="decimal" placeholder="°C" className="text-center h-14 font-bold text-xl" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],t:e.target.value}})} /></div><div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">TPM %</div><Input type="number" inputMode="decimal" placeholder="%" className="text-center h-14 font-bold text-xl" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],p:e.target.value}})} /></div><div className="space-y-1"><div className="h-[17px]"></div><button onClick={()=>save(dev)} className="bg-slate-900 text-white h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg"><Save size={24}/></button></div></div>) : (<div className="grid grid-cols-2 gap-3"><div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Temp</div><div className="font-black text-xl text-slate-700">{l.temp}°C</div></div><div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">TPM</div><div className="font-black text-xl text-slate-700">{l.tpm}%</div></div></div>)}</div>); })}</div>
-            <div className="mt-8 pt-6 border-t border-slate-200">
-                {signature ? (
-                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold"><PenTool size={20}/><div className="flex-1"><div className="text-xs uppercase opacity-70">Digital Signiert von</div><div className="text-lg">{signature.user}</div></div></div>
-                ) : (
-                    <div className="space-y-2">
-                        <Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18}/> Tagesprotokoll Signieren</Button>
-                        {!canSign && <div className="text-center text-xs text-slate-400">Erst signieren, wenn alle Fritteusen erfasst sind.</div>}
-                    </div>
-                )}
-            </div></div>); 
+            return (<div className="animate-in space-y-6"><div><h2 className="text-3xl font-black text-slate-800">Fett & Öl</h2><p className="text-slate-400 text-sm font-medium">TPM Messung</p></div><div className="space-y-4">{active.map(dev => { const l = status.oilLogs[dev.id]; const quality = l ? (l.tpm>=24?'bad':l.tpm>=20?'warn':'good') : null; const colors = { bad: 'bg-red-500 shadow-red-200', warn: 'bg-amber-500 shadow-amber-200', good: 'bg-emerald-500 shadow-emerald-200' }; const labels = { bad: 'Wechseln', warn: 'Filtern', good: 'OK' }; return (<div key={dev.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm"><div className="flex justify-between items-center mb-6"><span className="font-bold text-lg text-slate-700">{dev.name}</span>{l ? <div className="flex items-center gap-2"><span className={`text-white text-xs font-black px-3 py-1.5 rounded-xl uppercase shadow-lg ${colors[quality]}`}>{labels[quality]}</span><button onClick={()=>deleteLog(l.id)} className="p-2 bg-slate-100 rounded-full hover:bg-red-100 hover:text-red-500 transition-colors"><Trash2 size={14}/></button></div> : <span className="bg-slate-100 text-slate-400 text-xs font-bold px-2 py-1 rounded-lg">Messung offen</span>}</div>{!l ? (<div className="flex gap-3"><div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">Temp</div><Input type="number" inputMode="decimal" placeholder="°C" className="text-center h-14 font-bold text-xl" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],t:e.target.value}})} /></div><div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">TPM %</div><Input type="number" inputMode="decimal" placeholder="%" className="text-center h-14 font-bold text-xl" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],p:e.target.value}})} /></div><div className="space-y-1"><div className="h-[17px]"></div><button onClick={()=>save(dev)} className="bg-slate-900 text-white h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg"><Save size={24}/></button></div></div>) : (<div className="grid grid-cols-2 gap-3"><div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Temp</div><div className="font-black text-xl text-slate-700">{l.temp}°C</div></div><div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">TPM</div><div className="font-black text-xl text-slate-700">{l.tpm}%</div></div></div>)}</div>); })}</div><div className="mt-8 pt-6 border-t border-slate-200">{signature ? (<div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold"><PenTool size={20}/><div className="flex-1"><div className="text-xs uppercase opacity-70">Digital Signiert von</div><div className="text-lg">{signature.user}</div></div></div>) : (<div className="space-y-2"><Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18}/> Tagesprotokoll Signieren</Button>{!canSign && <div className="text-center text-xs text-slate-400">Erst signieren, wenn alle Fritteusen erfasst sind.</div>}</div>)}</div></div>); 
         };
 
         const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView, onLogoutSystem, deleteBranch }) => { 
@@ -455,6 +426,10 @@
         const CompanyEditor = ({ data, appId, showToast }) => { const [f, setF] = useState(data||{}); const save = async () => { await setDoc(doc(db,'artifacts',appId,'public','data','company','info'), f); showToast("Firmendaten gespeichert"); }; return <div className="space-y-4 animate-in"><div className="text-xs text-slate-400">Diese Daten erscheinen auf den HACCP PDFs.</div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Betriebsname</span><Input value={f.name||''} onChange={e=>setF({...f,name:e.target.value})} /></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Anschrift</span><Input value={f.address||''} onChange={e=>setF({...f,address:e.target.value})} /></div><Button onClick={save}>Speichern</Button></div> };
         const Editor = ({ type, data, close, appId, showToast }) => { const [form, setForm] = useState({...data}); const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); const [loading, setLoading] = useState(false); const save = async () => { if(!form.name) return; setLoading(true); const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':type==='prep'?'prep_tasks':'staff'; const payload = { ...form }; if(type==='tasks') { payload.schedule = sched; payload.dept = form.dept||'kitchen'; payload.area = form.area||'General'; } if(type==='staff') { payload.role = form.role||'user'; payload.departments = form.departments||[]; payload.pin = form.pin||''; } if(['cooling','fryers'].includes(type)) payload.status = form.status||'active'; if(type==='prep') { payload.schedule = sched; payload.category = form.category||'prep'; payload.target = form.target||''; payload.dept = form.dept||'kitchen'; } delete payload.id; delete payload.isNew; const ref = collection(db,'artifacts',appId,'public','data',col); if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()}); else await updateDoc(doc(ref, data.id), payload); showToast("Gespeichert"); setLoading(false); close(); }; const toggleDept = (d) => { const cur = form.departments || []; setForm({...form, departments: cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]}); }; return (<div className="space-y-6 animate-in"><div className="flex justify-between items-center mb-2"><h3 className="font-black text-xl text-slate-800">{data.isNew?'Neu':'Bearbeiten'}</h3><button onClick={close} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bezeichnung</span><Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." /></div>{type==='prep' && (<div className="space-y-4"><div className="grid grid-cols-2 gap-3"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Kategorie</span><Select value={form.category||'prep'} onChange={e=>setForm({...form,category:e.target.value})}><option value="prep">Vorbereitung (Mise en Place)</option><option value="stock">Lager/Auffüllen</option></Select></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Zuständigkeit</span><Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}><option value="kitchen">Küche</option><option value="service">Service</option></Select></div></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Ziel / Menge</span><Input value={form.target||''} onChange={e=>setForm({...form,target:e.target.value})} placeholder="z.B. 2 Behälter, Voll machen..." /></div><div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Zeitplan (Tage)</span><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'bg-indigo-600 text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`}>{d.slice(0,2)}</button>)}</div></div></div>)}{type==='staff' && (<div className="space-y-4"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Abteilungen</span><div className="flex gap-3"><button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('kitchen')?'border-orange-500 bg-orange-50 text-orange-600':'border-slate-100 bg-white text-slate-400'}`}>Küche</button><button onClick={()=>toggleDept('service')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('service')?'border-purple-500 bg-purple-50 text-purple-600':'border-slate-100 bg-white text-slate-400'}`}>Service</button></div></div><div className="flex gap-3"><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Rolle</span><Select value={form.role||'user'} onChange={e=>setForm({...form,role:e.target.value})}><option value="user">Mitarbeiter</option><option value="admin">Betriebsleiter</option></Select></div><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">PIN (Optional)</span><Input value={form.pin||''} onChange={e=>setForm({...form,pin:e.target.value})} className="text-center font-mono tracking-widest" maxLength={4}/></div></div></div>)}{type==='tasks' && (<div className="space-y-4"><div className="flex gap-3"><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bereich</span><Input value={form.area||''} onChange={e=>setForm({...form,area:e.target.value})} placeholder="z.B. Bar"/></div><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Dept</span><Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}><option value="kitchen">Küche</option><option value="service">Service</option><option value="all">Alle</option></Select></div></div><div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Wochentage</span><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'bg-indigo-600 text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`}>{d.slice(0,2)}</button>)}</div></div></div>)}<Button onClick={save} loading={loading} className="mt-6 shadow-xl shadow-slate-900/10">Speichern</Button></div>); };
         
+        const NavBtn = ({ icon, label, active, onClick }) => (<button onClick={onClick} className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl transition-all duration-300 ${active ? 'text-indigo-600 bg-indigo-50 scale-105 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>{React.cloneElement(icon, { size: 24, strokeWidth: active ? 2.5 : 2 })}<span className="text-[10px] font-bold">{label}</span></button>);
+        const Inventory = ({ data, status, appId, showToast, user }) => { const [newItem, setNewItem] = useState(''); const [supplier, setSupplier] = useState(''); const [loading, setLoading] = useState(false); const groupedList = useMemo(() => { const grp = {}; status.shoppingList.forEach(item => { const sup = item.supplier || 'Sonstige'; if(!grp[sup]) grp[sup] = []; grp[sup].push(item); }); return grp; }, [status.shoppingList]); const add = async () => { if(!newItem) return; setLoading(true); try { await addDoc(collection(db,'artifacts',appId,'public','data','shopping_list'), { name: newItem, supplier: supplier || 'Sonstige', createdBy: user.name, createdAt: serverTimestamp() }); setNewItem(''); showToast("Hinzugefügt"); } catch(e){ console.error(e); } setLoading(false); }; const del = async (id) => await deleteDoc(doc(db,'artifacts',appId,'public','data','shopping_list',id)); return (<div className="animate-in space-y-6"><div className="flex justify-between items-end"><div><h2 className="text-3xl font-black text-slate-800">Einkauf</h2><p className="text-slate-400 text-sm font-medium">Bestellungen managen</p></div><span className="bg-slate-900 text-white px-3 py-1 rounded-full text-xs font-bold">{status.shoppingList.length}</span></div><div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 space-y-3"><Input value={newItem} onChange={e=>setNewItem(e.target.value)} placeholder="Produktname..." /><div className="flex gap-2"><Select value={supplier} onChange={e=>setSupplier(e.target.value)}><option value="">Lieferant wählen...</option>{(data.suppliers||[]).map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</Select><Button onClick={add} loading={loading} className="w-auto px-6 rounded-xl"><Plus/></Button></div></div><div className="space-y-6">{Object.entries(groupedList).map(([sup, items]) => (<div key={sup} className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm"><div className="bg-slate-50/80 px-6 py-4 border-b border-slate-100 font-black text-sm text-slate-600 uppercase tracking-widest flex justify-between items-center">{sup} <span className="bg-white px-2 py-1 rounded-lg text-xs border">{items.length}</span></div><div className="divide-y divide-slate-50">{items.map(item => (<div key={item.id} className="p-4 pl-6 flex justify-between items-center group active:bg-slate-50 transition-colors"><span className="font-bold text-slate-700 text-base">{item.name}</span><button onClick={()=>del(item.id)} className="text-slate-300 hover:text-red-500 p-3 rounded-xl hover:bg-red-50 transition-all"><Trash2 size={18}/></button></div>))}</div></div>))}{status.shoppingList.length === 0 && <div className="text-center text-slate-400 py-12 flex flex-col items-center gap-2"><div className="bg-slate-100 p-4 rounded-full"><CheckCircle size={32} className="text-slate-300"/></div><span className="font-medium">Alles bestellt!</span></div>}</div></div>); };
+        const Cleaning = ({ data, status, user, appId, showToast }) => { const day = getWeekdayShort(); const myDepts = user.departments || []; const tasks = (data.tasks || []).filter(t => t.schedule?.[day] && (user.role==='admin' || t.dept==='all' || myDepts.includes(t.dept))).sort((a,b) => (status.cleaningLogs[a.id]?1:0)-(status.cleaningLogs[b.id]?1:0)); const toggle = async (t) => { const id = `${getTodayStr()}_${t.id}`; const ref = doc(db,'artifacts',appId,'public','data','logs_cleaning',id); if(status.cleaningLogs[t.id]) await deleteDoc(ref); else { await setDoc(ref, {taskId:t.id, taskName:t.name, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()}); showToast("Sauber!"); } }; return (<div className="animate-in space-y-5"><div className="flex justify-between items-end"><div><h2 className="text-3xl font-black text-slate-800">Putzplan</h2><p className="text-indigo-500 font-bold uppercase tracking-widest text-xs mt-1">{getWeekdayLong()}</p></div></div><div className="space-y-3">{tasks.map(t => { const done = status.cleaningLogs[t.id]; return (<div key={t.id} onClick={()=>toggle(t)} className={`p-5 rounded-[1.5rem] border flex justify-between items-center cursor-pointer card-press ${done?'bg-slate-50 border-slate-100 opacity-60 grayscale':'bg-white border-slate-100 shadow-sm hover:border-indigo-200'}`}><div><div className={`font-bold text-lg leading-tight ${done?'text-slate-400 line-through':'text-slate-800'}`}>{t.name}</div><div className="text-[11px] font-black uppercase text-slate-400 mt-1.5 flex gap-2"><span className="bg-slate-100 px-1.5 py-0.5 rounded">{t.area}</span>{done && <span className="text-emerald-500 flex items-center gap-1"><User size={10}/> {done.user}</span>}</div></div><div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-colors ${done?'bg-emerald-500 text-white':'bg-slate-100 text-slate-300'}`}><CheckCircle size={20} className={done ? 'scale-110' : ''}/></div></div>); })}{tasks.length===0 && (<div className="text-center p-10 border-2 border-dashed border-slate-200 rounded-[2rem] text-slate-400 flex flex-col items-center gap-2"><Sparkles size={32} className="text-slate-200"/><span>Keine Aufgaben für Heute.</span></div>)}</div></div>); };
+
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
