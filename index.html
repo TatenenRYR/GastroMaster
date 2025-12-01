@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Gastromaster v20.0 (Head Admin)</title>
+    <title>Gastromaster v21.0</title>
     
     <!-- Styles & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -22,9 +22,13 @@
         input, select, button { touch-action: manipulation; }
         .pin-btn { @apply active:scale-90 transition-transform bg-slate-100 rounded-full w-16 h-16 flex items-center justify-center text-xl font-bold text-slate-700 shadow-sm border border-slate-200; }
         .card-press { @apply active:scale-[0.98] transition-all duration-200; }
+        
+        /* God Mode Styles */
+        .god-mode { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: white; }
+        .god-card { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
     </style>
 
-    <!-- PDF Libraries (Global Scope) -->
+    <!-- PDF Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 
@@ -49,7 +53,7 @@
             ChefHat, Coffee, AlertTriangle, Bug, Terminal, Eraser, 
             ChevronDown, ShoppingBag, Activity, Database, Calendar, AlertOctagon, Info,
             History, FileText, ChevronRight, ChevronLeft, Store, Key, ShieldCheck, Lock, Unlock, Zap,
-            ClipboardList, Box, Layers, PenTool, ShieldAlert, BadgeCheck, Code, Globe, UserCog, RefreshCcw
+            ClipboardList, Box, Layers, PenTool, ShieldAlert, BadgeCheck, Code, Globe, UserCog, RefreshCcw, Eye, Search, PlusCircle, ArrowLeft
         } from "https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0";
 
         const { useState, useEffect, useRef, useMemo } = React;
@@ -71,7 +75,7 @@
             db = getFirestore(app);
         } catch(e) { console.error("Init Error", e); }
 
-        const HEAD_ADMIN_PASS = "master99"; // Simuliertes Head Admin Passwort
+        const HEAD_ADMIN_PASS = "master99"; 
 
         // --- UTILS ---
         const getTodayStr = () => new Date().toISOString().slice(0, 10);
@@ -91,7 +95,7 @@
                  danger: "bg-red-50 text-red-600 hover:bg-red-100 disabled:bg-slate-100 disabled:text-slate-400",
                  ghost: "bg-transparent text-slate-500 hover:bg-slate-100 border border-slate-200",
                  success: "bg-emerald-600 text-white shadow-emerald-900/20 hover:bg-emerald-700 disabled:bg-slate-300 disabled:shadow-none",
-                 head: "bg-indigo-600 text-white shadow-indigo-500/30 hover:bg-indigo-700"
+                 head: "bg-indigo-500 text-white shadow-lg hover:bg-indigo-400"
              };
              return <button type="button" onClick={onClick} disabled={loading || disabled} className={`${base} ${variants[variant]} ${className}`}>{loading ? <Loader2 className="animate-spin" size={20}/> : children}</button>
         };
@@ -145,7 +149,7 @@
             );
         };
 
-        // --- LOGIN SCREENS ---
+        // --- ENTERPRISE LOGIN ---
         const EnterpriseLogin = ({ onLogin, loading }) => {
             const [id, setId] = useState('');
             const submit = () => { if(id.length > 2) onLogin(id.trim().toLowerCase().replace(/\s/g,'-')); };
@@ -168,7 +172,7 @@
             const [pw, setPw] = useState('');
             const check = () => { if(pw === HEAD_ADMIN_PASS) onSuccess(); else alert("Zugriff verweigert"); };
             return (
-                <div className="min-h-screen bg-indigo-950 flex flex-col justify-center p-6 relative overflow-hidden text-center">
+                <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden text-center">
                     <div className="bg-white p-8 rounded-3xl max-w-sm mx-auto w-full shadow-2xl animate-in space-y-4">
                         <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4"><UserCog size={40}/></div>
                         <h2 className="text-2xl font-black text-slate-800">Head Admin</h2>
@@ -182,24 +186,42 @@
 
         // --- HEAD ADMIN PANEL ---
         const HeadAdminPanel = ({ onLogout, showToast }) => {
-            const [restaurants, setRestaurants] = useState([]);
-            const [loading, setLoading] = useState(false);
+            const [activeId, setActiveId] = useState(''); // The ID we want to manage
+            const [savedIds, setSavedIds] = useState(JSON.parse(localStorage.getItem('gastro_known_ids')||'[]'));
+            const [remoteMode, setRemoteMode] = useState(null); // 'admin' or null
 
-            useEffect(() => {
-                // In einer echten Firestore Struktur müsste man eine 'meta' Collection haben, die alle IDs speichert.
-                // Da wir das hier nicht haben, simulieren wir es bzw. man müsste manuell suchen.
-                // WORKAROUND: Da wir keine globale Liste haben, zeige ich hier nur ein Interface Beispiel.
-                // Um es "echt" zu machen, müsste jede Filiale sich bei Initialisierung in einer 'global_registry' eintragen.
-                // Ich implementiere hier die Logik für "Wenn ich eine ID kenne, kann ich sie managen".
-            }, []);
+            const addId = () => {
+                if(activeId && !savedIds.includes(activeId)) {
+                    const n = [...savedIds, activeId];
+                    setSavedIds(n);
+                    localStorage.setItem('gastro_known_ids', JSON.stringify(n));
+                }
+            };
 
-            const [targetId, setTargetId] = useState('');
+            const manage = (id) => {
+                setRemoteMode(id);
+            };
 
-            const wipeRestaurant = async () => {
-                if(!targetId) return;
-                if(!confirm(`ACHTUNG: Filiale '${targetId}' wirklich komplett löschen? Alle Daten gehen verloren!`)) return;
-                setLoading(true);
-                try {
+            // Wrap the Admin Component to inject the remote ID
+            const RemoteAdminWrapper = ({ targetId, close }) => {
+                const [rData, setRData] = useState({staff:[], tasks:[], prep:[], cooling:[], fryers:[], suppliers:[], company:{}});
+                // We need to fetch data for this remote ID to pass to Admin component
+                useEffect(() => {
+                    const pub = (c) => collection(db, 'artifacts', targetId, 'public', 'data', c);
+                    const unsubs = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'prep_tasks', 'suppliers', 'company'].map(c => 
+                        onSnapshot(query(pub(c)), s => {
+                            if(c === 'company') setRData(p=>({...p, company:s.docs[0]?.data()||{}}));
+                            else {
+                                const key = c === 'cooling_devices' ? 'cooling' : c === 'cleaning_tasks' ? 'tasks' : c === 'prep_tasks' ? 'prep' : c;
+                                setRData(p=>({...p, [key]: s.docs.map(d=>({...d.data(), id:d.id}))}));
+                            }
+                        })
+                    );
+                    return () => unsubs.forEach(u=>u());
+                }, [targetId]);
+
+                const wipe = async () => {
+                    if(!confirm("ALLES LÖSCHEN?")) return;
                     const collections = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'prep_tasks', 'suppliers', 'settings', 'company', 'logs_temp', 'logs_cleaning', 'logs_prep', 'logs_oil', 'shopping_list', 'logs_signatures'];
                     for (const col of collections) {
                         const ref = collection(db, 'artifacts', targetId, 'public', 'data', col);
@@ -208,54 +230,57 @@
                         snap.docs.forEach(doc => batch.delete(doc.ref));
                         await batch.commit();
                     }
-                    showToast(`Filiale ${targetId} gelöscht.`);
-                } catch(e) { showToast("Fehler beim Löschen", "error"); }
-                setLoading(false);
-            };
+                    alert("Gelöscht."); close();
+                };
 
-            const resetAdminPin = async () => {
-                if(!targetId) return;
-                setLoading(true);
-                try {
-                    // Find Admin User in that branch
-                    const q = query(collection(db, 'artifacts', targetId, 'public', 'data', 'staff'), where('role','==','admin'));
-                    const snap = await getDocs(q);
-                    if(snap.empty) { showToast("Kein Admin gefunden", "error"); }
-                    else {
-                        const adminDoc = snap.docs[0];
-                        await updateDoc(adminDoc.ref, { pin: '1234' });
-                        showToast(`Admin PIN für ${targetId} auf 1234 gesetzt.`);
-                    }
-                } catch(e) { showToast("Fehler", "error"); }
-                setLoading(false);
+                return (
+                    <div className="fixed inset-0 z-50 bg-slate-100 overflow-auto animate-in">
+                        <div className="bg-indigo-900 text-white p-4 sticky top-0 z-50 flex justify-between items-center shadow-lg">
+                            <div className="flex items-center gap-3">
+                                <button onClick={close} className="p-2 bg-white/10 rounded-full hover:bg-white/20"><ArrowLeft/></button>
+                                <div><div className="text-[10px] font-bold opacity-50 uppercase">Remote Control</div><div className="font-bold text-lg">{targetId}</div></div>
+                            </div>
+                            <button onClick={wipe} className="bg-red-600 px-4 py-2 rounded-lg text-xs font-bold uppercase hover:bg-red-500">Nuke Filiale</button>
+                        </div>
+                        <div className="p-4 max-w-lg mx-auto">
+                            <Admin data={rData} appId={targetId} showToast={showToast} debugMode={true} setDebugMode={()=>{}} setView={()=>{}} onLogoutSystem={close} isRemote={true} />
+                        </div>
+                    </div>
+                );
             };
 
             return (
-                <div className="min-h-screen bg-slate-100 p-6">
-                    <div className="max-w-2xl mx-auto space-y-6">
+                <div className="min-h-screen bg-slate-900 text-white p-6">
+                    {remoteMode && <RemoteAdminWrapper targetId={remoteMode} close={()=>setRemoteMode(null)} />}
+                    
+                    <div className="max-w-2xl mx-auto space-y-8">
                         <div className="flex justify-between items-center">
-                            <h1 className="text-3xl font-black text-slate-800">Global Management</h1>
-                            <button onClick={onLogout} className="bg-white p-3 rounded-xl shadow-sm text-slate-600"><LogOut size={20}/></button>
+                            <div><h1 className="text-3xl font-black italic tracking-tighter">HEAD ADMIN</h1><p className="text-indigo-400 text-xs font-bold uppercase tracking-widest">Zentrale Steuerung</p></div>
+                            <button onClick={onLogout} className="bg-white/10 p-3 rounded-full hover:bg-red-600 transition-colors"><LogOut/></button>
                         </div>
 
-                        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-                            <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Store size={20}/> Filial-Verwaltung</h3>
-                            <div className="flex gap-2 mb-6">
-                                <Input value={targetId} onChange={e=>setTargetId(e.target.value)} placeholder="Restaurant-ID eingeben..." />
-                            </div>
-                            
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <button onClick={resetAdminPin} disabled={loading||!targetId} className="p-4 bg-amber-50 text-amber-700 rounded-2xl font-bold flex items-center justify-center gap-2 border border-amber-100 hover:bg-amber-100"><RefreshCcw size={18}/> Admin PIN Reset (1234)</button>
-                                <button onClick={wipeRestaurant} disabled={loading||!targetId} className="p-4 bg-red-50 text-red-700 rounded-2xl font-bold flex items-center justify-center gap-2 border border-red-100 hover:bg-red-100"><Trash2 size={18}/> Filiale Löschen (Nuke)</button>
+                        <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4">
+                            <h3 className="font-bold text-lg flex items-center gap-2"><Globe size={20}/> Filiale Verbinden</h3>
+                            <div className="flex gap-2">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/>
+                                    <input value={activeId} onChange={e=>setActiveId(e.target.value)} placeholder="Restaurant ID..." className="w-full pl-12 p-4 rounded-xl bg-slate-800 border border-slate-700 text-white focus:border-indigo-500 outline-none"/>
+                                </div>
+                                <button onClick={()=>{addId(); manage(activeId)}} disabled={activeId.length<3} className="bg-indigo-600 px-6 rounded-xl font-bold disabled:opacity-50">Manage</button>
                             </div>
                         </div>
 
-                        <div className="bg-indigo-600 text-white p-6 rounded-3xl shadow-lg flex items-center justify-between">
-                            <div>
-                                <div className="font-bold text-indigo-200 uppercase text-xs tracking-widest">System Status</div>
-                                <div className="font-black text-2xl">Gastromaster Online</div>
+                        <div className="space-y-4">
+                            <h3 className="font-bold text-lg text-slate-400 px-2">Gespeicherte Filialen</h3>
+                            <div className="grid gap-3">
+                                {savedIds.map(id => (
+                                    <div key={id} onClick={()=>manage(id)} className="bg-slate-800 p-4 rounded-2xl border border-slate-700 flex justify-between items-center hover:bg-slate-700 cursor-pointer transition-colors group">
+                                        <div className="font-bold text-lg">{id}</div>
+                                        <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold uppercase group-hover:text-white transition-colors">Verwalten <ChevronRight size={16}/></div>
+                                    </div>
+                                ))}
+                                {savedIds.length === 0 && <div className="text-slate-600 italic text-center p-4">Keine Filialen gespeichert.</div>}
                             </div>
-                            <Activity size={32} className="opacity-50"/>
                         </div>
                     </div>
                 </div>
@@ -275,6 +300,7 @@
             const [adminAlert, setAdminAlert] = useState(false);
             const [seedSuccess, setSeedSuccess] = useState(false);
             
+            // Initializing with SAFE defaults
             const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [], prep: [], company: {} });
             const [status, setStatus] = useState({ tempLogs: [], cleaningLogs: {}, oilLogs: {}, prepLogs: {}, shoppingList: [], yesterdayOil: {}, signatures: {} });
             const [debugMode, setDebugMode] = useState(false);
@@ -378,6 +404,7 @@
                 setLoading(false);
             };
 
+            // ROUTING
             if (view === 'head-login') return <HeadAdminLogin onSuccess={()=>{setIsHeadAdmin(true); setView('head-panel');}} onBack={()=>setView('login')}/>;
             if (view === 'head-panel') return <HeadAdminPanel onLogout={()=>{setIsHeadAdmin(false); setView('login');}} showToast={showToast} />;
 
@@ -526,15 +553,16 @@
             return (<div className="animate-in space-y-6"><div><h2 className="text-3xl font-black text-slate-800">Fett & Öl</h2><p className="text-slate-400 text-sm font-medium">TPM Messung</p></div><div className="space-y-4">{active.map(dev => { const l = oilLogs[dev.id]; const quality = l ? (l.tpm>=24?'bad':l.tpm>=20?'warn':'good') : null; const colors = { bad: 'bg-red-500 shadow-red-200', warn: 'bg-amber-500 shadow-amber-200', good: 'bg-emerald-500 shadow-emerald-200' }; const labels = { bad: 'Wechseln', warn: 'Filtern', good: 'OK' }; return (<div key={dev.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm"><div className="flex justify-between items-center mb-6"><span className="font-bold text-lg text-slate-700">{dev.name}</span>{l ? <div className="flex items-center gap-2"><span className={`text-white text-xs font-black px-3 py-1.5 rounded-xl uppercase shadow-lg ${colors[quality]}`}>{labels[quality]}</span><button onClick={()=>deleteLog(l.id)} className="p-2 bg-slate-100 rounded-full hover:bg-red-100 hover:text-red-500 transition-colors"><Trash2 size={14}/></button></div> : <span className="bg-slate-100 text-slate-400 text-xs font-bold px-2 py-1 rounded-lg">Messung offen</span>}</div>{!l ? (<div className="flex gap-3"><div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">Temp</div><Input type="number" inputMode="decimal" placeholder="°C" className="text-center h-14 font-bold text-xl" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],t:e.target.value}})} /></div><div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">TPM %</div><Input type="number" inputMode="decimal" placeholder="%" className="text-center h-14 font-bold text-xl" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],p:e.target.value}})} /></div><div className="space-y-1"><div className="h-[17px]"></div><button onClick={()=>save(dev)} className="bg-slate-900 text-white h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg"><Save size={24}/></button></div></div>) : (<div className="grid grid-cols-2 gap-3"><div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Temp</div><div className="font-black text-xl text-slate-700">{l.temp}°C</div></div><div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">TPM</div><div className="font-black text-xl text-slate-700">{l.tpm}%</div></div></div>)}</div>); })}</div><div className="mt-8 pt-6 border-t border-slate-200">{signature ? (<div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold"><PenTool size={20}/><div className="flex-1"><div className="text-xs uppercase opacity-70">Digital Signiert von</div><div className="text-lg">{signature.user}</div></div></div>) : (<div className="space-y-2"><Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18}/> Tagesprotokoll Signieren</Button>{!canSign && <div className="text-center text-xs text-slate-400">Erst signieren, wenn alle Fritteusen erfasst sind.</div>}</div>)}</div></div>); 
         };
 
-        const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView, onLogoutSystem, deleteBranch }) => { 
+        const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView, onLogoutSystem, deleteBranch, isRemote }) => { 
             const [tab, setTab] = useState('staff'); const [edit, setEdit] = useState(null); const [deleteMath, setDeleteMath] = useState(null); const [deleteInput, setDeleteInput] = useState('');
             const tabs = { staff: 'Team', prep: 'Prep', tasks: 'Putz', cooling: 'Kühl', fryers: 'Frit', suppliers: 'Lief', company: 'Firma', system: 'Sys' }; 
             const delItem = async (id) => { if(!confirm("Löschen?")) return; const col = tab==='tasks'?'cleaning_tasks':tab==='cooling'?'cooling_devices':tab==='fryers'?'fryers':tab==='suppliers'?'suppliers':tab==='prep'?'prep_tasks':'staff'; await deleteDoc(doc(db,'artifacts',appId,'public','data',col,id)); showToast("Gelöscht"); }; 
             const initDeleteBranch = () => { const a=Math.floor(Math.random()*10)+1; const b=Math.floor(Math.random()*10)+1; setDeleteMath({q:`${a} + ${b}`, a:a+b}); };
             const confirmDeleteBranch = async () => { if(parseInt(deleteInput) === deleteMath.a) { deleteBranch(); } else { showToast("Rechnung falsch!", "error"); } };
+            
             return (<div className="animate-in space-y-6"><h2 className="text-3xl font-black text-slate-800">Verwaltung</h2><div className="flex gap-2 overflow-x-auto no-scrollbar -mx-5 px-5 pb-2">{Object.entries(tabs).map(([k,l])=><button key={k} onClick={()=>{setTab(k);setEdit(null)}} className={`px-6 py-3 rounded-2xl font-bold text-sm whitespace-nowrap transition-all ${tab===k?'bg-slate-900 text-white shadow-lg shadow-slate-900/20':'bg-white border text-slate-500'}`}>{l}</button>)}</div><div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 min-h-[400px]">{tab === 'system' ? (<div className="space-y-4 animate-in"><div className="text-sm font-bold uppercase text-slate-400 tracking-wider">Erweiterte Tools</div><button onClick={()=>setView('history')} className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-5 rounded-2xl flex items-center justify-between group transition-all"><div className="flex items-center gap-3 font-bold"><History size={20}/> HACCP Protokolle (PDF)</div><ChevronRight className="opacity-50 group-hover:translate-x-1 transition-transform"/></button>
             <button onClick={onLogoutSystem} className="w-full mt-4 p-4 border border-slate-200 bg-slate-50 text-slate-600 rounded-2xl font-bold flex justify-center items-center gap-2"><LogOut size={18}/> Abmelden</button>
-            <div className="mt-10 pt-6 border-t border-red-100"><h4 className="text-red-500 font-bold mb-2 flex items-center gap-2"><AlertTriangle size={16}/> Danger Zone</h4>{deleteMath ? (<div className="bg-red-50 p-4 rounded-2xl border border-red-200"><p className="text-red-800 text-sm font-bold mb-2">Löse die Aufgabe: {deleteMath.q} = ?</p><div className="flex gap-2"><Input value={deleteInput} onChange={e=>setDeleteInput(e.target.value)} type="number" className="bg-white"/><button onClick={confirmDeleteBranch} className="bg-red-600 text-white px-4 rounded-xl font-bold">Löschen</button></div></div>) : (<button onClick={initDeleteBranch} className="text-xs text-red-400 underline">Filiale unwiderruflich löschen</button>)}</div>
+            {!isRemote && <div className="mt-10 pt-6 border-t border-red-100"><h4 className="text-red-500 font-bold mb-2 flex items-center gap-2"><AlertTriangle size={16}/> Danger Zone</h4>{deleteMath ? (<div className="bg-red-50 p-4 rounded-2xl border border-red-200"><p className="text-red-800 text-sm font-bold mb-2">Löse die Aufgabe: {deleteMath.q} = ?</p><div className="flex gap-2"><Input value={deleteInput} onChange={e=>setDeleteInput(e.target.value)} type="number" className="bg-white"/><button onClick={confirmDeleteBranch} className="bg-red-600 text-white px-4 rounded-xl font-bold">Löschen</button></div></div>) : (<button onClick={initDeleteBranch} className="text-xs text-red-400 underline">Filiale unwiderruflich löschen</button>)}</div>}
             </div>) : tab==='company' ? (<CompanyEditor data={data.company} appId={appId} showToast={showToast}/>) : edit ? (<Editor type={tab} data={edit} close={()=>setEdit(null)} appId={appId} showToast={showToast} />) : (<div className="space-y-4 animate-in"><Button variant="ghost" onClick={()=>setEdit({isNew:true})} className="border-dashed py-5 text-slate-400 bg-slate-50 hover:bg-slate-100 hover:text-slate-600"><Plus size={20}/> Neuen Eintrag hinzufügen</Button><div className="divide-y divide-slate-100">{(data[tab]||[]).map(item => (<div key={item.id} className="py-4 flex justify-between items-center group"><div><div className="font-bold text-slate-700 text-lg">{item.name}</div>{tab==='tasks' && <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mt-1">{item.area} • {Object.keys(item.schedule||{}).filter(k=>item.schedule[k]).length} Tage</div>}</div><div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"><button onClick={()=>setEdit(item)} className="p-3 bg-indigo-50 text-indigo-500 rounded-xl hover:bg-indigo-100"><Settings size={18}/></button><button onClick={()=>delItem(item.id)} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-100"><Trash2 size={18}/></button></div></div>))}</div></div>)}</div></div>); };
         const CompanyEditor = ({ data, appId, showToast }) => { const [f, setF] = useState(data||{}); const save = async () => { await setDoc(doc(db,'artifacts',appId,'public','data','company','info'), f); showToast("Firmendaten gespeichert"); }; return <div className="space-y-4 animate-in"><div className="text-xs text-slate-400">Diese Daten erscheinen auf den HACCP PDFs.</div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Betriebsname</span><Input value={f.name||''} onChange={e=>setF({...f,name:e.target.value})} /></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Anschrift</span><Input value={f.address||''} onChange={e=>setF({...f,address:e.target.value})} /></div><Button onClick={save}>Speichern</Button></div> };
         const Editor = ({ type, data, close, appId, showToast }) => { const [form, setForm] = useState({...data}); const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); const [loading, setLoading] = useState(false); const save = async () => { if(!form.name) return; setLoading(true); const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':type==='prep'?'prep_tasks':'staff'; const payload = { ...form }; if(type==='tasks') { payload.schedule = sched; payload.dept = form.dept||'kitchen'; payload.area = form.area||'General'; } if(type==='staff') { payload.role = form.role||'user'; payload.departments = form.departments||[]; payload.pin = form.pin||''; } if(['cooling','fryers'].includes(type)) payload.status = form.status||'active'; if(type==='prep') { payload.schedule = sched; payload.category = form.category||'prep'; payload.target = form.target||''; payload.dept = form.dept||'kitchen'; } delete payload.id; delete payload.isNew; const ref = collection(db,'artifacts',appId,'public','data',col); if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()}); else await updateDoc(doc(ref, data.id), payload); showToast("Gespeichert"); setLoading(false); close(); }; const toggleDept = (d) => { const cur = form.departments || []; setForm({...form, departments: cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]}); }; return (<div className="space-y-6 animate-in"><div className="flex justify-between items-center mb-2"><h3 className="font-black text-xl text-slate-800">{data.isNew?'Neu':'Bearbeiten'}</h3><button onClick={close} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bezeichnung</span><Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." /></div>{type==='prep' && (<div className="space-y-4"><div className="grid grid-cols-2 gap-3"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Kategorie</span><Select value={form.category||'prep'} onChange={e=>setForm({...form,category:e.target.value})}><option value="prep">Vorbereitung (Mise en Place)</option><option value="stock">Lager/Auffüllen</option></Select></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Zuständigkeit</span><Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}><option value="kitchen">Küche</option><option value="service">Service</option></Select></div></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Ziel / Menge</span><Input value={form.target||''} onChange={e=>setForm({...form,target:e.target.value})} placeholder="z.B. 2 Behälter, Voll machen..." /></div><div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Zeitplan (Tage)</span><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'bg-indigo-600 text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`}>{d.slice(0,2)}</button>)}</div></div></div>)}{type==='staff' && (<div className="space-y-4"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Abteilungen</span><div className="flex gap-3"><button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('kitchen')?'border-orange-500 bg-orange-50 text-orange-600':'border-slate-100 bg-white text-slate-400'}`}>Küche</button><button onClick={()=>toggleDept('service')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('service')?'border-purple-500 bg-purple-50 text-purple-600':'border-slate-100 bg-white text-slate-400'}`}>Service</button></div></div><div className="flex gap-3"><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Rolle</span><Select value={form.role||'user'} onChange={e=>setForm({...form,role:e.target.value})}><option value="user">Mitarbeiter</option><option value="admin">Betriebsleiter</option></Select></div><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">PIN (Optional)</span><Input value={form.pin||''} onChange={e=>setForm({...form,pin:e.target.value})} className="text-center font-mono tracking-widest" maxLength={4}/></div></div></div>)}{type==='tasks' && (<div className="space-y-4"><div className="flex gap-3"><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bereich</span><Input value={form.area||''} onChange={e=>setForm({...form,area:e.target.value})} placeholder="z.B. Bar"/></div><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Dept</span><Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}><option value="kitchen">Küche</option><option value="service">Service</option><option value="all">Alle</option></Select></div></div><div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Wochentage</span><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'bg-indigo-600 text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`}>{d.slice(0,2)}</button>)}</div></div></div>)}<Button onClick={save} loading={loading} className="mt-6 shadow-xl shadow-slate-900/10">Speichern</Button></div>); };
