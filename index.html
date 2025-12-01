@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Gastromaster v30.2</title>
+    <title>Gastromaster v31.0</title>
     
     <!-- Styles & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -86,13 +86,17 @@
 
         const DEFAULT_MODULES = ['prep', 'cleaning', 'cooling', 'oil', 'inventory'];
         const MODULE_ICONS = { prep: <ClipboardList/>, cleaning: <Sparkles/>, cooling: <Snowflake/>, oil: <Droplet/>, inventory: <Truck/>, dashboard: <Menu/>, admin: <Settings/> };
-        // FIX: Added missing MODULE_NAMES constant
         const MODULE_NAMES = { prep: "Mise en Place", cleaning: "Putzplan", cooling: "Kühlung", oil: "Fett & Öl", inventory: "Einkauf" };
         
         const DICTIONARY = {
-            de: { start: "Filiale Öffnen", id: "Restaurant ID", login: "Team Login", role: "Rolle", pin: "PIN", admin: "Filialleitung", kitchen: "Küche", service: "Service", save: "Speichern", cancel: "Abbrechen", prep: "Vorbereitung", stock: "Bestand", clean: "Putzplan", oil: "Fett & Öl", temp: "Kühlung", dash: "Übersicht", morning: "Frühschicht Info", yesterday: "Fettliste vom Vortag", missing: "NICHT gemacht!", dev: "Entwickelt von Marvin Ringer", k_lead: "Küchenleitung", s_lead: "Serviceleitung", worker: "Mitarbeiter", logout: "Abmelden", sign: "Signieren", pdf: "Protokoll (PDF)", create: "Erstellen", inventory: "Einkauf" },
-            en: { start: "Open Branch", id: "Restaurant ID", login: "Team Login", role: "Role", pin: "PIN", admin: "Branch Manager", kitchen: "Kitchen", service: "Service", save: "Save", cancel: "Cancel", prep: "Prep", stock: "Stock", clean: "Cleaning", oil: "Oil Quality", temp: "Cooling", dash: "Dashboard", morning: "Morning Info", yesterday: "Yesterday's Oil", missing: "NOT done!", dev: "Developed by Marvin Ringer", k_lead: "Kitchen Lead", s_lead: "Service Lead", worker: "Staff", logout: "Logout", sign: "Sign", pdf: "Log (PDF)", create: "Create", inventory: "Inventory" },
-            tr: { start: "Şubeyi Aç", id: "Restoran ID", login: "Ekip Girişi", role: "Rol", pin: "PIN", admin: "Şube Müdürü", kitchen: "Mutfak", service: "Servis", save: "Kaydet", cancel: "İptal", prep: "Hazırlık", stock: "Stok", clean: "Temizlik", oil: "Yağ Kalitesi", temp: "Soğutma", dash: "Pano", morning: "Sabah Bilgisi", yesterday: "Dünkü Yağ", missing: "YAPILMADI!", dev: "Marvin Ringer tarafından geliştirildi", k_lead: "Mutfak Şefi", s_lead: "Servis Şefi", worker: "Personel", logout: "Çıkış", sign: "İmzala", pdf: "Protokol (PDF)", create: "Oluştur", inventory: "Envanter" },
+            de: { start: "Filiale Öffnen", id: "Restaurant ID", login: "Team Login", role: "Rolle", pin: "PIN", admin: "Filialleitung", k_lead: "Küchenleitung", s_lead: "Serviceleitung", kitchen: "Küche", service: "Service", save: "Speichern", cancel: "Abbrechen", prep: "Vorbereitung", stock: "Bestand", clean: "Putzplan", oil: "Fett & Öl", temp: "Kühlung", dash: "Übersicht", morning: "Frühschicht Info", yesterday: "Fettliste vom Vortag", missing: "NICHT gemacht!", dev: "Entwickelt von Marvin Ringer", worker: "Mitarbeiter", logout: "Abmelden", sign: "Signieren", pdf: "Protokoll (PDF)", create: "Erstellen", inventory: "Einkauf" },
+            en: { start: "Open Branch", id: "Restaurant ID", login: "Team Login", role: "Role", pin: "PIN", admin: "Branch Manager", k_lead: "Kitchen Lead", s_lead: "Service Lead", kitchen: "Kitchen", service: "Service", save: "Save", cancel: "Cancel", prep: "Prep", stock: "Stock", clean: "Cleaning", oil: "Oil Quality", temp: "Cooling", dash: "Dashboard", morning: "Morning Info", yesterday: "Yesterday's Oil", missing: "NOT done!", dev: "Developed by Marvin Ringer", worker: "Staff", logout: "Logout", sign: "Sign", pdf: "Log (PDF)", create: "Create", inventory: "Inventory" },
+            tr: { start: "Şubeyi Aç", id: "Restoran ID", login: "Ekip Girişi", role: "Rol", pin: "PIN", admin: "Şube Müdürü", k_lead: "Mutfak Şefi", s_lead: "Servis Şefi", kitchen: "Mutfak", service: "Servis", save: "Kaydet", cancel: "İptal", prep: "Hazırlık", stock: "Stok", clean: "Temizlik", oil: "Yağ Kalitesi", temp: "Soğutma", dash: "Pano", morning: "Sabah Bilgisi", yesterday: "Dünkü Yağ", missing: "YAPILMADI!", dev: "Marvin Ringer tarafından geliştirildi", worker: "Personel", logout: "Çıkış", sign: "İmzala", pdf: "Protokol (PDF)", create: "Oluştur", inventory: "Envanter" },
+            pl: { start: "Otwórz oddział", id: "ID Restauracji", login: "Logowanie zespołu", role: "Rola", pin: "PIN", admin: "Kierownik filii", k_lead: "Szef kuchni", s_lead: "Szef serwisu", kitchen: "Kuchnia", service: "Serwis", save: "Zapisz", cancel: "Anuluj", prep: "Przygotowanie", stock: "Magazyn", clean: "Sprzątanie", oil: "Jakość oleju", temp: "Chłodzenie", dash: "Pulpit", morning: "Info poranne", yesterday: "Olej z wczoraj", missing: "NIE zrobione!", dev: "Opracowane przez Marvina Ringera", worker: "Pracownik", logout: "Wyloguj", sign: "Podpisz", pdf: "Protokół (PDF)", create: "Utwórz", inventory: "Zapasy" },
+            ru: { start: "Открыть филиал", id: "ID ресторана", login: "Вход для команды", role: "Роль", pin: "PIN", admin: "Управляющий", k_lead: "Шеф-повар", s_lead: "Главный официант", kitchen: "Кухня", service: "Сервис", save: "Сохранить", cancel: "Отмена", prep: "Подготовка", stock: "Склад", clean: "Уборка", oil: "Качество масла", temp: "Охлаждение", dash: "Обзор", morning: "Утренняя инфо", yesterday: "Масло вчера", missing: "НЕ сделано!", dev: "Разработано Марвином Рингером", worker: "Сотрудник", logout: "Выйти", sign: "Подписать", pdf: "Протокол", create: "Создать", inventory: "Инвентарь" },
+            ua: { start: "Відкрити філію", id: "ID ресторану", login: "Вхід для команди", role: "Роль", pin: "PIN", admin: "Керуючий", k_lead: "Шеф-кухар", s_lead: "Головний офіціант", kitchen: "Кухня", service: "Сервіс", save: "Зберегти", cancel: "Скасувати", prep: "Підготовка", stock: "Склад", clean: "Прибирання", oil: "Якість олії", temp: "Охолодження", dash: "Огляд", morning: "Ранкова інфо", yesterday: "Олія вчора", missing: "НЕ зроблено!", dev: "Розроблено Марвіном Рінгером", worker: "Співробітник", logout: "Вийти", sign: "Підписати", pdf: "Протокол", create: "Створити", inventory: "Інвентар" },
+            nl: { start: "Filiaal openen", id: "Restaurant ID", login: "Team Login", role: "Rol", pin: "PIN", admin: "Filiaalmanager", k_lead: "Keukenleider", s_lead: "Serviceleider", kitchen: "Keuken", service: "Bediening", save: "Opslaan", cancel: "Annuleren", prep: "Voorbereiding", stock: "Voorraad", clean: "Schoonmaak", oil: "Olie Kwaliteit", temp: "Koeling", dash: "Overzicht", morning: "Ochtend Info", yesterday: "Olie van gisteren", missing: "NIET gedaan!", dev: "Ontwikkeld door Marvin Ringer", worker: "Medewerker", logout: "Uitloggen", sign: "Tekenen", pdf: "Logboek", create: "Maken", inventory: "Inventaris" },
+            af: { start: "Open tak", id: "Restaurant ID", login: "Span aanmelding", role: "Rol", pin: "PIN", admin: "Takbestuurder", k_lead: "Kombuishoof", s_lead: "Dienshoof", kitchen: "Kombuis", service: "Diens", save: "Stoor", cancel: "Kanselleer", prep: "Voorbereiding", stock: "Voorraad", clean: "Skoonmaak", oil: "Olie Gehalte", temp: "Verkoeling", dash: "Paneelbord", morning: "Oggend Info", yesterday: "Gister se Olie", missing: "NIE gedoen nie!", dev: "Ontwikkel deur Marvin Ringer", worker: "Personeel", logout: "Teken uit", sign: "Teken", pdf: "Logboek", create: "Skep", inventory: "Inventaris" }
         };
 
         // --- COMPONENTS ---
@@ -116,7 +120,6 @@
             </div>
         );
 
-        // --- ERROR BOUNDARY ---
         class ErrorBoundary extends React.Component {
             constructor(props) { super(props); this.state = { hasError: false, error: null }; }
             static getDerivedStateFromError(error) { return { hasError: true, error }; }
@@ -136,7 +139,6 @@
             }
         }
 
-        // --- PIN PAD ---
         const PinPad = ({ title, onClose, onSuccess, targetPin }) => {
             const [pin, setPin] = useState('');
             const handleNum = (n) => {
@@ -160,7 +162,6 @@
             );
         };
 
-        // --- LANGUAGE SWITCHER ---
         const LanguageSwitcher = ({ current, set }) => (
             <div className="absolute top-6 right-6 z-50">
                 <div className="relative group">
@@ -176,7 +177,6 @@
             </div>
         );
 
-        // --- LOGO COMPONENT ---
         const AppLogo = ({ company, large }) => {
             if (company?.logoUrl) {
                 return <img src={company.logoUrl} alt="Logo" className={`${large ? 'h-24' : 'h-8'} object-contain mx-auto rounded-lg transition-all`} />;
@@ -184,12 +184,11 @@
             return (
                 <div>
                     <h1 className={`${large ? 'text-4xl' : 'text-xl'} font-black text-white italic tracking-tighter`}>{company?.appName || 'GASTROMASTER'}</h1>
-                    {large && <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v30.2</p>}
+                    {large && <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v31.0</p>}
                 </div>
             );
         };
 
-        // --- ENTERPRISE LOGIN & REGISTRATION ---
         const EnterpriseLogin = ({ onLogin, onRegister, loading, lang, setLang }) => {
             const [id, setId] = useState('');
             const [regCode, setRegCode] = useState('');
@@ -250,7 +249,6 @@
             );
         };
 
-        // --- HEAD ADMIN PANEL ---
         const HeadAdminPanel = ({ onLogout, showToast }) => {
             const [activeId, setActiveId] = useState('');
             const [token, setToken] = useState(null);
@@ -259,7 +257,6 @@
 
             const normalizedActiveId = normalizeId(activeId);
 
-            // FIX: Correct Path to store tokens
             const createToken = async () => {
                 const t = generateToken();
                 await setDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'tokens', t), { created: serverTimestamp(), active: true });
@@ -358,9 +355,8 @@
             const showToast = (msg, type='success') => { setToast({msg, type}); setTimeout(() => setToast(null), 3000); };
 
             const handleRestaurantLogin = (id) => {
-                if(id === 'head-admin') {
-                    setView('head-login');
-                } else {
+                if(id === 'head-admin') setView('head-login');
+                else {
                     const normId = normalizeId(id);
                     setLoading(true); localStorage.setItem('gastro_app_id', normId); setAppId(normId); setLoading(false);
                 }
@@ -465,7 +461,6 @@
             if (view === 'head-panel') return <HeadAdminPanel onLogout={()=>{setIsHeadAdmin(false); setView('login');}} showToast={showToast} />;
             if (!appId) return <EnterpriseLogin onLogin={handleRestaurantLogin} onRegister={handleRegistration} loading={loading} lang={lang} setLang={setLang} />;
             if (loading) return <Loading />;
-            // IMPORTANT: Added missing LoginScreen definition check.
             if (!appUser) return <LoginScreen staff={data.staff} restaurantId={appId} company={data.company} yesterdayOil={status.yesterdayOil} fryers={data.fryers} onLogin={handleUserLogin} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} onSeed={()=>seedDB()} showToast={showToast} seedSuccess={seedSuccess} onCloseSeed={()=>setSeedSuccess(false)} lang={lang} onMasterRecovery={handleMasterKeyRecovery} />;
 
             const common = { user: appUser, appId, showToast, data, status, lang, moduleOrder };
@@ -602,6 +597,7 @@
             const t = DICTIONARY[lang];
             const list = data.prep || [];
             const myDepts = user.departments || [];
+            // Updated filter logic for new roles
             const relevant = list.filter(i => i.schedule?.[day] && (user.role==='admin' || ['kitchen_lead','service_lead'].includes(user.role) || myDepts.includes(i.dept)));
             const prepItems = relevant.filter(i => i.category === 'prep').sort((a,b) => (status.prepLogs[a.id]?1:0) - (status.prepLogs[b.id]?1:0));
             const stockItems = relevant.filter(i => i.category === 'stock').sort((a,b) => (status.prepLogs[a.id]?1:0) - (status.prepLogs[b.id]?1:0));
