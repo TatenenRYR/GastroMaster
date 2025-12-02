@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Gastromaster v32.0</title>
+    <title>Gastromaster v33.1</title>
     
-    <!-- Styles & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
     <style>
@@ -20,16 +19,22 @@
         .safe-bottom { padding-bottom: calc(90px + var(--sab)); }
         
         input, select, button { touch-action: manipulation; }
-        /* Larger Pin Pad Buttons */
-        .pin-btn { @apply active:scale-90 transition-transform bg-slate-100 rounded-2xl w-20 h-20 flex items-center justify-center text-2xl font-bold text-slate-700 shadow-sm border border-slate-200; }
+        
+        /* UPDATED: Larger, Finger-Friendly Pin Pad Buttons */
+        .pin-btn { 
+            @apply active:scale-90 transition-transform bg-slate-100 rounded-2xl w-24 h-24 flex items-center justify-center text-3xl font-black text-slate-700 shadow-sm border border-slate-200; 
+        }
         .card-press { @apply active:scale-[0.98] transition-all duration-200; }
+        
+        /* Custom Scrollbar for lists */
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
     </style>
 
-    <!-- PDF Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 
-    <!-- React & Babel -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -51,7 +56,7 @@
             ChevronDown, ShoppingBag, Activity, Database, Calendar, AlertOctagon, Info,
             History, FileText, ChevronRight, ChevronLeft, Store, Key, ShieldCheck, Lock, Unlock, Zap,
             ClipboardList, Box, Layers, PenTool, ShieldAlert, BadgeCheck, Code, Globe, UserCog, RefreshCcw, Search, ArrowLeft,
-            Users, Languages, Ticket
+            Users, Languages, Ticket, ListChecks
         } from "https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0";
 
         const { useState, useEffect, useRef, useMemo } = React;
@@ -91,9 +96,6 @@
         
         const DICTIONARY = {
             de: { start: "Filiale Öffnen", id: "Restaurant ID", login: "Team Login", role: "Rolle", pin: "PIN", admin: "Filialleitung", k_lead: "Küchenleitung", s_lead: "Serviceleitung", kitchen: "Küche", service: "Service", save: "Speichern", cancel: "Abbrechen", prep: "Vorbereitung", stock: "Bestand", clean: "Putzplan", oil: "Fett & Öl", temp: "Kühlung", dash: "Übersicht", morning: "Frühschicht Info", yesterday: "Fettliste vom Vortag", missing: "NICHT gemacht!", dev: "Entwickelt von Marvin Ringer", worker: "Mitarbeiter", logout: "Abmelden", sign: "Signieren", pdf: "Protokoll (PDF)", create: "Erstellen", inventory: "Einkauf" },
-            en: { start: "Open Branch", id: "Restaurant ID", login: "Team Login", role: "Role", pin: "PIN", admin: "Branch Manager", k_lead: "Kitchen Lead", s_lead: "Service Lead", kitchen: "Kitchen", service: "Service", save: "Save", cancel: "Cancel", prep: "Prep", stock: "Stock", clean: "Cleaning", oil: "Oil Quality", temp: "Cooling", dash: "Dashboard", morning: "Morning Info", yesterday: "Yesterday's Oil", missing: "NOT done!", dev: "Developed by Marvin Ringer", worker: "Staff", logout: "Logout", sign: "Sign", pdf: "Log (PDF)", create: "Create", inventory: "Inventory" },
-            tr: { start: "Şubeyi Aç", id: "Restoran ID", login: "Ekip Girişi", role: "Rol", pin: "PIN", admin: "Şube Müdürü", k_lead: "Mutfak Şefi", s_lead: "Servis Şefi", kitchen: "Mutfak", service: "Servis", save: "Kaydet", cancel: "İptal", prep: "Hazırlık", stock: "Stok", clean: "Temizlik", oil: "Yağ Kalitesi", temp: "Soğutma", dash: "Pano", morning: "Sabah Bilgisi", yesterday: "Dünkü Yağ", missing: "YAPILMADI!", dev: "Marvin Ringer tarafından geliştirildi", worker: "Personel", logout: "Çıkış", sign: "İmzala", pdf: "Protokol (PDF)", create: "Oluştur", inventory: "Envanter" },
-            // ... other languages ...
         };
 
         // --- COMPONENTS ---
@@ -137,25 +139,38 @@
             }
         }
 
-        // --- PIN PAD ---
+        // --- UPDATED PIN PAD (Finger-Friendly) ---
         const PinPad = ({ title, onClose, onSuccess, targetPin }) => {
             const [pin, setPin] = useState('');
             const handleNum = (n) => {
                 if(pin.length < 4) {
                     const newPin = pin + n; setPin(newPin);
                     if(newPin.length === 4) {
-                        if(String(targetPin) === String(newPin)) onSuccess(); 
+                        if(targetPin === null || String(targetPin) === String(newPin)) onSuccess(newPin); 
                         else { setPin(''); alert("Falsche PIN"); }
                     }
                 }
             };
             return (
                 <div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in">
-                    <div className="bg-white w-full max-w-xs rounded-3xl p-6 shadow-2xl relative overflow-hidden">
-                        <button onClick={onClose} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600"><X size={24}/></button>
-                        <h3 className="text-center font-black text-xl mb-6">{title}</h3>
-                        <div className="flex justify-center gap-3 mb-6">{[0,1,2,3].map(i => <div key={i} className={`w-4 h-4 rounded-full border-2 transition-colors ${pin.length > i ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}/>)}</div>
-                        <div className="grid grid-cols-3 gap-4 mb-4">{[1,2,3,4,5,6,7,8,9,0].map(n => n===0 ? <React.Fragment key={0}><div/><button onClick={()=>handleNum(0)} className="pin-btn">0</button></React.Fragment> : <button key={n} onClick={()=>handleNum(n)} className="pin-btn">{n}</button>)}<button onClick={()=>setPin(pin.slice(0,-1))} className="pin-btn text-red-500"><Eraser size={20}/></button></div>
+                    <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl relative overflow-hidden">
+                        <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600"><X size={32}/></button>
+                        <h3 className="text-center font-black text-xl mb-6 mt-2">{title}</h3>
+                        <div className="flex justify-center gap-4 mb-8">
+                            {[0,1,2,3].map(i => <div key={i} className={`w-5 h-5 rounded-full border-2 transition-colors ${pin.length > i ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}/>)}
+                        </div>
+                        <div className="grid grid-cols-3 gap-4 justify-items-center mb-4">
+                            {[1,2,3,4,5,6,7,8,9,0].map(n => 
+                                n===0 ? 
+                                <React.Fragment key={0}>
+                                    <div/>
+                                    <button onClick={()=>handleNum(0)} className="pin-btn">0</button>
+                                </React.Fragment> 
+                                : 
+                                <button key={n} onClick={()=>handleNum(n)} className="pin-btn">{n}</button>
+                            )}
+                            <button onClick={()=>setPin(pin.slice(0,-1))} className="pin-btn text-red-500 bg-red-50 border-red-100"><Eraser size={28}/></button>
+                        </div>
                     </div>
                 </div>
             );
@@ -185,7 +200,7 @@
             return (
                 <div>
                     <h1 className={`${large ? 'text-4xl' : 'text-xl'} font-black text-white italic tracking-tighter`}>{company?.appName || 'GASTROMASTER'}</h1>
-                    {large && <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v32.0</p>}
+                    {large && <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v33.1</p>}
                 </div>
             );
         };
@@ -255,34 +270,40 @@
         const HeadAdminPanel = ({ onLogout, showToast }) => {
             const [activeId, setActiveId] = useState('');
             const [token, setToken] = useState(null);
-            const [savedIds, setSavedIds] = useState(JSON.parse(localStorage.getItem('gastro_known_ids')||'[]'));
+            const [allTokens, setAllTokens] = useState([]);
+            const [allBranches, setAllBranches] = useState([]);
+            const [searchQuery, setSearchQuery] = useState('');
             const [remoteMode, setRemoteMode] = useState(null);
 
-            const normalizedActiveId = normalizeId(activeId);
+            useEffect(() => {
+                const qTokens = query(collection(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'tokens'), orderBy('created', 'desc'));
+                const unsubTokens = onSnapshot(qTokens, (snap) => {
+                    setAllTokens(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                });
+                const qBranches = query(collection(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'branches'), orderBy('createdAt', 'desc'));
+                const unsubBranches = onSnapshot(qBranches, (snap) => {
+                    setAllBranches(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                });
+                return () => { unsubTokens(); unsubBranches(); };
+            }, []);
 
-            // FIX: Correct Path to store tokens
             const createToken = async () => {
                 const t = generateToken();
                 await setDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'tokens', t), { created: serverTimestamp(), active: true });
                 setToken(t);
             };
 
-            const addId = () => {
-                if(normalizedActiveId && !savedIds.includes(normalizedActiveId)) {
-                    const n = [...savedIds, normalizedActiveId];
-                    setSavedIds(n);
-                    localStorage.setItem('gastro_known_ids', JSON.stringify(n));
-                }
-            };
             const manage = (id) => setRemoteMode(id);
+            const filteredBranches = allBranches.filter(b => b.id.toLowerCase().includes(searchQuery.toLowerCase()));
 
             const RemoteAdminWrapper = ({ targetId, close }) => {
-                const [rData, setRData] = useState({staff:[], tasks:[], prep:[], cooling:[], fryers:[], suppliers:[], company:{}});
+                const [rData, setRData] = useState({staff:[], tasks:[], prep:[], cooling:[], fryers:[], suppliers:[], company:{}, settings: {}});
                 useEffect(() => {
                     const pub = (c) => collection(db, 'artifacts', targetId, 'public', 'data', c);
-                    const unsubs = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'prep_tasks', 'suppliers', 'company'].map(c => 
+                    const unsubs = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'prep_tasks', 'suppliers', 'company', 'settings'].map(c => 
                         onSnapshot(query(pub(c)), s => {
                             if(c === 'company') setRData(p=>({...p, company:s.docs[0]?.data()||{}}));
+                            else if(c === 'settings') setRData(p=>({...p, settings: s.docs.find(d=>d.id==='global')?.data()||{}}));
                             else {
                                 const key = c === 'cooling_devices' ? 'cooling' : c === 'cleaning_tasks' ? 'tasks' : c === 'prep_tasks' ? 'prep' : c;
                                 setRData(p=>({...p, [key]: s.docs.map(d=>({...d.data(), id:d.id}))}));
@@ -301,6 +322,7 @@
                         snap.docs.forEach(doc => batch.delete(doc.ref));
                         await batch.commit();
                     }
+                    await deleteDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'branches', targetId));
                     alert("Gelöscht."); close();
                 };
                 return (
@@ -318,20 +340,47 @@
             return (
                 <div className="min-h-screen bg-slate-900 text-white p-6">
                     {remoteMode && <RemoteAdminWrapper targetId={remoteMode} close={()=>setRemoteMode(null)} />}
-                    <div className="max-w-2xl mx-auto space-y-8">
+                    <div className="max-w-4xl mx-auto space-y-8">
                         <div className="flex justify-between items-center"><div><h1 className="text-3xl font-black italic tracking-tighter">HEAD ADMIN</h1><p className="text-indigo-400 text-xs font-bold uppercase tracking-widest">Zentrale Steuerung</p></div><button onClick={onLogout} className="bg-white/10 p-3 rounded-full hover:bg-red-600 transition-colors"><LogOut/></button></div>
-                        
-                        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 rounded-3xl shadow-lg">
-                            <h3 className="font-bold text-lg mb-2 flex items-center gap-2"><Ticket/> Neuer Registrierungscode</h3>
-                            {token ? (<div className="bg-white text-slate-900 p-4 rounded-xl font-mono text-2xl font-black text-center tracking-widest select-all cursor-pointer" onClick={()=>navigator.clipboard.writeText(token)}>{token}</div>) : (<button onClick={createToken} className="bg-white/20 hover:bg-white/30 w-full py-3 rounded-xl font-bold transition-colors">Code Generieren</button>)}
-                            <p className="text-xs opacity-60 mt-2 text-center">Erlaubt das Erstellen EINER neuen Filiale.</p>
+                        <div className="grid md:grid-cols-2 gap-6">
+                            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 rounded-3xl shadow-lg">
+                                <h3 className="font-bold text-lg mb-2 flex items-center gap-2"><Ticket/> Neuer Key</h3>
+                                {token ? (<div className="bg-white text-slate-900 p-4 rounded-xl font-mono text-xl font-black text-center tracking-widest select-all cursor-pointer" onClick={()=>navigator.clipboard.writeText(token)}>{token}</div>) : (<button onClick={createToken} className="bg-white/20 hover:bg-white/30 w-full py-3 rounded-xl font-bold transition-colors">Code Generieren</button>)}
+                            </div>
+                            <div className="bg-white/5 border border-white/10 p-6 rounded-3xl max-h-64 overflow-y-auto custom-scrollbar">
+                                <h3 className="font-bold text-sm uppercase text-slate-400 mb-3 sticky top-0 bg-slate-900/50 backdrop-blur-md p-1">Aktive Keys ({allTokens.length})</h3>
+                                <div className="space-y-2">
+                                    {allTokens.map(t => (
+                                        <div key={t.id} className="flex justify-between items-center bg-slate-800 p-2 px-3 rounded-lg border border-slate-700">
+                                            <span className="font-mono text-sm text-indigo-300">{t.id}</span>
+                                            <button onClick={async ()=>{if(confirm('Löschen?')) await deleteDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'tokens', t.id))}} className="text-red-400 hover:text-white"><X size={14}/></button>
+                                        </div>
+                                    ))}
+                                    {allTokens.length === 0 && <div className="text-slate-500 text-xs italic">Keine offenen Keys.</div>}
+                                </div>
+                            </div>
                         </div>
-
                         <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4">
-                            <h3 className="font-bold text-lg flex items-center gap-2"><Globe size={20}/> Filiale Verbinden</h3>
-                            <div className="flex gap-2"><div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/><input value={activeId} onChange={e=>setActiveId(e.target.value)} placeholder="Restaurant ID..." className="w-full pl-12 p-4 rounded-xl bg-slate-800 border border-slate-700 text-white focus:border-indigo-500 outline-none"/></div><button onClick={()=>{addId(); manage(normalizedActiveId)}} disabled={normalizedActiveId.length<3} className="bg-indigo-600 px-6 rounded-xl font-bold disabled:opacity-50">Manage</button></div>
+                            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                                <h3 className="font-bold text-lg flex items-center gap-2"><Globe size={20}/> Alle Filialen ({allBranches.length})</h3>
+                                <div className="relative w-full md:w-64">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
+                                    <input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="Suche..." className="w-full pl-10 p-2 rounded-xl bg-slate-800 border border-slate-700 text-white focus:border-indigo-500 outline-none text-sm"/>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[500px] overflow-y-auto">
+                                {filteredBranches.map(branch => (
+                                    <div key={branch.id} onClick={()=>manage(branch.id)} className="bg-slate-800 p-4 rounded-2xl border border-slate-700 flex justify-between items-center hover:bg-slate-700 cursor-pointer transition-colors group">
+                                        <div>
+                                            <div className="font-bold text-lg text-white">{branch.id}</div>
+                                            <div className="text-[10px] text-slate-400">Reg: {branch.createdAt?.seconds ? new Date(branch.createdAt.seconds*1000).toLocaleDateString() : '-'}</div>
+                                        </div>
+                                        <ChevronRight size={16} className="text-slate-500 group-hover:text-white"/>
+                                    </div>
+                                ))}
+                                {filteredBranches.length === 0 && <div className="col-span-full text-center text-slate-500 py-10">Keine Filialen gefunden.</div>}
+                            </div>
                         </div>
-                        <div className="space-y-4"><h3 className="font-bold text-lg text-slate-400 px-2">Gespeicherte Filialen</h3><div className="grid gap-3">{savedIds.map(id => (<div key={id} onClick={()=>manage(id)} className="bg-slate-800 p-4 rounded-2xl border border-slate-700 flex justify-between items-center hover:bg-slate-700 cursor-pointer transition-colors group"><div className="font-bold text-lg">{id}</div><div className="flex items-center gap-2 text-indigo-400 text-xs font-bold uppercase group-hover:text-white transition-colors">Verwalten <ChevronRight size={16}/></div></div>))}</div></div>
                     </div>
                 </div>
             );
@@ -343,7 +392,6 @@
             const [appUser, setAppUser] = useState(null);
             const [appId, setAppId] = useState(localStorage.getItem('gastro_app_id') || null);
             const [lang, setLang] = useState('de');
-            
             const [view, setView] = useState('login'); 
             const [isHeadAdmin, setIsHeadAdmin] = useState(false);
             const [loading, setLoading] = useState(true);
@@ -351,8 +399,9 @@
             const [adminAlert, setAdminAlert] = useState(false);
             const [seedSuccess, setSeedSuccess] = useState(false);
             const [tempMasterPw, setTempMasterPw] = useState('');
+            const [generatedMasterKey, setGeneratedMasterKey] = useState(null); // New state for auto-generated key alert
             
-            const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [], prep: [], company: {} });
+            const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [], prep: [], company: {}, settings: {} });
             const [status, setStatus] = useState({ tempLogs: [], cleaningLogs: {}, oilLogs: {}, prepLogs: {}, shoppingList: [], yesterdayOil: {}, signatures: {} });
             const [debugMode, setDebugMode] = useState(false);
             const [moduleOrder, setModuleOrder] = useState(DEFAULT_MODULES);
@@ -360,9 +409,7 @@
             const showToast = (msg, type='success') => { setToast({msg, type}); setTimeout(() => setToast(null), 3000); };
 
             const handleRestaurantLogin = (id) => {
-                if(id === 'head-admin') {
-                    setView('head-login');
-                } else {
+                if(id === 'head-admin') { setView('head-login'); } else {
                     const normId = normalizeId(id);
                     setLoading(true); localStorage.setItem('gastro_app_id', normId); setAppId(normId); setLoading(false);
                 }
@@ -377,8 +424,11 @@
                     const checkRef = doc(db, 'artifacts', newId, 'public', 'data', 'settings', 'global');
                     const checkSnap = await getDoc(checkRef);
                     if(checkSnap.exists()) throw new Error("ID bereits vergeben");
+                    
                     await seedDB(newId, masterPw);
                     await deleteDoc(tokenRef);
+                    await setDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'branches', newId), { id: newId, createdAt: serverTimestamp() });
+
                     localStorage.setItem('gastro_app_id', newId);
                     setAppId(newId);
                     setTempMasterPw(masterPw); 
@@ -406,6 +456,20 @@
 
             useEffect(() => { signInAnonymously(auth).catch(e=>console.error(e)); return onAuthStateChanged(auth, u => { setUser(u); if(!u) setLoading(false); }); }, []);
 
+            // AUTO GENERATE MASTER KEY IF MISSING (Logic Added Here)
+            useEffect(() => {
+                if(appUser && appId && ['admin', 'kitchen_lead', 'service_lead'].includes(appUser.role)) {
+                    if(data.settings && data.settings.loaded && !data.settings.masterKey && !generatedMasterKey) {
+                        const newKey = Math.floor(100000 + Math.random() * 900000).toString(); // Generate 6 digit key
+                        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), { masterKey: newKey }, { merge: true })
+                            .then(() => {
+                                setGeneratedMasterKey(newKey);
+                                console.log("New Master Key Generated due to absence");
+                            });
+                    }
+                }
+            }, [appUser, appId, data.settings]);
+
             useEffect(() => {
                 if (!user || !appId || isHeadAdmin) { if(appId===null && !isHeadAdmin) setLoading(false); return; }
                 setLoading(true);
@@ -413,9 +477,10 @@
                 const unsubs = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'prep_tasks', 'suppliers', 'settings', 'company'].map(c => 
                     onSnapshot(query(pub(c)), s => {
                         if(c === 'settings') { 
-                            const glob = s.docs.find(d => d.id === 'global')?.data();
+                            const glob = s.docs.find(d => d.id === 'global')?.data() || {};
                             setDebugMode(glob?.debugMode || false);
                             if(glob?.moduleOrder) setModuleOrder(glob.moduleOrder);
+                            setData(p => ({ ...p, settings: { ...glob, loaded: true } }));
                         }
                         else if (c === 'company') { setData(p => ({ ...p, company: s.docs.find(d => d.id === 'info')?.data() || {} })); }
                         else {
@@ -432,7 +497,6 @@
                     onSnapshot(query(pub('logs_prep'), where('dateStr', '==', today)), s => { const l = {}; s.docs.forEach(d => l[d.data().taskId] = d.data()); setStatus(p => ({...p, prepLogs: l})); }),
                     onSnapshot(query(pub('logs_oil'), orderBy('createdAt', 'desc'), limit(50)), s => { 
                         const l = {};
-                        // FIX: Correct Oil Log Filtering for "Today"
                         s.docs.forEach(d => {
                              const data = d.data();
                              if(data.dateStr === today && !l[data.deviceId]) l[data.deviceId] = data; 
@@ -515,6 +579,19 @@
                             <div className="flex gap-2"><button onClick={() => setAppUser(null)} className="bg-white/10 p-2 rounded-full hover:bg-red-600 transition-colors"><LogOut size={18}/></button></div>
                         </header>
 
+                        {/* MASTER KEY ALERT */}
+                        {generatedMasterKey && (
+                            <div className="fixed inset-0 z-[100] bg-slate-900/90 flex items-center justify-center p-6 animate-in">
+                                <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center space-y-4">
+                                    <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-2"><Key size={32}/></div>
+                                    <h3 className="font-black text-xl text-slate-800">Master-Key Generiert</h3>
+                                    <p className="text-slate-500 text-sm">Da keiner vorhanden war, wurde ein neuer Notfall-Schlüssel erstellt. Bitte notieren!</p>
+                                    <div className="bg-slate-100 p-4 rounded-xl border border-slate-200 font-mono text-2xl font-black text-slate-800 tracking-widest select-all">{generatedMasterKey}</div>
+                                    <Button onClick={()=>setGeneratedMasterKey(null)}>Verstanden</Button>
+                                </div>
+                            </div>
+                        )}
+
                         {adminAlert && (
                             <div className="fixed inset-0 z-[100] bg-red-900/95 flex items-center justify-center p-6 animate-in">
                                 <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl text-center space-y-6">
@@ -553,14 +630,13 @@
             );
         }
 
-        // --- SUB COMPONENTS (Login, Dash, Modules...) ---
+        // --- SUB COMPONENTS ---
         const LoginScreen = ({ staff, restaurantId, company, onLogoutSystem, yesterdayOil, fryers, onSeed, onLogin, showToast, seedSuccess, onCloseSeed, lang, onMasterRecovery, tempMasterPw }) => {
             const [selectedUser, setSelectedUser] = useState(null); const [showPin, setShowPin] = useState(false); const [recoveryMode, setRecoveryMode] = useState(false);
             const oilLogs = Object.values(yesterdayOil || {});
             const showOilWarning = (fryers||[]).length > 0;
             const t = DICTIONARY[lang] || DICTIONARY.de;
             
-            // FIX: Corrected handler name to match invocation
             const handleUserClick = (u) => { 
                 const pin = String(u.pin || '');
                 if(pin.length > 0) { setSelectedUser({...u, pin}); setShowPin(true); setRecoveryMode(false); } 
@@ -569,7 +645,6 @@
             
             const onPinSuccess = (inputPin) => { setShowPin(false); if(recoveryMode) onMasterRecovery(inputPin); else onLogin(selectedUser); };
 
-            // Helper for role translation display
             const getRoleLabel = (role) => {
                  if(role === 'admin') return t.admin;
                  if(role === 'kitchen_lead') return t.k_lead;
@@ -628,6 +703,28 @@
         };
         const DashCard = ({ title, val, icon, col, onClick, sub }) => ( <button type="button" onClick={onClick} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm text-left hover:shadow-lg transition-all active:scale-[0.98] relative overflow-hidden group"><div className={`absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity ${col} text-white rounded-bl-3xl scale-150`}>{icon}</div><div className="relative z-10"><div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white mb-4 shadow-md ${col} group-hover:scale-110 transition-transform`}>{React.cloneElement(icon, {size:22})}</div><div className="font-black text-slate-700 text-lg leading-none mb-1">{title}</div><div className="text-[10px] uppercase font-bold text-slate-400 mb-3">{sub}</div>{val > 0 ? <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-bold"><AlertTriangle size={12}/> {val} Offen</div> : <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-bold"><CheckCircle size={12}/> Fertig</div>}</div></button> );
 
+        const NavBtn = ({ icon, label, active, onClick }) => (
+            <button onClick={onClick} className={`flex flex-col items-center gap-1 p-2 rounded-2xl transition-all ${active ? 'text-indigo-600 bg-indigo-50 scale-105' : 'text-slate-400 hover:text-slate-600'}`}>
+                {React.cloneElement(icon, { size: 24, strokeWidth: active ? 3 : 2 })}
+                <span className="text-[10px] font-bold">{label}</span>
+            </button>
+        );
+
+        const Cleaning = ({ data, status, user, appId, showToast, lang }) => {
+            const day = getWeekdayShort();
+            const list = data.tasks || [];
+            const myDepts = user.departments || [];
+            const relevant = list.filter(i => i.schedule?.[day] && (user.role==='admin' || ['kitchen_lead','service_lead'].includes(user.role) || myDepts.includes(i.dept)));
+            const sorted = relevant.sort((a,b) => (status.cleaningLogs[a.id]?1:0) - (status.cleaningLogs[b.id]?1:0));
+            const toggle = async (item) => { const id = `${getTodayStr()}_${item.id}`; const ref = doc(db,'artifacts',appId,'public','data','logs_cleaning',id); if(status.cleaningLogs[item.id]) await deleteDoc(ref); else { await setDoc(ref, {taskId:item.id, taskName:item.name, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()}); showToast("Sauber!"); } };
+            return (<div className="animate-in space-y-6"><div><h2 className="text-3xl font-black text-slate-800">{DICTIONARY[lang].clean}</h2><p className="text-slate-400 text-sm font-medium">Bereich: {user.departments?.join(', ') || 'Alle'}</p></div><div className="space-y-3">{sorted.map(item => { const done = status.cleaningLogs[item.id]; return (<div key={item.id} onClick={()=>toggle(item)} className={`p-4 rounded-2xl border flex justify-between items-center cursor-pointer card-press ${done?'bg-slate-50 border-slate-100 opacity-60 grayscale':'bg-white border-slate-100 shadow-sm hover:border-violet-200'}`}><div><div className={`font-bold text-base leading-tight ${done?'text-slate-400 line-through':'text-slate-800'}`}>{item.name}</div><div className="text-[11px] font-bold uppercase text-violet-500 mt-1">{item.area}</div></div><div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${done?'bg-emerald-500 text-white':'bg-slate-100 text-slate-300'}`}><CheckCircle size={16}/></div></div>); })}{sorted.length===0 && <div className="text-center p-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Alles erledigt.</div>}</div></div>);
+        };
+
+        const Inventory = ({ data, status, appId, showToast, lang }) => {
+            const [newItem, setNewItem] = useState(''); const list = status.shoppingList || []; const add = async () => { if(!newItem.trim()) return; await addDoc(collection(db,'artifacts',appId,'public','data','shopping_list'), { name: newItem, createdAt: serverTimestamp() }); setNewItem(''); }; const remove = async (id) => { await deleteDoc(doc(db,'artifacts',appId,'public','data','shopping_list',id)); };
+            return (<div className="animate-in space-y-6"><div><h2 className="text-3xl font-black text-slate-800">{DICTIONARY[lang].inventory}</h2><p className="text-slate-400 text-sm font-medium">Einkaufszettel</p></div><div className="flex gap-2"><Input value={newItem} onChange={e=>setNewItem(e.target.value)} placeholder="Neues Item..." onKeyDown={e=>e.key==='Enter'&&add()} /><button onClick={add} className="bg-emerald-600 text-white px-6 rounded-2xl font-bold"><Plus/></button></div><div className="space-y-2">{list.map(item => (<div key={item.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center"><span className="font-bold text-slate-700">{item.name}</span><button onClick={()=>remove(item.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={18}/></button></div>))}{list.length===0 && <div className="text-center p-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Liste leer.</div>}</div></div>);
+        };
+
         const SmartPrep = ({ data, status, user, appId, showToast, lang }) => {
             const day = getWeekdayShort();
             const t = DICTIONARY[lang];
@@ -667,24 +764,15 @@
         const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView, onLogoutSystem, deleteBranch, isRemote, currentUser, lang }) => { 
             const [tab, setTab] = useState('staff'); const [edit, setEdit] = useState(null); const [deleteMath, setDeleteMath] = useState(null); const [deleteInput, setDeleteInput] = useState('');
             const t = DICTIONARY[lang] || DICTIONARY.de;
-            
             const role = currentUser?.role;
             let availableTabs = {};
-            if(role === 'admin') {
-                availableTabs = { staff: t.login, prep: t.prep, tasks: t.clean, cooling: t.temp, fryers: t.oil, suppliers: 'Lief', company: 'Firma', system: 'Sys' };
-            } else {
-                // FIX: Non-admin roles (Kitchen Lead/Service Lead) only get relevant ops tabs
-                availableTabs = { prep: t.prep, tasks: t.clean, cooling: t.temp, fryers: t.oil, suppliers: 'Lief' };
-            }
-            
+            if(role === 'admin') { availableTabs = { staff: t.login, prep: t.prep, tasks: t.clean, cooling: t.temp, fryers: t.oil, suppliers: 'Lief', company: 'Firma', system: 'Sys' }; } 
+            else { availableTabs = { prep: t.prep, tasks: t.clean, cooling: t.temp, fryers: t.oil, suppliers: 'Lief' }; }
             const delItem = async (id) => { if(!confirm("Löschen?")) return; const col = tab==='tasks'?'cleaning_tasks':tab==='cooling'?'cooling_devices':tab==='fryers'?'fryers':tab==='suppliers'?'suppliers':tab==='prep'?'prep_tasks':'staff'; await deleteDoc(doc(db,'artifacts',appId,'public','data',col,id)); showToast("Gelöscht"); }; 
             const initDeleteBranch = () => { const a=Math.floor(Math.random()*10)+1; const b=Math.floor(Math.random()*10)+1; setDeleteMath({q:`${a} + ${b}`, a:a+b}); };
             const confirmDeleteBranch = async () => { if(parseInt(deleteInput) === deleteMath.a) { deleteBranch(); } else { showToast("Rechnung falsch!", "error"); } };
             const toggleDebug = async () => { const n=!debugMode; await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { debugMode: n }, {merge:true}); setDebugMode(n); };
-
-            // FIX: Auto-switch to first available tab if current one is forbidden
             useEffect(() => { if(!availableTabs[tab]) setTab(Object.keys(availableTabs)[0]); }, [role]);
-
             return (<div className="animate-in space-y-6"><h2 className="text-3xl font-black text-slate-800">Verwaltung</h2><div className="flex gap-2 overflow-x-auto no-scrollbar -mx-5 px-5 pb-2">{Object.entries(availableTabs).map(([k,l])=><button key={k} onClick={()=>{setTab(k);setEdit(null)}} className={`px-6 py-3 rounded-2xl font-bold text-sm whitespace-nowrap transition-all ${tab===k?'bg-slate-900 text-white shadow-lg shadow-slate-900/20':'bg-white border text-slate-500'}`}>{l}</button>)}</div><div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 min-h-[400px]">{tab === 'system' ? (<div className="space-y-4 animate-in"><div className="text-sm font-bold uppercase text-slate-400 tracking-wider">Erweiterte Tools</div><button onClick={()=>setView('history')} className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-5 rounded-2xl flex items-center justify-between group transition-all"><div className="flex items-center gap-3 font-bold"><History size={20}/> HACCP Protokolle (PDF)</div><ChevronRight className="opacity-50 group-hover:translate-x-1 transition-transform"/></button>
             <button onClick={onLogoutSystem} className="w-full mt-4 p-4 border border-slate-200 bg-slate-50 text-slate-600 rounded-2xl font-bold flex justify-center items-center gap-2"><LogOut size={18}/> Abmelden</button>
             {!isRemote && <div className="mt-10 pt-6 border-t border-red-100"><h4 className="text-red-500 font-bold mb-2 flex items-center gap-2"><AlertTriangle size={16}/> Danger Zone</h4>{deleteMath ? (<div className="bg-red-50 p-4 rounded-2xl border border-red-200"><p className="text-red-800 text-sm font-bold mb-2">Löse die Aufgabe: {deleteMath.q} = ?</p><div className="flex gap-2"><Input value={deleteInput} onChange={e=>setDeleteInput(e.target.value)} type="number" className="bg-white"/><button onClick={confirmDeleteBranch} className="bg-red-600 text-white px-4 rounded-xl font-bold">Löschen</button></div></div>) : (<button onClick={initDeleteBranch} className="text-xs text-red-400 underline">Filiale unwiderruflich löschen</button>)}</div>}
