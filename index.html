@@ -203,10 +203,28 @@
             </div>
         );
 
-        const AppLogo = ({ company, large, design }) => {
+    /*const AppLogo = ({ company, large, design }) => {
             const logoUrl = company?.design?.logoUrl || design?.logoUrl;
             if (logoUrl) { return <img src={logoUrl} alt="Logo" className={`${large ? 'h-32' : 'h-12'} object-contain mx-auto rounded-lg transition-all`} />; }
             return (<div><h1 className={`${large ? 'text-4xl' : 'text-xl'} font-black italic tracking-tighter`} style={{ color: 'inherit' }}>{company?.name || 'GASTROMASTER'}</h1>{large && <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v37.0</p>}</div>);
+        };*/
+        const AppLogo = ({ company, large, design }) => {
+            // Hier prüfen wir zuerst, ob ein Firmenlogo existiert. 
+            // Wenn nicht, nutzen wir dein neues Bild als Standard.
+            const logoUrl = company?.design?.logoUrl || design?.logoUrl || "Gemini_Generated_Image_h3eilmh3eilmh3ei.png";
+            
+            if (logoUrl) { 
+                return <img src={logoUrl} alt="Logo" className={`${large ? 'h-48 drop-shadow-2xl' : 'h-12'} object-contain mx-auto rounded-lg transition-all`} />; 
+            }
+            
+            return (
+                <div>
+                    <h1 className={`${large ? 'text-4xl' : 'text-xl'} font-black italic tracking-tighter`} style={{ color: 'inherit' }}>
+                        {company?.name || 'GASTROMASTER'}
+                    </h1>
+                    {large && <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v37.0</p>}
+                </div>
+            );
         };
 
         // --- APP CONTROLLER ---
