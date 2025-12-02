@@ -228,31 +228,26 @@
         };*/
         
                     const AppLogo = ({ company, large, design }) => {
-            // Hier den Dateinamen deines neuen, textfreien Logos eintragen (z.B. 'logo.png')
+            // Hier ist dein neuer Dateiname eingetragen
             const logoUrl = company?.design?.logoUrl || design?.logoUrl || "1000137544-removebg-preview.png";
             
             return (
                 <div className="flex flex-col items-center justify-center gap-2">
-                    {/* 1. DAS BILD (LOGOMARK) */}
                     {logoUrl && (
                         <img 
                             src={logoUrl} 
                             alt="Logo" 
-                            // brightness-110: Ein klein wenig aufhellen
-                            // drop-shadow: Leichter Schein für Tiefe
-                            className={`${large ? 'h-44 filter brightness-110 drop-shadow-[0_10px_20px_rgba(0,0,0,0.3)]' : 'h-10'} object-contain mx-auto transition-all duration-500`} 
+                            // ÄNDERUNG: 'h-28' macht das Logo kleiner (vorher war es h-44 oder h-56)
+                            className={`${large ? 'h-28 filter brightness-110 drop-shadow-[0_5px_15px_rgba(0,0,0,0.3)]' : 'h-10'} object-contain mx-auto transition-all duration-500`} 
                         />
                     )}
 
-                    {/* 2. DER TEXT (Hinzugefügt per Code) */}
-                    {/* Wir zeigen den Text nur, wenn 'large' (Startbildschirm) aktiv ist, oder wenn kein Logo da ist */}
+                    {/* Der Text-Block bleibt gleich */}
                     {(large || !logoUrl) && (
                         <div className="text-center animate-in" style={{animationDelay: '0.1s'}}>
-                            {/* HAUPTTITEL */}
                             <h1 
                                 className={`font-serif font-black tracking-wider ${large ? 'text-3xl' : 'text-lg'}`}
                                 style={{ 
-                                    // Ein leichter Gold-Verlauf, passend zum Logo, oder fallback weiß
                                     color: 'transparent',
                                     backgroundImage: 'linear-gradient(to bottom, #fde68a, #d97706)',
                                     backgroundClip: 'text',
@@ -263,7 +258,6 @@
                                 {company?.name || 'GASTROMASTER'}
                             </h1>
                             
-                            {/* UNTERTITEL "APP" */}
                             {large && (
                                 <p className="text-indigo-200 text-[10px] font-bold uppercase tracking-[0.6em] ml-1 mt-1 opacity-80">
                                     APP
