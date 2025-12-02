@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Gastromaster v36.0</title>
+    <title>Gastromaster v36.1</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -20,7 +20,7 @@
         
         input, select, button { touch-action: manipulation; }
         
-        /* Finger-Friendly Pin Pad - IMPROVED */
+        /* Finger-Friendly Pin Pad */
         .pin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; justify-items: center; }
         .pin-btn { 
             @apply active:scale-90 transition-transform bg-slate-100 rounded-full w-20 h-20 flex items-center justify-center text-2xl font-black text-slate-700 shadow-sm border border-slate-200; 
@@ -35,6 +35,12 @@
         /* Switches */
         .toggle-checkbox:checked { right: 0; border-color: #68D391; }
         .toggle-checkbox:checked + .toggle-label { background-color: #68D391; }
+        
+        /* Navigation Scroll Fix */
+        .nav-scroll {
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
     </style>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -116,21 +122,12 @@
             de: { start: "Filiale Öffnen", id: "Restaurant ID", login: "Team Login", role: "Rolle", pin: "PIN", admin: "Filialleitung", k_lead: "Küchenleitung", s_lead: "Serviceleitung", kitchen: "Küche", service: "Service", save: "Speichern", cancel: "Abbrechen", prep: "Vorbereitung", stock: "Bestand", clean: "Putzplan", oil: "Fett & Öl", temp: "Kühlung", dash: "Übersicht", morning: "Frühschicht Info", yesterday: "Fettliste vom Vortag", missing: "NICHT gemacht!", dev: "Entwickelt von Marvin Ringer", worker: "Mitarbeiter", logout: "Abmelden", sign: "Signieren", pdf: "Protokoll (PDF)", create: "Erstellen", inventory: "Einkauf", time: "Stempeluhr", news: "Team News" },
         };
 
-        // --- GLOBAL LOGGING FUNCTION ---
         const logSystemAction = async (type, msg, branchId = 'SYSTEM') => {
-            try {
-                await addDoc(collection(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'system_logs'), {
-                    type, msg, branchId, timestamp: serverTimestamp()
-                });
-            } catch(e) { console.warn("Log failed", e); }
+            try { await addDoc(collection(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'system_logs'), { type, msg, branchId, timestamp: serverTimestamp() }); } catch(e) {}
         };
 
         const logBranchAction = async (branchId, user, action, details) => {
-            try {
-                await addDoc(collection(db, 'artifacts', branchId, 'public', 'data', 'audit_logs'), {
-                    user, action, details, timestamp: serverTimestamp()
-                });
-            } catch(e) { console.warn("Audit failed", e); }
+            try { await addDoc(collection(db, 'artifacts', branchId, 'public', 'data', 'audit_logs'), { user, action, details, timestamp: serverTimestamp() }); } catch(e) {}
         };
 
         // --- COMPONENTS ---
@@ -138,7 +135,6 @@
         const Input = (props) => <input {...props} className={`w-full p-4 rounded-2xl border border-slate-200 bg-white text-base font-medium focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all text-slate-800 ${props.className}`} />;
         const Select = (props) => <div className="relative"><select {...props} className={`w-full p-4 pr-10 rounded-2xl border border-slate-200 bg-white text-base font-medium appearance-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all text-slate-800 ${props.className}`}>{props.children}</select><ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={20}/></div>;
         
-        // --- CUSTOMIZABLE BUTTON ---
         const Button = ({ children, loading, variant='primary', onClick, disabled, className='', style={} }) => {
              const base = "w-full py-4 rounded-2xl font-bold text-sm uppercase tracking-wider flex justify-center items-center gap-2 transition-all active:scale-[0.98]";
              const variants = {
@@ -150,7 +146,6 @@
              };
              let finalClass = `${base} ${variants[variant]} ${className}`;
              if(variant === 'primary' && !style.backgroundColor) finalClass += " bg-slate-900";
-             
              return <button type="button" onClick={onClick} disabled={loading || disabled} className={finalClass} style={style}>{loading ? <Loader2 className="animate-spin" size={20}/> : children}</button>
         };
 
@@ -165,16 +160,7 @@
             static getDerivedStateFromError(error) { return { hasError: true, error }; }
             componentDidCatch(error, info) { console.error("Crash:", error, info); }
             render() {
-                if (this.state.hasError) return (
-                    <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-slate-50">
-                        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl max-w-sm w-full">
-                            <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4"><Bug size={32}/></div>
-                            <h2 className="text-xl font-black text-slate-800 mb-2">Ups, ein Fehler!</h2>
-                            <pre className="text-[10px] bg-slate-100 p-3 rounded-xl border border-slate-200 text-left mb-6 overflow-auto max-h-32 text-slate-600 font-mono">{this.state.error?.toString()}</pre>
-                            <Button onClick={()=>{localStorage.clear(); window.location.reload()}} variant="primary">App Zurücksetzen</Button>
-                        </div>
-                    </div>
-                );
+                if (this.state.hasError) return <div className="p-10 text-center"><h2 className="text-xl font-bold">Fehler</h2><button onClick={()=>window.location.reload()} className="mt-4 bg-slate-900 text-white px-4 py-2 rounded">Neu laden</button></div>;
                 return this.props.children;
             }
         }
@@ -218,18 +204,10 @@
             </div>
         );
 
-        // --- UPDATED LOGO & HEADER ---
         const AppLogo = ({ company, large, design }) => {
             const logoUrl = company?.design?.logoUrl || design?.logoUrl;
-            if (logoUrl) {
-                return <img src={logoUrl} alt="Logo" className={`${large ? 'h-32' : 'h-12'} object-contain mx-auto rounded-lg transition-all`} />;
-            }
-            return (
-                <div>
-                    <h1 className={`${large ? 'text-4xl' : 'text-xl'} font-black italic tracking-tighter`} style={{ color: 'inherit' }}>{company?.name || 'GASTROMASTER'}</h1>
-                    {large && <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v36.0</p>}
-                </div>
-            );
+            if (logoUrl) { return <img src={logoUrl} alt="Logo" className={`${large ? 'h-32' : 'h-12'} object-contain mx-auto rounded-lg transition-all`} />; }
+            return (<div><h1 className={`${large ? 'text-4xl' : 'text-xl'} font-black italic tracking-tighter`} style={{ color: 'inherit' }}>{company?.name || 'GASTROMASTER'}</h1>{large && <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v36.1</p>}</div>);
         };
 
         // --- APP CONTROLLER ---
@@ -246,32 +224,23 @@
             const [showTutorial, setShowTutorial] = useState(false);
             const [tempMasterPw, setTempMasterPw] = useState('');
             const [generatedMasterKey, setGeneratedMasterKey] = useState(null);
-            const [broadcast, setBroadcast] = useState(null);
             
             const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [], prep: [], company: {}, settings: {}, messages: [] });
             const [status, setStatus] = useState({ tempLogs: [], cleaningLogs: {}, oilLogs: {}, prepLogs: {}, shoppingList: [], yesterdayOil: {}, signatures: {}, myTimeLog: null });
             const [debugMode, setDebugMode] = useState(false);
             
-            // Default configuration
             const design = data.company?.design || {};
-            const themeStyle = {
-                backgroundColor: design.backgroundColor || '#f8fafc',
-                color: design.textColor || '#1e293b'
-            };
+            const themeStyle = { backgroundColor: design.backgroundColor || '#f8fafc', color: design.textColor || '#1e293b' };
             const btnStyle = { backgroundColor: design.primaryColor || '#0f172a', color: '#ffffff' };
             const headerStyle = { backgroundColor: design.headerColor || design.primaryColor || '#0f172a', color: '#ffffff' };
             
-            // Dynamic Module Config
             const modulesConfig = data.settings?.modules || DEFAULT_MODULES_CONFIG;
-
             const showToast = (msg, type='success') => { setToast({msg, type}); setTimeout(() => setToast(null), 3000); };
 
             const handleRestaurantLogin = (id) => {
                 if(id === 'head-admin') { setView('head-login'); } else {
                     const normId = normalizeId(id);
-                    setLoading(true); 
-                    localStorage.setItem('gastro_app_id', normId); 
-                    setAppId(normId); 
+                    setLoading(true); localStorage.setItem('gastro_app_id', normId); setAppId(normId); 
                 }
             };
 
@@ -280,44 +249,30 @@
                 try {
                     const tokenRef = doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'tokens', token);
                     const tokenSnap = await getDoc(tokenRef);
-                    if(!tokenSnap.exists()) throw new Error("Ungültiger Code");
-                    const tokenData = tokenSnap.data();
-                    if(!tokenData.active) throw new Error("Code bereits benutzt!");
-
+                    if(!tokenSnap.exists() || !tokenSnap.data().active) throw new Error("Code ungültig/benutzt");
                     const checkRef = doc(db, 'artifacts', newId, 'public', 'data', 'settings', 'global');
                     const checkSnap = await getDoc(checkRef);
-                    if(checkSnap.exists()) throw new Error("ID bereits vergeben");
-                    
+                    if(checkSnap.exists()) throw new Error("ID vergeben");
                     await seedDB(newId, masterPw);
                     await updateDoc(tokenRef, { active: false, usedBy: newId, usedAt: serverTimestamp() });
                     await setDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'branches', newId), { id: newId, createdAt: serverTimestamp() });
-                    await logSystemAction('REGISTER', `New branch registered: ${newId}`, newId);
-
-                    localStorage.setItem('gastro_app_id', newId);
-                    setAppId(newId);
-                    setTempMasterPw(masterPw); 
-                    setShowTutorial(true); 
+                    localStorage.setItem('gastro_app_id', newId); setAppId(newId); setTempMasterPw(masterPw); setShowTutorial(true); 
                 } catch(e) { console.error(e); showToast(e.message, "error"); }
                 setLoading(false);
             };
 
             const handleUserLogin = async (u) => {
-                setAppUser(u);
-                setView('dashboard');
+                setAppUser(u); setView('dashboard');
                 if(u.role === 'admin' && String(u.pin) === '1234') setAdminAlert(true);
                 await logBranchAction(appId, u.name, 'LOGIN', 'User logged in');
             };
 
             const handleMasterKeyRecovery = async (inputKey) => {
                 if(!appId) return;
-                const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global');
-                const snap = await getDoc(settingsRef);
+                const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'));
                 if(snap.exists() && snap.data().masterKey === inputKey) {
-                    setAppUser({ name: 'MASTER ADMIN', role: 'admin', pin: 'MASTER' });
-                    setView('dashboard');
-                    showToast("Notfall-Zugriff gewährt!");
-                    await logSystemAction('EMERGENCY_LOGIN', `Master key used for ${appId}`, appId);
-                } else { showToast("Falscher Master-Schlüssel", "error"); }
+                    setAppUser({ name: 'MASTER ADMIN', role: 'admin', pin: 'MASTER' }); setView('dashboard'); showToast("Zugriff gewährt!");
+                } else { showToast("Falscher Schlüssel", "error"); }
             };
 
             useEffect(() => { signInAnonymously(auth).catch(e=>console.error(e)); return onAuthStateChanged(auth, u => { setUser(u); if(!u) setLoading(false); }); }, []);
@@ -413,8 +368,8 @@
                         {adminAlert && (
                             <div className="fixed inset-0 z-[100] bg-red-900/95 flex items-center justify-center p-6 animate-in">
                                 <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl text-center space-y-6">
-                                    <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto shadow-lg animate-pulse"><ShieldAlert size={40}/></div>
-                                    <div><h3 className="font-black text-2xl text-red-600 mb-1">SICHERHEITSRISIKO!</h3><p className="text-sm font-bold text-slate-600">Standard-PIN 1234 ist aktiv.</p></div>
+                                    <h3 className="font-black text-2xl text-red-600 mb-1">SICHERHEITSRISIKO!</h3>
+                                    <p className="text-sm font-bold text-slate-600">Standard-PIN 1234 ist aktiv.</p>
                                     <Button onClick={()=>setAdminAlert(false)} className="w-full bg-red-600 hover:bg-red-700 shadow-red-200 text-white">Ich habe verstanden</Button>
                                 </div>
                             </div>
@@ -434,14 +389,16 @@
                             {view === 'history' && appUser?.role === 'admin' && <SmartHistory {...common} setView={setView} />}
                         </main>
 
-                        <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-100 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex justify-around items-end shadow-[0_-4px_10px_rgba(0,0,0,0.03)] z-40 text-slate-800">
-                            <NavBtn icon={<Menu/>} label="Start" active={view==='dashboard'} onClick={()=>setView('dashboard')} design={design}/>
-                            {Object.entries(modulesConfig).sort().map(([key, config]) => {
-                                if (!config.enabled) return null;
-                                if (key === 'oil' && !hasAccess('kitchen')) return null;
-                                return <NavBtn key={key} icon={ICON_MAP[config.icon] || <CheckCircle/>} label={config.name || DICTIONARY[lang][key]} active={view===key} onClick={()=>setView(key)} design={design}/>
-                            })}
-                            {(appUser.role === 'admin' || ['kitchen_lead','service_lead'].includes(appUser.role)) && <NavBtn icon={<Settings/>} label="Admin" active={view==='admin'} onClick={()=>setView('admin')} design={design}/>}
+                        <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-100 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex nav-scroll overflow-x-auto justify-start items-center shadow-[0_-4px_10px_rgba(0,0,0,0.03)] z-40 text-slate-800 gap-2 px-4">
+                            <div className="flex items-center gap-2 min-w-max mx-auto">
+                                <NavBtn icon={<Menu/>} label="Start" active={view==='dashboard'} onClick={()=>setView('dashboard')} design={design}/>
+                                {Object.entries(modulesConfig).sort().map(([key, config]) => {
+                                    if (!config.enabled) return null;
+                                    if (key === 'oil' && !hasAccess('kitchen')) return null;
+                                    return <NavBtn key={key} icon={ICON_MAP[config.icon] || <CheckCircle/>} label={config.name || DICTIONARY[lang][key]} active={view===key} onClick={()=>setView(key)} design={design}/>
+                                })}
+                                {(appUser.role === 'admin' || ['kitchen_lead','service_lead'].includes(appUser.role)) && <NavBtn icon={<Settings/>} label="Admin" active={view==='admin'} onClick={()=>setView('admin')} design={design}/>}
+                            </div>
                         </nav>
                     </div>
                 </ErrorBoundary>
@@ -491,13 +448,14 @@
             const t = DICTIONARY[lang] || DICTIONARY.de;
             const handleUserClick = (u) => { const pin = String(u.pin || ''); if(pin.length > 0) { setSelectedUser({...u, pin}); setShowPin(true); setRecoveryMode(false); } else { onLogin(u); } };
             const onPinSuccess = (inputPin) => { setShowPin(false); if(recoveryMode) onMasterRecovery(inputPin); else onLogin(selectedUser); };
+            const getRoleName = (r) => { if(r==='admin') return 'Filialleitung'; if(r==='kitchen_lead') return 'Küchenleitung'; if(r==='service_lead') return 'Serviceleitung'; return 'Mitarbeiter'; };
 
             return (
                 <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden text-slate-800"><div className="absolute top-[-20%] right-[-20%] w-[80%] h-[80%] rounded-full blur-[150px] opacity-20 animate-pulse" style={{backgroundColor: themeColor}}></div>
                 {showPin && (<PinPad title={recoveryMode ? "Master-Schlüssel" : `${t.pin} für ${selectedUser.name}`} targetPin={recoveryMode ? null : selectedUser.pin} onClose={()=>setShowPin(false)} onSuccess={onPinSuccess} />)}
                 <div className="z-10 w-full max-w-sm mx-auto space-y-6 animate-in"><div className="flex justify-between items-start"><div><AppLogo company={company} large design={company?.design}/><p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.3em] flex items-center gap-1 mt-2"><Store size={10}/> {restaurantId}</p></div><div className="flex gap-2"><button onClick={()=>{setRecoveryMode(true); setShowPin(true);}} className="text-amber-500 hover:text-amber-400 transition-colors bg-white/5 p-2 rounded-full"><Key size={20}/></button><button onClick={onLogoutSystem} className="text-slate-500 hover:text-white transition-colors bg-white/5 p-2 rounded-full"><LogOut size={20}/></button></div></div>
                 {showOilWarning && (<div className={`p-4 rounded-2xl backdrop-blur-sm shadow-xl border ${oilLogs.length === 0 ? 'bg-red-500/20 border-red-500/30 text-red-200' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}><div className="text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1"><AlertTriangle size={10}/> {t.yesterday}</div>{oilLogs.length === 0 ? (<div className="text-sm font-bold flex items-center gap-2"><X size={16}/> {t.missing}</div>) : (<div className="space-y-1">{oilLogs.map((l,i) => { const fname = (fryers||[]).find(f=>f.id===l.deviceId)?.name || 'Fritteuse'; return <div key={i} className="text-xs flex justify-between"><span>{fname}</span><span className="font-bold">OK ({l.tpm}%)</span></div> })}</div>)}</div>)}
-                <div className="space-y-3"><div className="text-slate-500 text-xs font-bold uppercase ml-2">{t.login}</div>{(staff||[]).map(s => (<button type="button" key={s.id} onClick={() => handleUserClick(s)} className="w-full bg-white/5 hover:bg-white/10 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm"><div className="p-2.5 rounded-xl bg-white/10"><User size={20} className="text-white group-hover:text-white"/></div><div className="flex-1 text-left"><div className="font-bold text-lg">{s.name}</div><div className="text-[11px] opacity-60 uppercase font-medium">{s.role}</div></div>{s.pin && String(s.pin).length>0 ? <Lock size={16} className="opacity-50"/> : <Unlock size={16} className="opacity-30 text-red-400"/>}</button>))}</div>
+                <div className="space-y-3"><div className="text-slate-500 text-xs font-bold uppercase ml-2">{t.login}</div>{(staff||[]).map(s => (<button type="button" key={s.id} onClick={() => handleUserClick(s)} className="w-full bg-white/5 hover:bg-white/10 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm"><div className="p-2.5 rounded-xl bg-white/10"><User size={20} className="text-white group-hover:text-white"/></div><div className="flex-1 text-left"><div className="font-bold text-lg">{s.name}</div><div className="text-[11px] opacity-60 uppercase font-medium">{getRoleName(s.role)}</div></div>{s.pin && String(s.pin).length>0 ? <Lock size={16} className="opacity-50"/> : <Unlock size={16} className="opacity-30 text-red-400"/>}</button>))}</div>
                 {(staff||[]).length===0 && <div className="text-center pt-8"><p className="text-slate-500 text-sm mb-4">Erster Start?</p><button onClick={onSeed} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg">Datenbank Initialisieren</button></div>}
                 </div></div>
             );
@@ -513,28 +471,11 @@
                 setNewMsg(''); showToast("Nachricht gesendet");
             };
             const del = async (id) => { if(confirm("Löschen?")) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', id)); };
-
             return (
                 <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden animate-in">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-black text-slate-800 flex items-center gap-2"><MessageCircle size={20}/> Team Board</h3>
-                    </div>
+                    <div className="flex justify-between items-center mb-4"><h3 className="font-black text-slate-800 flex items-center gap-2"><MessageCircle size={20}/> Team Board</h3></div>
                     {canPost && <div className="flex gap-2 mb-4"><input value={newMsg} onChange={e=>setNewMsg(e.target.value)} placeholder="Nachricht an das Team..." className="w-full bg-slate-50 p-3 rounded-xl text-sm outline-none border border-slate-100"/><button onClick={post} className="bg-indigo-600 text-white p-3 rounded-xl"><Save size={18}/></button></div>}
-                    <div className="space-y-3 max-h-60 overflow-y-auto custom-scrollbar">
-                        {messages.length === 0 && <div className="text-center text-slate-400 text-xs italic py-4">Keine Nachrichten.</div>}
-                        {messages.map(m => (
-                            <div key={m.id} className="bg-slate-50 p-3 rounded-xl text-sm border border-slate-100">
-                                <div className="flex justify-between items-start mb-1">
-                                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${m.role==='admin'?'bg-indigo-100 text-indigo-700':'bg-slate-200 text-slate-600'}`}>{m.user}</span>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] text-slate-400">{m.createdAt?.seconds ? new Date(m.createdAt.seconds*1000).toLocaleDateString() : ''}</span>
-                                        {canPost && <button onClick={()=>del(m.id)} className="text-slate-300 hover:text-red-500"><X size={12}/></button>}
-                                    </div>
-                                </div>
-                                <div className="text-slate-700 ml-1">{m.text}</div>
-                            </div>
-                        ))}
-                    </div>
+                    <div className="space-y-3 max-h-60 overflow-y-auto custom-scrollbar">{messages.length === 0 && <div className="text-center text-slate-400 text-xs italic py-4">Keine Nachrichten.</div>}{messages.map(m => (<div key={m.id} className="bg-slate-50 p-3 rounded-xl text-sm border border-slate-100"><div className="flex justify-between items-start mb-1"><span className={`text-xs font-bold px-2 py-0.5 rounded ${m.role==='admin'?'bg-indigo-100 text-indigo-700':'bg-slate-200 text-slate-600'}`}>{m.user}</span><div className="flex items-center gap-2"><span className="text-[10px] text-slate-400">{m.createdAt?.seconds ? new Date(m.createdAt.seconds*1000).toLocaleDateString() : ''}</span>{canPost && <button onClick={()=>del(m.id)} className="text-slate-300 hover:text-red-500"><X size={12}/></button>}</div></div><div className="text-slate-700 ml-1">{m.text}</div></div>))}</div>
                 </div>
             );
         };
@@ -566,18 +507,120 @@
             return (
                 <div className="animate-in space-y-6">
                     <div className="text-white p-6 rounded-[2.5rem] shadow-xl flex justify-between items-center relative overflow-hidden transition-colors duration-300" style={btnStyle}><div className="relative z-10"><div className="text-xs font-bold opacity-80 uppercase mb-1">{longDay}</div><div className="text-3xl font-black tracking-tight">Hallo, {user.name}</div><div className="opacity-80 text-sm mt-1 font-medium">{done} Tasks • {prepDone} Prep erledigt</div></div><div className="bg-white/10 p-4 rounded-2xl shadow-inner relative z-10"><Activity className="text-white" size={32}/></div><div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full blur-[60px] opacity-20"></div></div>
-                    
                     <TeamBoard messages={data.messages||[]} user={user} appId={appId} showToast={showToast} />
-
-                    <div className="grid grid-cols-2 gap-4">
-                        {Object.entries(modulesConfig).map(([key, config]) => renderCard(key, config))}
-                    </div>
+                    <div className="grid grid-cols-2 gap-4">{Object.entries(modulesConfig).map(([key, config]) => renderCard(key, config))}</div>
                 </div>
             );
         };
         
         const DashCard = ({ title, val, icon, col, onClick, sub, customStatus }) => ( <button type="button" onClick={onClick} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm text-left hover:shadow-lg transition-all active:scale-[0.98] relative overflow-hidden group"><div className={`absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity ${col} text-white rounded-bl-3xl scale-150`}>{icon}</div><div className="relative z-10"><div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white mb-4 shadow-md ${col} group-hover:scale-110 transition-transform`}>{React.cloneElement(icon, {size:22})}</div><div className="font-black text-slate-700 text-lg leading-none mb-1">{title}</div><div className="text-[10px] uppercase font-bold text-slate-400 mb-3">{sub}</div>{customStatus ? <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${customStatus==='LÄUFT'?'bg-emerald-50 text-emerald-600':'bg-indigo-50 text-indigo-600'}`}>{customStatus}</div> : val > 0 ? <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-bold"><AlertTriangle size={12}/> {val} Offen</div> : <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-bold"><CheckCircle size={12}/> Fertig</div>}</div></button> );
-        const NavBtn = ({ icon, label, active, onClick, design }) => { const color = design?.primaryColor || '#0f172a'; return <button onClick={onClick} className={`flex flex-col items-center gap-1 p-2 rounded-2xl transition-all ${active ? 'scale-105' : 'text-slate-400 hover:text-slate-600'}`} style={active ? {color: color, backgroundColor: `${color}10`} : {}}>{React.cloneElement(icon, { size: 24, strokeWidth: active ? 3 : 2 })}<span className="text-[10px] font-bold truncate max-w-[60px]">{label}</span></button>; };
+        const NavBtn = ({ icon, label, active, onClick, design }) => { const color = design?.primaryColor || '#0f172a'; return <button onClick={onClick} className={`flex shrink-0 flex-col items-center gap-1 p-2 rounded-2xl transition-all ${active ? 'scale-105' : 'text-slate-400 hover:text-slate-600'}`} style={active ? {color: color, backgroundColor: `${color}10`} : {}}>{React.cloneElement(icon, { size: 24, strokeWidth: active ? 3 : 2 })}<span className="text-[10px] font-bold truncate max-w-[60px]">{label}</span></button>; };
+
+        // --- MODULES (RESTORED TO FULL VERSIONS) ---
+        const TimeClock = ({ user, appId, showToast, status }) => { 
+            const currentLog = status.myTimeLog; const isClockedIn = currentLog && !currentLog.end; 
+            const handleClock = async () => { 
+                const now = new Date(); const timeStr = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}); 
+                if(isClockedIn) { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { end: timeStr }); await logBranchAction(appId, user.name, 'CLOCK_OUT', `End: ${timeStr}`); showToast("Schönen Feierabend!"); } 
+                else { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), { userId: user.id, userName: user.name, dateStr: getTodayStr(), start: timeStr, end: null, createdAt: serverTimestamp() }); await logBranchAction(appId, user.name, 'CLOCK_IN', `Start: ${timeStr}`); showToast("Eingestempelt!"); } 
+            }; 
+            return (
+                <div className="animate-in space-y-6 text-center">
+                    <div><h2 className="text-3xl font-black text-slate-800">Stempeluhr</h2><p className="text-slate-400 text-sm font-medium">Arbeitszeiterfassung</p></div>
+                    <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 relative overflow-hidden">
+                        <div className={`absolute top-0 left-0 w-full h-2 ${isClockedIn ? 'bg-emerald-500' : 'bg-slate-200'}`}></div>
+                        <div className="text-sm font-bold uppercase text-slate-400 mb-2">{getTodayStr()}</div>
+                        <div className="text-5xl font-black text-slate-800 mb-8 font-mono">{new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                        <button onClick={handleClock} className={`w-32 h-32 rounded-full flex flex-col items-center justify-center transition-all shadow-xl active:scale-95 mx-auto ${isClockedIn ? 'bg-red-50 text-red-600 hover:bg-red-100 shadow-red-200' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 shadow-emerald-200'}`}>
+                            {isClockedIn ? <StopCircle size={48} /> : <PlayCircle size={48} />}<span className="font-bold text-xs mt-2 uppercase">{isClockedIn ? 'STOP' : 'START'}</span>
+                        </button>
+                        <div className="mt-8 text-sm font-medium text-slate-500">{isClockedIn ? `Eingestempelt seit ${currentLog.start} Uhr` : 'Aktuell nicht eingestempelt'}</div>
+                    </div>
+                </div>
+            ); 
+        };
+
+        const Cleaning = ({ data, status, user, appId, showToast, lang }) => { 
+            const day = getWeekdayShort(); const list = data.tasks || []; const myDepts = user.departments || []; 
+            const relevant = list.filter(i => i.schedule?.[day] && (user.role==='admin' || ['kitchen_lead','service_lead'].includes(user.role) || myDepts.includes(i.dept))); 
+            const sorted = relevant.sort((a,b) => (status.cleaningLogs[a.id]?1:0) - (status.cleaningLogs[b.id]?1:0)); 
+            const toggle = async (item) => { 
+                const id = `${getTodayStr()}_${item.id}`; const ref = doc(db,'artifacts',appId,'public','data','logs_cleaning',id); 
+                if(status.cleaningLogs[item.id]) { await deleteDoc(ref); } 
+                else { await setDoc(ref, {taskId:item.id, taskName:item.name, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()}); await logBranchAction(appId, user.name, 'CLEANING', `Completed: ${item.name}`); showToast("Sauber!"); } 
+            }; 
+            return (
+                <div className="animate-in space-y-6">
+                    <div><h2 className="text-3xl font-black text-slate-800">{DICTIONARY[lang].clean}</h2><p className="text-slate-400 text-sm font-medium">Bereich: {user.departments?.join(', ') || 'Alle'}</p></div>
+                    <div className="space-y-3">
+                        {sorted.map(item => { const done = status.cleaningLogs[item.id]; return (<div key={item.id} onClick={()=>toggle(item)} className={`p-4 rounded-2xl border flex justify-between items-center cursor-pointer card-press ${done?'bg-slate-50 border-slate-100 opacity-60 grayscale':'bg-white border-slate-100 shadow-sm hover:border-violet-200'}`}><div><div className={`font-bold text-base leading-tight ${done?'text-slate-400 line-through':'text-slate-800'}`}>{item.name}</div><div className="text-[11px] font-bold uppercase text-violet-500 mt-1">{item.area}</div></div><div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${done?'bg-emerald-500 text-white':'bg-slate-100 text-slate-300'}`}><CheckCircle size={16}/></div></div>); })}
+                        {sorted.length===0 && <div className="text-center p-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Alles erledigt.</div>}
+                    </div>
+                </div>
+            ); 
+        };
+
+        const Inventory = ({ data, status, appId, showToast, lang }) => { 
+            const [newItem, setNewItem] = useState(''); const list = status.shoppingList || []; 
+            const add = async () => { if(!newItem.trim()) return; await addDoc(collection(db,'artifacts',appId,'public','data','shopping_list'), { name: newItem, createdAt: serverTimestamp() }); setNewItem(''); }; 
+            const remove = async (id) => { await deleteDoc(doc(db,'artifacts',appId,'public','data','shopping_list',id)); }; 
+            return (
+                <div className="animate-in space-y-6">
+                    <div><h2 className="text-3xl font-black text-slate-800">{DICTIONARY[lang].inventory}</h2><p className="text-slate-400 text-sm font-medium">Einkaufszettel</p></div>
+                    <div className="flex gap-2"><Input value={newItem} onChange={e=>setNewItem(e.target.value)} placeholder="Neues Item..." onKeyDown={e=>e.key==='Enter'&&add()} /><button onClick={add} className="bg-emerald-600 text-white px-6 rounded-2xl font-bold"><Plus/></button></div>
+                    <div className="space-y-2">{list.map(item => (<div key={item.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center"><span className="font-bold text-slate-700">{item.name}</span><button onClick={()=>remove(item.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={18}/></button></div>))}{list.length===0 && <div className="text-center p-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Liste leer.</div>}</div>
+                </div>
+            ); 
+        };
+
+        const SmartPrep = ({ data, status, user, appId, showToast, lang }) => { 
+            const day = getWeekdayShort(); const list = data.prep || []; const myDepts = user.departments || []; 
+            const relevant = list.filter(i => i.schedule?.[day] && (user.role==='admin' || ['kitchen_lead','service_lead'].includes(user.role) || myDepts.includes(i.dept))); 
+            const prepItems = relevant.filter(i => i.category === 'prep').sort((a,b) => (status.prepLogs[a.id]?1:0) - (status.prepLogs[b.id]?1:0)); 
+            const stockItems = relevant.filter(i => i.category === 'stock').sort((a,b) => (status.prepLogs[a.id]?1:0) - (status.prepLogs[b.id]?1:0)); 
+            const toggle = async (item) => { 
+                const id = `${getTodayStr()}_${item.id}`; const ref = doc(db,'artifacts',appId,'public','data','logs_prep',id); 
+                if(status.prepLogs[item.id]) await deleteDoc(ref); 
+                else { await setDoc(ref, {taskId:item.id, taskName:item.name, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()}); await logBranchAction(appId, user.name, 'PREP', `Completed: ${item.name}`); showToast("Erledigt!"); } 
+            }; 
+            const ItemRow = ({ item }) => { const done = status.prepLogs[item.id]; return ( <div onClick={()=>toggle(item)} className={`p-4 rounded-2xl border flex justify-between items-center cursor-pointer card-press ${done?'bg-slate-50 border-slate-100 opacity-60 grayscale':'bg-white border-slate-100 shadow-sm hover:border-indigo-200'}`}><div><div className={`font-bold text-base leading-tight ${done?'text-slate-400 line-through':'text-slate-800'}`}>{item.name}</div><div className="text-[11px] font-bold uppercase text-indigo-500 mt-1 flex items-center gap-1"><Box size={10}/> {item.target}</div></div><div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${done?'bg-emerald-500 text-white':'bg-slate-100 text-slate-300'}`}><CheckCircle size={16}/></div></div> ); }; 
+            return (
+                <div className="animate-in space-y-8">
+                    <div className="flex justify-between items-end"><div><h2 className="text-3xl font-black text-slate-800">{DICTIONARY[lang].prep}</h2><p className="text-slate-400 text-sm font-medium">Plan für {getWeekdayLong()}</p></div></div>
+                    <div className="space-y-3"><div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-400 tracking-widest mb-2"><ChefHat size={14}/> Vorbereitung</div>{prepItems.map(item => <ItemRow key={item.id} item={item}/>)}{prepItems.length===0 && <div className="text-center p-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Nichts zu tun.</div>}</div>
+                    <div className="space-y-3"><div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-400 tracking-widest mb-2"><Layers size={14}/> Auffüllen & Bestand</div>{stockItems.map(item => <ItemRow key={item.id} item={item}/>)}{stockItems.length===0 && <div className="text-center p-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Alles voll.</div>}</div>
+                </div>
+            ); 
+        };
+
+        const Cooling = ({ data, status, user, appId, showToast, lang }) => { 
+            const [val, setVal] = useState({}); const active = (data.cooling || []).filter(d => d.status!=='defekt'); const t = DICTIONARY[lang]; 
+            const signature = (status.signatures || {})['cooling']; const tempLogs = status.tempLogs || []; 
+            const canSign = active.length > 0 && active.every(d => tempLogs.find(l => l.deviceId === d.id)); 
+            const save = async (dev) => { if(!val[dev.id]) return; try { await addDoc(collection(db,'artifacts',appId,'public','data','logs_temp'), { deviceId:dev.id, deviceName:dev.name, temp: val[dev.id], user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); await logBranchAction(appId, user.name, 'TEMP_LOG', `${dev.name}: ${val[dev.id]}°C`); setVal(p=>({...p,[dev.id]:''})); showToast("Temperatur erfasst"); } catch(e){ console.error(e); } }; 
+            const sign = async () => { if(confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) { await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_cooling`), { module:'cooling', user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); await logBranchAction(appId, user.name, 'SIGNATURE', 'Cooling protocol signed'); showToast("Protokoll signiert!"); } }; 
+            return (
+                <div className="animate-in space-y-6">
+                    <div><h2 className="text-3xl font-black text-slate-800">{t.temp}</h2><p className="text-slate-400 text-sm font-medium">HACCP Dokumentation</p></div>
+                    <div className="grid gap-4">{active.map(dev => { const done = tempLogs.find(l=>l.deviceId===dev.id); const v = val[dev.id] || ''; const isHigh = v && (parseFloat(v)>8 || parseFloat(v)<0); return (<div key={dev.id} className={`p-6 rounded-[2rem] border shadow-sm transition-all ${done?'bg-emerald-50/50 border-emerald-100':'bg-white border-slate-100'}`}><div className="flex justify-between mb-4 font-black text-lg text-slate-700 items-center"><span>{dev.name}</span>{done ? <span className="text-emerald-600 bg-emerald-100 px-2 py-1 rounded-lg text-sm">{done.temp}°C</span> : <Thermometer size={20} className="text-slate-300"/>}</div>{!done && (<div className="flex gap-3 h-14"><div className="relative flex-1 h-full"><input type="number" inputMode="decimal" value={v} onChange={e=>setVal({...val,[dev.id]:e.target.value})} placeholder="0.0" className={`w-full h-full rounded-2xl border-2 font-black text-2xl text-center outline-none transition-colors ${isHigh?'border-red-300 bg-red-50 text-red-600 placeholder-red-300':'border-slate-100 focus:border-indigo-500 placeholder-slate-200'}`} /></div><button onClick={()=>save(dev)} className="bg-slate-900 active:bg-slate-800 text-white w-16 h-full rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/20"><Save size={24}/></button></div>)}{isHigh && <div className="text-red-500 text-xs font-bold mt-2 flex items-center gap-1"><AlertTriangle size={12}/> Achtung: Kritischer Bereich</div>}</div>); })}</div>
+                    <div className="mt-8 pt-6 border-t border-slate-200">{signature ? (<div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold"><PenTool size={20}/><div className="flex-1"><div className="text-xs uppercase opacity-70">Digital Signiert von</div><div className="text-lg">{signature.user}</div></div></div>) : (<div className="space-y-2"><Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18}/> {t.sign}</Button></div>)}</div>
+                </div>
+            ); 
+        };
+
+        const Oil = ({ data, status, user, appId, showToast, lang }) => { 
+            const [inp, setInp] = useState({}); const active = (data.fryers || []).filter(d => d.status!=='defekt'); const signature = (status.signatures || {})['oil']; const t = DICTIONARY[lang]; const oilLogs = status.oilLogs || {}; const canSign = active.length > 0 && active.every(d => oilLogs[d.id]); 
+            const save = async (dev) => { const t = inp[dev.id]?.t, p = inp[dev.id]?.p; if(!t || !p) return; await addDoc(collection(db,'artifacts',appId,'public','data','logs_oil'), { deviceId:dev.id, deviceName:dev.name, temp:t, tpm:p, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); await logBranchAction(appId, user.name, 'OIL_LOG', `${dev.name}: ${p}% TPM`); showToast("Gespeichert"); }; 
+            const deleteLog = async (logId) => { if(confirm("Eintrag wirklich löschen?")) { await deleteDoc(doc(db,'artifacts',appId,'public','data','logs_oil', logId)); showToast("Gelöscht"); }}; 
+            const sign = async () => { if(confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) { await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_oil`), { module:'oil', user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); await logBranchAction(appId, user.name, 'SIGNATURE', 'Oil protocol signed'); showToast("Protokoll signiert!"); } }; 
+            return (
+                <div className="animate-in space-y-6">
+                    <div><h2 className="text-3xl font-black text-slate-800">{t.oil}</h2><p className="text-slate-400 text-sm font-medium">TPM Messung</p></div>
+                    <div className="space-y-4">{active.map(dev => { const l = oilLogs[dev.id]; const quality = l ? (l.tpm>=24?'bad':l.tpm>=20?'warn':'good') : null; const colors = { bad: 'bg-red-500 shadow-red-200', warn: 'bg-amber-500 shadow-amber-200', good: 'bg-emerald-500 shadow-emerald-200' }; const labels = { bad: 'Wechseln', warn: 'Filtern', good: 'OK' }; return (<div key={dev.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm"><div className="flex justify-between items-center mb-6"><span className="font-bold text-lg text-slate-700">{dev.name}</span>{l ? <div className="flex items-center gap-2"><span className={`text-white text-xs font-black px-3 py-1.5 rounded-xl uppercase shadow-lg ${colors[quality]}`}>{labels[quality]}</span><button onClick={()=>deleteLog(l.id)} className="p-2 bg-slate-100 rounded-full hover:bg-red-100 hover:text-red-500 transition-colors"><Trash2 size={14}/></button></div> : <span className="bg-slate-100 text-slate-400 text-xs font-bold px-2 py-1 rounded-lg">Messung offen</span>}</div>{!l ? (<div className="flex gap-3"><div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">Temp</div><Input type="number" inputMode="decimal" placeholder="°C" className="text-center h-14 font-bold text-xl" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],t:e.target.value}})} /></div><div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">TPM %</div><Input type="number" inputMode="decimal" placeholder="%" className="text-center h-14 font-bold text-xl" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],p:e.target.value}})} /></div><div className="space-y-1"><div className="h-[17px]"></div><button onClick={()=>save(dev)} className="bg-slate-900 text-white h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg"><Save size={24}/></button></div></div>) : (<div className="grid grid-cols-2 gap-3"><div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Temp</div><div className="font-black text-xl text-slate-700">{l.temp}°C</div></div><div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">TPM</div><div className="font-black text-xl text-slate-700">{l.tpm}%</div></div></div>)}</div>); })}</div>
+                    <div className="mt-8 pt-6 border-t border-slate-200">{signature ? (<div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold"><PenTool size={20}/><div className="flex-1"><div className="text-xs uppercase opacity-70">Digital Signiert von</div><div className="text-lg">{signature.user}</div></div></div>) : (<div className="space-y-2"><Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18}/> {t.sign}</Button></div>)}</div>
+                </div>
+            ); 
+        };
 
         // --- ADMIN SECTION ---
         const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView, onLogoutSystem, deleteBranch, isRemote, currentUser, lang, btnStyle }) => { 
@@ -604,51 +647,16 @@
                 : edit ? (<Editor type={tab} data={edit} close={()=>setEdit(null)} appId={appId} showToast={showToast} btnStyle={btnStyle} />) 
                 : (<div className="space-y-4 animate-in"><Button variant="ghost" onClick={()=>setEdit({isNew:true})} className="border-dashed py-5 text-slate-400 bg-slate-50 hover:bg-slate-100 hover:text-slate-600"><Plus size={20}/> Neuen Eintrag hinzufügen</Button><div className="divide-y divide-slate-100">{(data[tab]||[]).map(item => (<div key={item.id} className="py-4 flex justify-between items-center group"><div><div className="font-bold text-slate-700 text-lg">{item.name}</div></div><div className="flex gap-2"><button onClick={()=>setEdit(item)} className="p-3 bg-indigo-50 text-indigo-500 rounded-xl hover:bg-indigo-100"><Settings size={18}/></button><button onClick={()=>delItem(item.id)} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-100"><Trash2 size={18}/></button></div></div>))}</div></div>)}</div></div>); };
         
-        // --- NEW MODULE CONFIGURATOR ---
         const ModuleConfigurator = ({ data, appId, showToast, btnStyle }) => {
             const [modules, setModules] = useState(data || DEFAULT_MODULES_CONFIG);
-            
-            const handleToggle = (key) => {
-                setModules(p => ({...p, [key]: { ...p[key], enabled: !p[key].enabled } }));
-            };
-            const handleNameChange = (key, val) => {
-                setModules(p => ({...p, [key]: { ...p[key], name: val } }));
-            };
-            const handleIconChange = (key, val) => {
-                setModules(p => ({...p, [key]: { ...p[key], icon: val } }));
-            };
-            const save = async () => {
-                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), { modules }, { merge: true });
-                showToast("Module gespeichert! Bitte neuladen.");
-            };
-
+            const handleToggle = (key) => setModules(p => ({...p, [key]: { ...p[key], enabled: !p[key].enabled } }));
+            const handleNameChange = (key, val) => setModules(p => ({...p, [key]: { ...p[key], name: val } }));
+            const handleIconChange = (key, val) => setModules(p => ({...p, [key]: { ...p[key], icon: val } }));
+            const save = async () => { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), { modules }, { merge: true }); showToast("Module gespeichert! Bitte neuladen."); };
             return (
                 <div className="space-y-6 animate-in">
                     <div><h3 className="font-bold text-lg">Module & Funktionen</h3><p className="text-slate-400 text-sm">Aktiviere, was du brauchst.</p></div>
-                    <div className="space-y-4">
-                        {Object.entries(modules).map(([key, config]) => (
-                            <div key={key} className={`p-4 rounded-2xl border transition-all ${config.enabled ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
-                                <div className="flex justify-between items-center mb-3">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`p-2 rounded-lg ${config.enabled ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-400'}`}>
-                                            {ICON_MAP[config.icon] || <CheckCircle size={20}/>}
-                                        </div>
-                                        <div className="font-bold uppercase text-xs text-slate-500">{key}</div>
-                                    </div>
-                                    <div className="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in">
-                                        <input type="checkbox" name={`toggle-${key}`} id={`toggle-${key}`} checked={config.enabled} onChange={()=>handleToggle(key)} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer border-slate-300 transition-all duration-300"/>
-                                        <label htmlFor={`toggle-${key}`} className={`toggle-label block overflow-hidden h-6 rounded-full cursor-pointer bg-slate-300 transition-colors duration-300 ${config.enabled ? 'bg-emerald-400' : ''}`}></label>
-                                    </div>
-                                </div>
-                                {config.enabled && (
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div><label className="text-[10px] font-bold uppercase text-slate-400">Name in App</label><Input value={config.name || ''} onChange={e=>handleNameChange(key, e.target.value)} className="py-2 text-sm" /></div>
-                                        <div><label className="text-[10px] font-bold uppercase text-slate-400">Icon</label><Select value={config.icon || 'CheckCircle'} onChange={e=>handleIconChange(key, e.target.value)} className="py-2 text-sm">{Object.keys(ICON_MAP).map(i=><option key={i} value={i}>{i}</option>)}</Select></div>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
+                    <div className="space-y-4">{Object.entries(modules).map(([key, config]) => (<div key={key} className={`p-4 rounded-2xl border transition-all ${config.enabled ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-100 opacity-60'}`}><div className="flex justify-between items-center mb-3"><div className="flex items-center gap-3"><div className={`p-2 rounded-lg ${config.enabled ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-400'}`}>{ICON_MAP[config.icon] || <CheckCircle size={20}/>}</div><div className="font-bold uppercase text-xs text-slate-500">{key}</div></div><div className="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in"><input type="checkbox" name={`toggle-${key}`} id={`toggle-${key}`} checked={config.enabled} onChange={()=>handleToggle(key)} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer border-slate-300 transition-all duration-300"/><label htmlFor={`toggle-${key}`} className={`toggle-label block overflow-hidden h-6 rounded-full cursor-pointer bg-slate-300 transition-colors duration-300 ${config.enabled ? 'bg-emerald-400' : ''}`}></label></div></div>{config.enabled && (<div className="grid grid-cols-2 gap-2"><div><label className="text-[10px] font-bold uppercase text-slate-400">Name in App</label><Input value={config.name || ''} onChange={e=>handleNameChange(key, e.target.value)} className="py-2 text-sm" /></div><div><label className="text-[10px] font-bold uppercase text-slate-400">Icon</label><Select value={config.icon || 'CheckCircle'} onChange={e=>handleIconChange(key, e.target.value)} className="py-2 text-sm">{Object.keys(ICON_MAP).map(i=><option key={i} value={i}>{i}</option>)}</Select></div></div>)}</div>))}</div>
                     <Button onClick={save} style={btnStyle}>Speichern & Anwenden</Button>
                 </div>
             );
@@ -656,55 +664,33 @@
 
         const DesignEditor = ({ data, appId, showToast, btnStyle }) => {
             const [d, setD] = useState(data || { primaryColor: '#0f172a', backgroundColor: '#f8fafc', textColor: '#1e293b', headerColor: '#0f172a', logoUrl: '' });
-            const save = async () => { 
-                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'company', 'info'), { design: d }, { merge: true });
-                showToast("Design gespeichert!");
-            };
+            const save = async () => { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'company', 'info'), { design: d }, { merge: true }); showToast("Design gespeichert!"); };
             return (
                 <div className="space-y-6 animate-in">
                     <div><h3 className="font-bold text-lg">App Design</h3></div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <ColorPicker label="Header & Buttons" val={d.primaryColor} set={v=>setD({...d, primaryColor:v})} />
-                        <ColorPicker label="Header Hintergrund" val={d.headerColor} set={v=>setD({...d, headerColor:v})} />
-                        <ColorPicker label="Hintergrund" val={d.backgroundColor} set={v=>setD({...d, backgroundColor:v})} />
-                        <ColorPicker label="Textfarbe" val={d.textColor} set={v=>setD({...d, textColor:v})} />
-                    </div>
-                    <div className="space-y-2">
-                        <span className="text-xs font-bold uppercase text-slate-400">Logo URL (Optional)</span>
-                        <Input value={d.logoUrl || ''} onChange={e=>setD({...d, logoUrl:e.target.value})} placeholder="https://..." />
-                        {d.logoUrl && <div className="mt-2 p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center"><img src={d.logoUrl} className="h-16 mx-auto object-contain"/></div>}
-                    </div>
+                    <div className="grid grid-cols-2 gap-4"><ColorPicker label="Header & Buttons" val={d.primaryColor} set={v=>setD({...d, primaryColor:v})} /><ColorPicker label="Header Hintergrund" val={d.headerColor} set={v=>setD({...d, headerColor:v})} /><ColorPicker label="Hintergrund" val={d.backgroundColor} set={v=>setD({...d, backgroundColor:v})} /><ColorPicker label="Textfarbe" val={d.textColor} set={v=>setD({...d, textColor:v})} /></div>
+                    <div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Logo URL (Optional)</span><Input value={d.logoUrl || ''} onChange={e=>setD({...d, logoUrl:e.target.value})} placeholder="https://..." />{d.logoUrl && <div className="mt-2 p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center"><img src={d.logoUrl} className="h-16 mx-auto object-contain"/></div>}</div>
                     <Button onClick={save} style={btnStyle}>Speichern & Anwenden</Button>
                 </div>
             );
         };
-        const ColorPicker = ({ label, val, set }) => (
-            <div className="space-y-2">
-                <span className="text-xs font-bold uppercase text-slate-400">{label}</span>
-                <div className="flex gap-3 items-center">
-                    <input type="color" value={val || '#000000'} onChange={e=>set(e.target.value)} className="h-12 w-12 rounded-xl border-none cursor-pointer" />
-                    <div className="flex-1 bg-slate-50 p-3 rounded-xl text-slate-500 text-sm border border-slate-200">{val}</div>
-                </div>
-            </div>
-        );
+        const ColorPicker = ({ label, val, set }) => ( <div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">{label}</span><div className="flex gap-3 items-center"><input type="color" value={val || '#000000'} onChange={e=>set(e.target.value)} className="h-12 w-12 rounded-xl border-none cursor-pointer" /><div className="flex-1 bg-slate-50 p-3 rounded-xl text-slate-500 text-sm border border-slate-200">{val}</div></div></div> );
 
-        // --- PLACEHOLDERS FOR OTHER COMPONENTS (Simplified for brevity as they remain largely same logic) ---
-        const TimeClock = ({ user, appId, showToast, status }) => { const currentLog = status.myTimeLog; const isClockedIn = currentLog && !currentLog.end; const handleClock = async () => { const now = new Date(); const timeStr = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}); if(isClockedIn) { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { end: timeStr }); showToast("Schönen Feierabend!"); } else { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), { userId: user.id, userName: user.name, dateStr: getTodayStr(), start: timeStr, end: null, createdAt: serverTimestamp() }); showToast("Eingestempelt!"); } }; return (<div className="animate-in space-y-6 text-center"><div><h2 className="text-3xl font-black text-slate-800">Stempeluhr</h2></div><div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 relative overflow-hidden"><div className={`absolute top-0 left-0 w-full h-2 ${isClockedIn ? 'bg-emerald-500' : 'bg-slate-200'}`}></div><div className="text-sm font-bold uppercase text-slate-400 mb-2">{getTodayStr()}</div><div className="text-5xl font-black text-slate-800 mb-8 font-mono">{new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div><button onClick={handleClock} className={`w-32 h-32 rounded-full flex flex-col items-center justify-center transition-all shadow-xl active:scale-95 mx-auto ${isClockedIn ? 'bg-red-50 text-red-600 hover:bg-red-100 shadow-red-200' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 shadow-emerald-200'}`}>{isClockedIn ? <StopCircle size={48} /> : <PlayCircle size={48} />}<span className="font-bold text-xs mt-2 uppercase">{isClockedIn ? 'STOP' : 'START'}</span></button></div></div>); };
-        const Cleaning = ({ data, status, user, appId, showToast }) => { const toggle = async (item) => { const id = `${getTodayStr()}_${item.id}`; const ref = doc(db,'artifacts',appId,'public','data','logs_cleaning',id); if(status.cleaningLogs[item.id]) await deleteDoc(ref); else { await setDoc(ref, {taskId:item.id, taskName:item.name, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()}); showToast("Sauber!"); } }; return <div className="animate-in space-y-6"><h2 className="text-3xl font-black text-slate-800">Putzplan</h2><div className="space-y-3">{(data.tasks||[]).map(item => <div key={item.id} onClick={()=>toggle(item)} className={`p-4 rounded-2xl border flex justify-between items-center cursor-pointer ${status.cleaningLogs[item.id]?'bg-slate-50 opacity-60 line-through':'bg-white shadow-sm'}`}>{item.name} <CheckCircle size={16}/></div>)}</div></div> };
-        const Inventory = ({ data, status, appId, showToast }) => { const [newItem, setNewItem] = useState(''); const add = async () => { if(!newItem.trim()) return; await addDoc(collection(db,'artifacts',appId,'public','data','shopping_list'), { name: newItem, createdAt: serverTimestamp() }); setNewItem(''); }; const remove = async (id) => { await deleteDoc(doc(db,'artifacts',appId,'public','data','shopping_list',id)); }; return (<div className="animate-in space-y-6"><div><h2 className="text-3xl font-black text-slate-800">Einkauf</h2></div><div className="flex gap-2"><Input value={newItem} onChange={e=>setNewItem(e.target.value)} placeholder="Neues Item..." onKeyDown={e=>e.key==='Enter'&&add()} /><button onClick={add} className="bg-emerald-600 text-white px-6 rounded-2xl font-bold"><Plus/></button></div><div className="space-y-2">{(status.shoppingList||[]).map(item => (<div key={item.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center"><span className="font-bold text-slate-700">{item.name}</span><button onClick={()=>remove(item.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={18}/></button></div>))}</div></div>); };
-        const SmartPrep = ({ data, status, user, appId, showToast }) => { const toggle = async (item) => { const id = `${getTodayStr()}_${item.id}`; const ref = doc(db,'artifacts',appId,'public','data','logs_prep',id); if(status.prepLogs[item.id]) await deleteDoc(ref); else { await setDoc(ref, {taskId:item.id, taskName:item.name, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()}); showToast("Erledigt!"); } }; return <div className="animate-in space-y-6"><h2 className="text-3xl font-black text-slate-800">Mise en Place</h2><div className="space-y-3">{(data.prep||[]).map(item => <div key={item.id} onClick={()=>toggle(item)} className={`p-4 rounded-2xl border flex justify-between items-center cursor-pointer ${status.prepLogs[item.id]?'bg-slate-50 opacity-60 line-through':'bg-white shadow-sm'}`}>{item.name} <CheckCircle size={16}/></div>)}</div></div> };
-        const Cooling = ({ data, status, user, appId, showToast }) => { const [val, setVal] = useState({}); const save = async (dev) => { if(!val[dev.id]) return; await addDoc(collection(db,'artifacts',appId,'public','data','logs_temp'), { deviceId:dev.id, deviceName:dev.name, temp: val[dev.id], user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); setVal(p=>({...p,[dev.id]:''})); showToast("Gespeichert"); }; return <div className="animate-in space-y-6"><h2 className="text-3xl font-black text-slate-800">Kühlung</h2><div className="grid gap-4">{(data.cooling||[]).map(dev => <div key={dev.id} className="bg-white p-4 rounded-2xl border shadow-sm"><div className="font-bold mb-2">{dev.name}</div><div className="flex gap-2"><Input type="number" value={val[dev.id]||''} onChange={e=>setVal({...val,[dev.id]:e.target.value})} placeholder="°C"/><button onClick={()=>save(dev)} className="bg-slate-900 text-white p-3 rounded-xl"><Save/></button></div></div>)}</div></div> };
-        const Oil = ({ data, status, user, appId, showToast }) => { const [inp, setInp] = useState({}); const save = async (dev) => { const t = inp[dev.id]?.t, p = inp[dev.id]?.p; if(!t || !p) return; await addDoc(collection(db,'artifacts',appId,'public','data','logs_oil'), { deviceId:dev.id, deviceName:dev.name, temp:t, tpm:p, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); showToast("Gespeichert"); }; return <div className="animate-in space-y-6"><h2 className="text-3xl font-black text-slate-800">Fett & Öl</h2><div className="space-y-4">{(data.fryers||[]).map(dev => <div key={dev.id} className="bg-white p-4 rounded-2xl border shadow-sm"><div className="font-bold mb-2">{dev.name}</div><div className="flex gap-2"><Input type="number" placeholder="°C" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],t:e.target.value}})} /><Input type="number" placeholder="%" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],p:e.target.value}})} /><button onClick={()=>save(dev)} className="bg-slate-900 text-white p-3 rounded-xl"><Save/></button></div></div>)}</div></div> };
-        
-        // Editor components (CompanyEditor, SettingsEditor, Editor, AuditLog, SmartHistory) remain similar to v35 but adapted for props passed.
-        // For brevity in this large file context, assuming standard implementations similar to previous version but ensuring props are passed correctly.
         const CompanyEditor = ({ data, appId, showToast }) => { const [f, setF] = useState(data||{}); const save = async () => { await setDoc(doc(db,'artifacts',appId,'public','data','company','info'), f); showToast("Firmendaten gespeichert"); }; return <div className="space-y-4 animate-in"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Betriebsname</span><Input value={f.name||''} onChange={e=>setF({...f,name:e.target.value})} /></div><Button onClick={save}>Speichern</Button></div> };
         const SettingsEditor = ({ data, appId, showToast, btnStyle }) => { const [key, setKey] = useState(data.masterKey||''); const save = async () => { await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { masterKey: key }, {merge:true}); showToast("Einstellungen gespeichert"); }; return <div className="space-y-4 animate-in"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Master Key (Notfall-Passwort)</span><Input value={key} onChange={e=>setKey(e.target.value)} className="font-mono tracking-widest text-center" /></div><Button onClick={save} style={btnStyle}>Speichern</Button></div> };
         const AuditLog = ({ appId }) => { const [logs, setLogs] = useState([]); useEffect(() => onSnapshot(query(collection(db, 'artifacts', appId, 'public', 'data', 'audit_logs'), orderBy('timestamp', 'desc'), limit(20)), s => setLogs(s.docs.map(d=>d.data()))), [appId]); return <div className="space-y-2">{logs.map((l,i)=><div key={i} className="text-xs bg-slate-50 p-2 rounded">{l.action} by {l.user}</div>)}</div> };
-        const Editor = ({ type, data, close, appId, showToast, btnStyle }) => { const [form, setForm] = useState({...data}); const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); const save = async () => { const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':type==='prep'?'prep_tasks':'staff'; const payload = { ...form }; if(type==='tasks'||type==='prep') payload.schedule = sched; delete payload.id; delete payload.isNew; const ref = collection(db,'artifacts',appId,'public','data',col); if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()}); else await updateDoc(doc(ref, data.id), payload); showToast("Gespeichert"); close(); }; return <div className="space-y-4"><Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name" /><Button onClick={save} style={btnStyle}>Speichern</Button></div> };
+        
+        const Editor = ({ type, data, close, appId, showToast, btnStyle }) => { 
+            const [form, setForm] = useState({...data}); const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); 
+            const save = async () => { const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':type==='prep'?'prep_tasks':'staff'; const payload = { ...form }; if(type==='tasks'||type==='prep') payload.schedule = sched; delete payload.id; delete payload.isNew; const ref = collection(db,'artifacts',appId,'public','data',col); if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()}); else await updateDoc(doc(ref, data.id), payload); showToast("Gespeichert"); close(); }; 
+            const toggleDept = (d) => { const cur = form.departments || []; setForm({...form, departments: cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]}); };
+            return (<div className="space-y-6 animate-in"><div className="flex justify-between items-center mb-2"><h3 className="font-black text-xl text-slate-800">{data.isNew?'Neu':'Bearbeiten'}</h3><button onClick={close} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bezeichnung</span><Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." /></div>{type==='prep' && (<div className="space-y-4"><div className="grid grid-cols-2 gap-3"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Kategorie</span><Select value={form.category||'prep'} onChange={e=>setForm({...form,category:e.target.value})}><option value="prep">Vorbereitung (Mise en Place)</option><option value="stock">Lager/Auffüllen</option></Select></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Zuständigkeit</span><Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}><option value="kitchen">Küche</option><option value="service">Service</option></Select></div></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Ziel / Menge</span><Input value={form.target||''} onChange={e=>setForm({...form,target:e.target.value})} placeholder="z.B. 2 Behälter, Voll machen..." /></div><div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Zeitplan (Tage)</span><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>)}</div></div></div>)}{type==='staff' && (<div className="space-y-4"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Abteilungen</span><div className="flex gap-3"><button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('kitchen')?'border-orange-500 bg-orange-50 text-orange-600':'border-slate-100 bg-white text-slate-400'}`}>Küche</button><button onClick={()=>toggleDept('service')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('service')?'border-purple-500 bg-purple-50 text-purple-600':'border-slate-100 bg-white text-slate-400'}`}>Service</button></div></div><div className="flex gap-3"><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Rolle</span><Select value={form.role||'user'} onChange={e=>setForm({...form,role:e.target.value})}><option value="user">Mitarbeiter</option><option value="kitchen_lead">Küchenleitung</option><option value="service_lead">Serviceleitung</option><option value="admin">Filialleitung</option></Select></div><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">PIN (Optional)</span><Input value={form.pin||''} onChange={e=>setForm({...form,pin:e.target.value})} className="text-center font-mono tracking-widest" maxLength={4}/></div></div></div>)}{type==='tasks' && (<div className="space-y-4"><div className="flex gap-3"><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bereich</span><Input value={form.area||''} onChange={e=>setForm({...form,area:e.target.value})} placeholder="z.B. Bar"/></div><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Dept</span><Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}><option value="kitchen">Küche</option><option value="service">Service</option><option value="all">Alle</option></Select></div></div><div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Wochentage</span><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>)}</div></div></div>)}<Button onClick={save} className="mt-6 shadow-xl shadow-slate-900/10" style={btnStyle}>Speichern</Button></div>); 
+        };
+
         const HeadAdminLogin = ({ onSuccess, onBack }) => { const [pw, setPw] = useState(''); const check = () => { if(pw === HEAD_ADMIN_PASS) onSuccess(); else alert("Zugriff verweigert"); }; return <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 text-center text-slate-800"><div className="bg-white p-8 rounded-3xl max-w-sm mx-auto w-full shadow-2xl animate-in space-y-4"><h2 className="text-2xl font-black text-slate-800">Head Admin</h2><Input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="Passwort" /><Button variant="head" onClick={check}>Login</Button><button onClick={onBack} className="text-xs text-slate-400 underline pt-4">Zurück</button></div></div>; };
         const HeadAdminPanel = ({ onLogout }) => <div className="p-6 bg-slate-900 min-h-screen text-white"><h1 className="text-3xl font-bold">Head Admin</h1><p>System Logs...</p><button onClick={onLogout}>Logout</button></div>;
-        const SmartHistory = ({ appId, setView }) => <div className="p-4"><button onClick={()=>setView('admin')}>Back</button><h1>History</h1></div>;
+        
+        const SmartHistory = ({ appId, setView, data }) => { const [date, setDate] = useState(getTodayStr()); const [historyData, setHistoryData] = useState({ cleaning: [], temp: [], oil: [], prep: [], time: [] }); const [loading, setLoading] = useState(false); useEffect(() => { const loadHistory = async () => { setLoading(true); try { const [sClean, sTemp, sOil, sPrep, sTime] = await Promise.all([getDocs(query(collection(db,'artifacts',appId,'public','data','logs_cleaning'), where('dateStr','==',date))), getDocs(query(collection(db,'artifacts',appId,'public','data','logs_temp'), where('dateStr','==',date))), getDocs(query(collection(db,'artifacts',appId,'public','data','logs_oil'), where('dateStr','==',date))), getDocs(query(collection(db,'artifacts',appId,'public','data','logs_prep'), where('dateStr','==',date))), getDocs(query(collection(db,'artifacts',appId,'public','data','logs_time'), where('dateStr','==',date)))]); setHistoryData({ cleaning: sClean.docs.map(d=>d.data()), temp: sTemp.docs.map(d=>d.data()), oil: sOil.docs.map(d=>d.data()), prep: sPrep.docs.map(d=>d.data()), time: sTime.docs.map(d=>d.data()) }); } catch(e) { console.error(e); } setLoading(false); }; loadHistory(); }, [date]); const Empty = () => <div className="text-center p-4 text-slate-400 text-xs italic">Keine Einträge für diesen Tag.</div>; return (<div className="animate-in space-y-5 pb-10"><div className="flex items-center gap-3 mb-2"><button onClick={()=>setView('admin')} className="p-2 bg-slate-100 rounded-full"><ChevronLeft/></button><div><h2 className="text-3xl font-black text-slate-800">Protokolle</h2><p className="text-slate-400 text-sm font-medium">HACCP & Zeiten</p></div></div><div className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4"><div className="bg-indigo-50 p-3 rounded-2xl text-indigo-600"><Calendar size={24}/></div><div className="flex-1"><div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Datum wählen</div><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full font-bold text-lg bg-transparent outline-none text-slate-800"/></div></div>{loading ? <div className="p-10 text-center"><Loader2 className="animate-spin inline text-indigo-500"/></div> : (<div className="space-y-6"><div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm"><div className="bg-violet-50 px-6 py-3 border-b border-violet-100 flex items-center gap-2 text-violet-800 font-bold uppercase tracking-wider text-sm"><Clock size={16}/> Arbeitszeiten</div>{historyData.time.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.time.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.userName}</span><span className="font-mono bg-violet-100 text-violet-700 px-2 py-1 rounded font-bold">{c.start} - {c.end || '...'}</span></div>))}</div>)}</div><div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm"><div className="bg-emerald-50 px-6 py-3 border-b border-emerald-100 flex items-center gap-2 text-emerald-800 font-bold uppercase tracking-wider text-sm"><Sparkles size={16}/> Hygiene & Reinigung</div>{historyData.cleaning.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.cleaning.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.taskName}</span><span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold flex gap-1 items-center"><User size={10}/> {c.user}</span></div>))}</div>)}</div></div>)}</div>); };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
