@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Gastromaster v35.0</title>
+    <title>Gastromaster v35.1</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -458,7 +458,10 @@
             const handleRestaurantLogin = (id) => {
                 if(id === 'head-admin') { setView('head-login'); } else {
                     const normId = normalizeId(id);
-                    setLoading(true); localStorage.setItem('gastro_app_id', normId); setAppId(normId); setLoading(false);
+                    setLoading(true); 
+                    localStorage.setItem('gastro_app_id', normId); 
+                    setAppId(normId); 
+                    // REMOVED setLoading(false) here to prevent white screen flash
                 }
             };
 
@@ -649,7 +652,7 @@
                 </div>
             );
 
-            if (!appUser) return <LoginScreen staff={data.staff} restaurantId={appId} company={data.company} yesterdayOil={status.yesterdayOil} fryers={data.fryers} onLogin={handleUserLogin} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} onSeed={()=>seedDB()} showToast={showToast} seedSuccess={seedSuccess} onCloseSeed={()=>setSeedSuccess(false)} lang={lang} onMasterRecovery={handleMasterKeyRecovery} tempMasterPw={tempMasterPw} themeColor={design.primaryColor || '#0f172a'} />;
+            if (!appUser) return <LoginScreen staff={data.staff} restaurantId={appId} company={data.company} yesterdayOil={status.yesterdayOil} fryers={data.fryers} onLogin={handleUserLogin} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} onSeed={()=>seedDB()} showToast={showToast} lang={lang} onMasterRecovery={handleMasterKeyRecovery} tempMasterPw={tempMasterPw} themeColor={design.primaryColor || '#0f172a'} />;
 
             const common = { user: appUser, appId, showToast, data, status, lang, moduleOrder, design, themeStyle, btnStyle };
             const hasAccess = (dept) => {
@@ -727,7 +730,7 @@
         }
 
         // --- COMPONENTS ---
-        const LoginScreen = ({ staff, restaurantId, company, onLogoutSystem, yesterdayOil, fryers, onSeed, onLogin, showToast, seedSuccess, onCloseSeed, lang, onMasterRecovery, tempMasterPw, themeColor }) => {
+        const LoginScreen = ({ staff, restaurantId, company, onLogoutSystem, yesterdayOil, fryers, onSeed, onLogin, showToast, lang, onMasterRecovery, tempMasterPw, themeColor }) => {
             const [selectedUser, setSelectedUser] = useState(null); const [showPin, setShowPin] = useState(false); const [recoveryMode, setRecoveryMode] = useState(false);
             const oilLogs = Object.values(yesterdayOil || {});
             const showOilWarning = (fryers||[]).length > 0;
