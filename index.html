@@ -297,6 +297,8 @@
 
 
         // --- APP CONTROLLER ---
+        
+            
         function App() {
             const [user, setUser] = useState(null);
             const [appUser, setAppUser] = useState(null);
@@ -309,27 +311,48 @@
             const [adminAlert, setAdminAlert] = useState(false);
             const [showTutorial, setShowTutorial] = useState(false);
             const [tempMasterPw, setTempMasterPw] = useState('');
-            const [generatedMasterKey, setGeneratedMasterKey] = useState(null);
             
+            // NEU: Globale System-Status Variablen
+            const [systemMaintenance, setSystemMaintenance] = useState(false);
+            const [globalBroadcast, setGlobalBroadcast] = useState(null);
+
             const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [], prep: [], company: {}, settings: {}, messages: [] });
             const [status, setStatus] = useState({ tempLogs: [], cleaningLogs: {}, oilLogs: {}, prepLogs: {}, shoppingList: [], yesterdayOil: {}, signatures: {}, myTimeLog: null });
             const [debugMode, setDebugMode] = useState(false);
             
             const design = data.company?.design || {};
-            // APPLY TEXT COLOR TO ROOT STYLE TO FIX CONTRAST
             const themeStyle = { backgroundColor: design.backgroundColor || '#f8fafc', color: design.textColor || '#1e293b' };
             const btnStyle = { backgroundColor: design.primaryColor || '#0f172a', color: '#ffffff' };
             const headerStyle = { backgroundColor: design.headerColor || design.primaryColor || '#0f172a', color: '#ffffff' };
-            
             const modulesConfig = data.settings?.modules || DEFAULT_MODULES_CONFIG;
+            
             const showToast = (msg, type='success') => { setToast({msg, type}); setTimeout(() => setToast(null), 3000); };
 
+            // --- NEU: System Listener (Wartungsmodus & Broadcasts) ---
+            useEffect(() => {
+                // Hört auf den globalen System-Kanal
+                const unsub = onSnapshot(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'settings', 'global'), (snap) => {
+                    if (snap.exists()) {
+                        const d = snap.data();
+                        setSystemMaintenance(d.maintenanceMode || false);
+                        if (d.broadcastMessage && d.broadcastMessage !== globalBroadcast) {
+                            setGlobalBroadcast(d.broadcastMessage);
+                            if(d.broadcastMessage.trim() !== "") alert("HEAD ADMIN NACHRICHT:\n\n" + d.broadcastMessage);
+                        }
+                    }
+                });
+                return () => unsub();
+            }, []);
+
+            // --- Bestehende Logik ---
             const handleRestaurantLogin = (id) => {
                 if(id === 'head-admin') { setView('head-login'); } else {
                     const normId = normalizeId(id);
                     setLoading(true); localStorage.setItem('gastro_app_id', normId); setAppId(normId); 
                 }
             };
+            
+            const deleteBranchLocal = () => { localStorage.removeItem('gastro_app_id'); window.location.reload(); };
 
             const handleRegistration = async (token, newId, masterPw) => {
                 setLoading(true);
@@ -362,24 +385,6 @@
                 } else { showToast("Falscher Schlüssel", "error"); }
             };
 
-            // Füge diese Funktion innerhalb der App() Komponente hinzu (vor dem return)
-            const performDeleteBranch = async () => {
-                if(!appId) return;
-                try {
-                    // Löscht die Referenz im Browser
-                    localStorage.removeItem('gastro_app_id');
-                    // Optional: Markiere in Firestore als gelöscht (Soft Delete)
-                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), { deleted: true, deletedAt: serverTimestamp() });
-                    showToast("Filiale vom Gerät entfernt.");
-                    setTimeout(() => window.location.reload(), 1500);
-                } catch(e) {
-                    console.error(e);
-                    showToast("Fehler beim Löschen", "error");
-                }
-            };
-
-            // ... im return Statement der App() Komponente, update die Admin Props:
-            // {view === 'admin' && ... <Admin ... deleteBranch={performDeleteBranch} ... />}
             useEffect(() => { signInAnonymously(auth).catch(e=>console.error(e)); return onAuthStateChanged(auth, u => { setUser(u); if(!u) setLoading(false); }); }, []);
 
             useEffect(() => {
@@ -439,7 +444,7 @@
                     ];
                     for (const item of batch) {
                         const ref = item.id ? doc(db, 'artifacts', id, 'public', 'data', item.col, item.id) : collection(db, 'artifacts', id, 'public', 'data', item.col);
-                        if(item.id) await setDoc(ref, item.data); else await addDoc(ref, {...item.data, createdAt: serverTimestamp()});
+                        if(item.id) await setDoc(ref, item.data); else await addDoc(ref, {...item.data, createdAt: serverTimestamp() });
                     }
                 } catch(e) { console.error(e); }
                 setLoading(false);
@@ -452,8 +457,26 @@
                 return (appUser?.departments || []).includes(dept);
             };
 
+            // --- NAVIGATION LOGIK ---
             if (view === 'head-login') return <HeadAdminLogin onSuccess={()=>{setIsHeadAdmin(true); setView('head-panel');}} onBack={()=>setView('login')}/>;
             if (view === 'head-panel') return <HeadAdminPanel onLogout={()=>{setIsHeadAdmin(false); setView('login');}} showToast={showToast} />;
+            
+            // --- HIER GREIFT DER WARTUNGSMODUS ---
+            if (systemMaintenance && !isHeadAdmin) {
+                return (
+                    <div className="h-full flex items-center justify-center bg-slate-900 text-white p-6 animate-in">
+                        <div className="text-center space-y-6 max-w-sm">
+                            <div className="w-24 h-24 bg-red-500/20 rounded-full flex items-center justify-center mx-auto text-red-400 animate-pulse">
+                                <AlertTriangle size={48}/>
+                            </div>
+                            <h1 className="text-3xl font-black">Wartungsarbeiten</h1>
+                            <p className="text-slate-400">Das System wird aktuell gewartet. Bitte versuchen Sie es in wenigen Minuten erneut.</p>
+                            <button onClick={()=>window.location.reload()} className="bg-white/10 hover:bg-white/20 px-6 py-3 rounded-xl font-bold transition-colors">Erneut prüfen</button>
+                        </div>
+                    </div>
+                );
+            }
+
             if (!appId) return <EnterpriseLogin onLogin={handleRestaurantLogin} onRegister={handleRegistration} loading={loading} lang={lang} setLang={setLang} />;
             if (loading) return <Loading />;
             if (showTutorial) return <div className="fixed inset-0 z-[200] bg-slate-900/95 flex items-center justify-center p-6 animate-in text-white text-center"><h1>Setup Complete</h1><Button onClick={()=>setShowTutorial(false)}>OK</Button></div>;
@@ -490,7 +513,7 @@
                             {view === 'cooling' && <Cooling {...common} />}
                             {view === 'oil' && hasAccess('kitchen') && <Oil {...common} />}
                             {view === 'inventory' && <Inventory {...common} />}
-                            {view === 'admin' && (appUser.role === 'admin' || ['kitchen_lead','service_lead'].includes(appUser.role)) && <Admin {...common} debugMode={debugMode} setView={setView} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} deleteBranch={()=>{}} currentUser={appUser} lang={lang} />}
+                            {view === 'admin' && (appUser.role === 'admin' || ['kitchen_lead','service_lead'].includes(appUser.role)) && <Admin {...common} debugMode={debugMode} setView={setView} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} deleteBranch={deleteBranchLocal} currentUser={appUser} lang={lang} />}
                             {view === 'history' && appUser?.role === 'admin' && <SmartHistory {...common} setView={setView} />}
                         </main>
 
@@ -744,6 +767,32 @@
             <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-5 px-5 pb-2">{Object.entries(availableTabs).map(([k,l])=><button key={k} onClick={()=>{setTab(k);setEdit(null)}} className={`px-6 py-3 rounded-2xl font-bold text-sm whitespace-nowrap transition-all ${tab===k?'text-white shadow-lg shadow-black/10':'bg-white border text-slate-500'}`} style={tab===k ? btnStyle : {}}>{l}</button>)}</div>
             <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 min-h-[400px]">
                 {tab === 'system' ? (<div className="space-y-4 animate-in"><div className="text-sm font-bold uppercase text-slate-400 tracking-wider">Erweiterte Tools</div><button onClick={()=>setView('history')} className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-5 rounded-2xl flex items-center justify-between group transition-all"><div className="flex items-center gap-3 font-bold"><History size={20}/> HACCP Protokolle (PDF)</div><ChevronRight className="opacity-50 group-hover:translate-x-1 transition-transform"/></button><button onClick={onLogoutSystem} className="w-full mt-4 p-4 border border-slate-200 bg-slate-50 text-slate-600 rounded-2xl font-bold flex justify-center items-center gap-2"><LogOut size={18}/> Abmelden</button></div>) 
+                // ... innerhalb der Admin Komponente, im Tab 'system' Bereich:
+
+: tab === 'system' ? (
+    <div className="space-y-4 animate-in">
+        {/* ... bestehende Buttons ... */}
+        
+        {/* NEUER SUPPORT BUTTON */}
+        <button onClick={async ()=>{
+            const msg = prompt("Problem beschreiben:");
+            if(msg) {
+                await addDoc(collection(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'support_tickets'), {
+                    branchId: appId,
+                    user: currentUser.name,
+                    message: msg,
+                    createdAt: serverTimestamp()
+                });
+                showToast("Ticket an Head Admin gesendet!");
+            }
+        }} className="w-full p-4 border border-indigo-200 bg-indigo-50 text-indigo-600 rounded-2xl font-bold flex justify-center items-center gap-2">
+            <MessageCircle size={18}/> Hilfe anfordern
+        </button>
+
+        <button onClick={onLogoutSystem} ... >Abmelden</button> {/* Dein bestehender Logout Button */}
+    </div>
+) 
+
                 : tab==='design' ? (<DesignEditor data={data.company?.design || {}} appId={appId} showToast={showToast} btnStyle={btnStyle}/>) 
                 : tab==='modules' ? (<ModuleConfigurator data={data.settings?.modules} appId={appId} showToast={showToast} btnStyle={btnStyle}/>)
                 : tab==='audit' ? (<AuditLog appId={appId} />) 
@@ -882,18 +931,18 @@
 
         // --- RESTORED HEAD ADMIN PANEL ---
         const HeadAdminLogin = ({ onSuccess, onBack }) => { const [pw, setPw] = useState(''); const check = () => { if(pw === HEAD_ADMIN_PASS) onSuccess(); else alert("Zugriff verweigert"); }; return <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 text-center text-slate-800"><div className="bg-white p-8 rounded-3xl max-w-sm mx-auto w-full shadow-2xl animate-in space-y-4"><h2 className="text-2xl font-black text-slate-800">Head Admin</h2><Input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="Passwort" /><Button variant="head" onClick={check}>Login</Button><button onClick={onBack} className="text-xs text-slate-400 underline pt-4">Zurück</button></div></div>; };
-        
         const HeadAdminPanel = ({ onLogout, showToast }) => {
             const [token, setToken] = useState(null);
             const [allTokens, setAllTokens] = useState([]);
             const [allBranches, setAllBranches] = useState([]);
             const [systemLogs, setSystemLogs] = useState([]);
+            const [supportTickets, setSupportTickets] = useState([]);
             const [searchQuery, setSearchQuery] = useState('');
             const [globalMsg, setGlobalMsg] = useState('');
             const [msgSent, setMsgSent] = useState(false);
             const [tab, setTab] = useState('overview'); 
             const [maintenance, setMaintenance] = useState(false);
-            const [sysSettings, setSysSettings] = useState({});
+            const [dumping, setDumping] = useState(false);
 
             useEffect(() => {
                 const unsubs = [
@@ -901,14 +950,15 @@
                     onSnapshot(query(collection(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'branches'), orderBy('createdAt', 'desc')), s => setAllBranches(s.docs.map(d => ({id:d.id, ...d.data()})))),
                     onSnapshot(query(collection(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'system_logs'), orderBy('timestamp', 'desc'), limit(50)), s => setSystemLogs(s.docs.map(d => ({id:d.id, ...d.data()}))))
                 ];
-                // Lade System Settings (Wartungsmodus etc.)
-                getDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'settings', 'global')).then(s => {
-                    if(s.exists()) {
-                        setSysSettings(s.data());
-                        setMaintenance(s.data().maintenanceMode || false);
-                    }
+                // Support Tickets laden (Wir speichern die im SYSTEM_ID damit sie zentral sind)
+                const supportUnsub = onSnapshot(query(collection(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'support_tickets'), orderBy('createdAt', 'desc')), s => {
+                    setSupportTickets(s.docs.map(d => ({id:d.id, ...d.data()})));
                 });
-                return () => unsubs.forEach(u=>u());
+                
+                getDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'settings', 'global')).then(s => {
+                    if(s.exists()) setMaintenance(s.data().maintenanceMode || false);
+                });
+                return () => { unsubs.forEach(u=>u()); supportUnsub(); };
             }, []);
 
             const createToken = async () => { const t = generateToken(); await setDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'tokens', t), { created: serverTimestamp(), active: true, usedBy: null }); setToken(t); };
@@ -927,7 +977,7 @@
             };
 
             const deleteBranchRegistry = async (bId) => {
-                if(!confirm(`Filiale ${bId} wirklich aus dem Register löschen? Zugriff wird entfernt.`)) return;
+                if(!confirm(`Filiale ${bId} wirklich aus dem Register löschen?`)) return;
                 await deleteDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'branches', bId));
                 showToast("Filiale entfernt");
             };
@@ -937,81 +987,84 @@
                 if(!newKey) return;
                 try {
                     await setDoc(doc(db, 'artifacts', bId, 'public', 'data', 'settings', 'global'), { masterKey: newKey }, { merge: true });
-                    alert(`Erfolg! Neuer Key für ${bId} ist: ${newKey}`);
-                } catch(e) { alert("Fehler: Filiale existiert nicht mehr oder Zugriff verweigert."); }
+                    alert(`Erfolg! Key: ${newKey}`);
+                } catch(e) { alert("Fehler: Filiale nicht erreichbar."); }
             };
 
-            const clearOldLogs = async () => {
-                if(!confirm("Alle Logs löschen?")) return;
-                // Client-side batch delete simulation (limit to loaded logs for safety in this demo)
-                systemLogs.forEach(async l => {
-                    await deleteDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'system_logs', l.id));
-                });
-                showToast("Logs bereinigt");
+            const downloadBranchData = async (bId) => {
+                setDumping(bId);
+                try {
+                    const dataDump = { id: bId, exportedAt: new Date().toISOString(), collections: {} };
+                    const cols = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'prep_tasks', 'settings', 'company', 'logs_time', 'logs_oil', 'logs_temp', 'logs_cleaning'];
+                    
+                    for(const c of cols) {
+                        const snap = await getDocs(collection(db, 'artifacts', bId, 'public', 'data', c));
+                        dataDump.collections[c] = snap.docs.map(d => ({id:d.id, ...d.data()}));
+                    }
+                    
+                    const blob = new Blob([JSON.stringify(dataDump, null, 2)], {type: "application/json"});
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `BACKUP_${bId}_${getTodayStr()}.json`;
+                    a.click();
+                    showToast("Download gestartet");
+                } catch(e) { console.error(e); alert("Fehler beim Export: " + e.message); }
+                setDumping(false);
+            };
+
+            const closeTicket = async (id) => {
+                if(!confirm("Ticket schließen?")) return;
+                await deleteDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'support_tickets', id));
             };
 
             const filteredBranches = allBranches.filter(b => b.id.toLowerCase().includes(searchQuery.toLowerCase()));
 
             return (
                 <div className="min-h-screen bg-slate-900 text-white p-6 pb-20">
-                    <div className="max-w-5xl mx-auto space-y-8">
+                    <div className="max-w-6xl mx-auto space-y-8">
                         <div className="flex justify-between items-center">
                             <div>
-                                <h1 className="text-3xl font-black italic tracking-tighter bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">HEAD ADMIN v2.0</h1>
-                                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Global Control Center</p>
+                                <h1 className="text-3xl font-black italic tracking-tighter bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">HEAD ADMIN v3.0</h1>
+                                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Command Center</p>
                             </div>
                             <div className="flex gap-3">
-                                {maintenance && <div className="px-3 py-1 bg-red-500/20 text-red-400 border border-red-500/50 rounded-lg text-xs font-bold flex items-center gap-2 animate-pulse"><AlertTriangle size={14}/> WARTUNG AKTIV</div>}
+                                {maintenance && <div className="px-3 py-1 bg-red-500/20 text-red-400 border border-red-500/50 rounded-lg text-xs font-bold flex items-center gap-2 animate-pulse"><AlertTriangle size={14}/> WARTUNG</div>}
                                 <button onClick={onLogout} className="bg-white/10 p-3 rounded-full hover:bg-red-600 transition-colors"><LogOut size={20}/></button>
                             </div>
                         </div>
 
-                        <div className="flex gap-4 border-b border-white/10 pb-4 overflow-x-auto">
-                            <button onClick={()=>setTab('overview')} className={`px-4 py-2 rounded-xl font-bold transition-all ${tab==='overview'?'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30':'hover:bg-white/5 text-slate-400'}`}>Übersicht</button>
-                            <button onClick={()=>setTab('branches')} className={`px-4 py-2 rounded-xl font-bold transition-all ${tab==='branches'?'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30':'hover:bg-white/5 text-slate-400'}`}>Filialen ({allBranches.length})</button>
-                            <button onClick={()=>setTab('tools')} className={`px-4 py-2 rounded-xl font-bold transition-all ${tab==='tools'?'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30':'hover:bg-white/5 text-slate-400'}`}>System Tools</button>
-                            <button onClick={()=>setTab('logs')} className={`px-4 py-2 rounded-xl font-bold transition-all ${tab==='logs'?'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30':'hover:bg-white/5 text-slate-400'}`}>Logs</button>
+                        <div className="flex gap-2 border-b border-white/10 pb-4 overflow-x-auto no-scrollbar">
+                            {['overview', 'branches', 'support', 'tools', 'logs'].map(t => (
+                                <button key={t} onClick={()=>setTab(t)} className={`px-4 py-2 rounded-xl font-bold capitalize transition-all whitespace-nowrap ${tab===t?'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30':'hover:bg-white/5 text-slate-400'}`}>
+                                    {t === 'support' && supportTickets.length > 0 ? `Support (${supportTickets.length})` : t}
+                                </button>
+                            ))}
                         </div>
 
                         {tab === 'overview' && (
                             <div className="grid md:grid-cols-2 gap-6 animate-in">
                                 <div className="space-y-6">
                                     <div className="bg-gradient-to-br from-indigo-600 to-violet-600 p-8 rounded-[2rem] shadow-2xl relative overflow-hidden group">
-                                        <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform"><Ticket size={120}/></div>
                                         <h3 className="font-bold text-2xl mb-4 relative z-10">Neuen Key generieren</h3>
                                         {token ? (
-                                            <div className="bg-white/90 backdrop-blur-sm text-slate-900 p-6 rounded-2xl font-mono text-2xl font-black text-center tracking-widest select-all cursor-pointer shadow-xl mb-4" onClick={()=>navigator.clipboard.writeText(token)}>
-                                                {token}
-                                                <div className="text-[10px] text-slate-500 font-sans font-bold mt-2 uppercase tracking-normal">Klicken zum Kopieren</div>
-                                            </div>
+                                            <div className="bg-white/90 backdrop-blur-sm text-slate-900 p-6 rounded-2xl font-mono text-2xl font-black text-center tracking-widest select-all cursor-pointer shadow-xl mb-4" onClick={()=>navigator.clipboard.writeText(token)}>{token}</div>
                                         ) : (
                                             <button onClick={createToken} className="relative z-10 bg-white text-indigo-600 w-full py-4 rounded-xl font-black uppercase tracking-wider hover:bg-indigo-50 transition-colors shadow-lg">Code Erstellen</button>
                                         )}
                                     </div>
-                                    
                                     <div className="bg-slate-800/50 border border-white/5 p-6 rounded-[2rem]">
                                         <h3 className="font-bold text-sm uppercase text-slate-400 mb-4 flex items-center gap-2"><Megaphone size={16}/> Globaler Broadcast</h3>
                                         <div className="flex gap-2">
-                                            <input value={globalMsg} onChange={e=>setGlobalMsg(e.target.value)} placeholder="Nachricht an alle Filialen..." className="w-full p-4 rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-600 focus:border-indigo-500 outline-none transition-colors"/>
-                                            <button onClick={sendBroadcast} className={`px-6 rounded-xl font-bold flex items-center justify-center transition-all ${msgSent === true ? 'bg-emerald-500 text-white' : 'bg-indigo-600 text-white hover:bg-indigo-500'}`}>
-                                                {msgSent === 'loading' ? <Loader2 className="animate-spin"/> : msgSent === true ? <Check/> : <Save/>}
-                                            </button>
+                                            <input value={globalMsg} onChange={e=>setGlobalMsg(e.target.value)} placeholder="Nachricht an alle..." className="w-full p-4 rounded-xl bg-slate-900 border border-slate-700 text-white outline-none"/>
+                                            <button onClick={sendBroadcast} className={`px-6 rounded-xl font-bold flex items-center justify-center transition-all ${msgSent===true?'bg-emerald-500':'bg-indigo-600 hover:bg-indigo-500'}`}>{msgSent===true?<Check/>:<Save/>}</button>
                                         </div>
                                     </div>
                                 </div>
-
                                 <div className="bg-slate-800/50 border border-white/5 p-6 rounded-[2rem] flex flex-col h-[500px]">
-                                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2 px-2"><Activity size={20}/> Aktive Token ({allTokens.filter(t=>t.active).length})</h3>
+                                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2 px-2"><Ticket size={20}/> Aktive Token ({allTokens.filter(t=>t.active).length})</h3>
                                     <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-2">
-                                        {allTokens.map(t => (
-                                            <div key={t.id} className="flex justify-between items-center bg-slate-900 p-3 rounded-xl border border-slate-700/50 hover:border-slate-600 transition-colors">
-                                                <span className="font-mono text-sm text-indigo-300 font-bold">{t.id}</span>
-                                                {t.active ? 
-                                                    <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded border border-emerald-500/20">FREI</span> : 
-                                                    <span className="text-[10px] font-bold bg-slate-700 text-slate-400 px-2 py-1 rounded flex items-center gap-1"><User size={10}/> {t.usedBy}</span>
-                                                }
-                                            </div>
-                                        ))}
+                                        {allTokens.map(t => (<div key={t.id} className="flex justify-between items-center bg-slate-900 p-3 rounded-xl border border-slate-700/50"><span className="font-mono text-sm text-indigo-300 font-bold">{t.id}</span>{t.active?<span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded">FREI</span>:<span className="text-[10px] text-slate-400">{t.usedBy}</span>}</div>))}
                                     </div>
                                 </div>
                             </div>
@@ -1019,96 +1072,61 @@
 
                         {tab === 'branches' && (
                             <div className="bg-slate-800/50 border border-white/5 p-6 rounded-[2rem] animate-in min-h-[600px]">
-                                <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
-                                    <h3 className="font-bold text-2xl flex items-center gap-3"><Globe className="text-indigo-400"/> Filial-Verwaltung</h3>
-                                    <div className="relative w-full md:w-72">
-                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
-                                        <input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="ID suchen..." className="w-full pl-12 p-3 rounded-xl bg-slate-900 border border-slate-700 text-white focus:border-indigo-500 outline-none"/>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-1 gap-3">
+                                <div className="flex justify-between items-center gap-4 mb-6"><h3 className="font-bold text-2xl">Filialen</h3><input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="Suche..." className="bg-slate-900 border border-slate-700 text-white px-4 py-2 rounded-xl outline-none"/></div>
+                                <div className="grid gap-3">
                                     {filteredBranches.map(branch => (
-                                        <div key={branch.id} className="bg-slate-900 p-5 rounded-2xl border border-slate-700 hover:border-indigo-500/50 transition-all flex flex-col md:flex-row justify-between items-center gap-4 group">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 font-bold text-xl uppercase">
-                                                    {branch.id.substring(0,2)}
-                                                </div>
-                                                <div>
-                                                    <div className="font-bold text-lg text-white">{branch.id}</div>
-                                                    <div className="text-xs text-slate-500 font-mono">Erstellt: {branch.createdAt?.seconds ? new Date(branch.createdAt.seconds*1000).toLocaleDateString() : '-'}</div>
-                                                </div>
-                                            </div>
-                                            <div className="flex gap-2 w-full md:w-auto">
-                                                <button onClick={()=>resetBranchMasterKey(branch.id)} className="flex-1 md:flex-none px-4 py-2 bg-slate-800 hover:bg-indigo-600 border border-slate-600 hover:border-indigo-500 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-2">
-                                                    <Key size={14}/> Reset Key
-                                                </button>
-                                                <button onClick={()=>deleteBranchRegistry(branch.id)} className="flex-1 md:flex-none px-4 py-2 bg-slate-800 hover:bg-red-600 border border-slate-600 hover:border-red-500 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-2 text-red-400 hover:text-white">
-                                                    <Trash2 size={14}/> Löschen
-                                                </button>
+                                        <div key={branch.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-700 flex flex-col sm:flex-row justify-between items-center gap-4">
+                                            <div className="flex items-center gap-4"><div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-400 font-bold">{branch.id.substring(0,2)}</div><div><div className="font-bold text-white">{branch.id}</div><div className="text-xs text-slate-500">Seit: {branch.createdAt?.seconds ? new Date(branch.createdAt.seconds*1000).toLocaleDateString() : '-'}</div></div></div>
+                                            <div className="flex gap-2">
+                                                <button onClick={()=>downloadBranchData(branch.id)} disabled={dumping===branch.id} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-xs font-bold flex items-center gap-2 text-cyan-400">{dumping===branch.id?<Loader2 className="animate-spin" size={14}/>:<Database size={14}/>} Backup JSON</button>
+                                                <button onClick={()=>resetBranchMasterKey(branch.id)} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-xs font-bold flex items-center gap-2"><Key size={14}/> Reset</button>
+                                                <button onClick={()=>deleteBranchRegistry(branch.id)} className="px-3 py-2 bg-slate-800 hover:bg-red-900/30 border border-slate-600 hover:border-red-500 text-red-400 rounded-lg text-xs font-bold"><Trash2 size={14}/></button>
                                             </div>
                                         </div>
                                     ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {tab === 'support' && (
+                            <div className="bg-slate-800/50 border border-white/5 p-6 rounded-[2rem] animate-in min-h-[600px]">
+                                <h3 className="font-bold text-2xl mb-6">Support Tickets ({supportTickets.length})</h3>
+                                <div className="space-y-3">
+                                    {supportTickets.map(t => (
+                                        <div key={t.id} className="bg-slate-900 p-5 rounded-2xl border border-slate-700 flex justify-between items-start gap-4">
+                                            <div>
+                                                <div className="flex items-center gap-2 mb-1"><span className="text-xs font-bold bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded">{t.branchId}</span><span className="text-xs text-slate-500">{t.createdAt?.seconds ? new Date(t.createdAt.seconds*1000).toLocaleString() : ''}</span></div>
+                                                <div className="font-bold text-white text-lg">{t.message}</div>
+                                                <div className="text-sm text-slate-400 mt-1">Von: {t.user}</div>
+                                            </div>
+                                            <button onClick={()=>closeTicket(t.id)} className="p-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-xl transition-colors"><CheckCircle/></button>
+                                        </div>
+                                    ))}
+                                    {supportTickets.length === 0 && <div className="text-center text-slate-500 py-10">Alles ruhig. Keine offenen Tickets.</div>}
                                 </div>
                             </div>
                         )}
 
                         {tab === 'tools' && (
-                            <div className="grid md:grid-cols-2 gap-6 animate-in">
-                                <div className="bg-slate-800/50 border border-white/5 p-8 rounded-[2rem] space-y-6">
-                                    <h3 className="font-bold text-xl flex items-center gap-2 text-amber-400"><AlertTriangle/> Notfall Steuerung</h3>
-                                    <div className="bg-slate-900 p-6 rounded-2xl border border-slate-700 flex justify-between items-center">
-                                        <div>
-                                            <div className="font-bold text-white mb-1">Wartungsmodus</div>
-                                            <div className="text-xs text-slate-400">Verhindert Login für ALLE Filialen.</div>
-                                        </div>
-                                        <button onClick={toggleMaintenance} className={`w-16 h-8 rounded-full transition-colors relative ${maintenance ? 'bg-red-500' : 'bg-slate-700'}`}>
-                                            <div className={`absolute top-1 w-6 h-6 rounded-full bg-white transition-transform ${maintenance ? 'left-9' : 'left-1'}`}></div>
-                                        </button>
-                                    </div>
-                                    <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-200 text-xs">
-                                        Achtung: Der Wartungsmodus wirft keine aktiven User raus, verhindert aber neue Logins oder Neuladen der Seite.
-                                    </div>
-                                </div>
-
-                                <div className="bg-slate-800/50 border border-white/5 p-8 rounded-[2rem] space-y-6">
-                                    <h3 className="font-bold text-xl flex items-center gap-2 text-indigo-400"><Database/> Datenbank Tools</h3>
-                                    <div className="space-y-3">
-                                        <button onClick={clearOldLogs} className="w-full p-4 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-xl text-left flex items-center justify-between group transition-colors">
-                                            <div>
-                                                <div className="font-bold text-white group-hover:text-indigo-400 transition-colors">Logs bereinigen</div>
-                                                <div className="text-xs text-slate-500">Löscht System-Logs (Limit 50 Batch)</div>
-                                            </div>
-                                            <Trash2 className="text-slate-600 group-hover:text-red-500 transition-colors"/>
-                                        </button>
-                                        <div className="w-full p-4 bg-slate-900 border border-slate-700 rounded-xl text-left flex items-center justify-between opacity-50 cursor-not-allowed">
-                                            <div>
-                                                <div className="font-bold text-white">Inaktive Tokens löschen</div>
-                                                <div className="text-xs text-slate-500">Automatisch (Coming Soon)</div>
-                                            </div>
-                                            <Lock className="text-slate-600"/>
-                                        </div>
-                                    </div>
+                             <div className="bg-slate-800/50 border border-white/5 p-8 rounded-[2rem] space-y-6 animate-in">
+                                <h3 className="font-bold text-xl flex items-center gap-2 text-amber-400"><AlertTriangle/> Notfall & System</h3>
+                                <div className="bg-slate-900 p-6 rounded-2xl border border-slate-700 flex justify-between items-center">
+                                    <div><div className="font-bold text-white">Wartungsmodus</div><div className="text-xs text-slate-400">Sperrt alle Filialen aus.</div></div>
+                                    <button onClick={toggleMaintenance} className={`w-16 h-8 rounded-full relative transition-colors ${maintenance?'bg-red-500':'bg-slate-700'}`}><div className={`absolute top-1 w-6 h-6 rounded-full bg-white transition-all ${maintenance?'left-9':'left-1'}`}></div></button>
                                 </div>
                             </div>
                         )}
-
+                        
                         {tab === 'logs' && (
                             <div className="bg-slate-800/50 border border-white/5 p-6 rounded-[2rem] animate-in">
-                                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><ListChecks/> Globales System Log</h3>
                                 <div className="space-y-2 max-h-[600px] overflow-y-auto custom-scrollbar">
                                     {systemLogs.map(log => (
-                                        <div key={log.id} className="bg-slate-900 p-4 rounded-xl border border-slate-700/50 text-sm flex flex-col sm:flex-row justify-between gap-4 hover:border-slate-600 transition-colors">
-                                            <div className="flex items-center gap-3">
-                                                <div className="font-mono text-indigo-400 text-xs w-32 shrink-0">{log.timestamp?.seconds ? new Date(log.timestamp.seconds*1000).toLocaleString() : '-'}</div>
-                                                <div>
-                                                    <span className={`font-bold text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider mr-2 ${log.type==='ERROR'?'bg-red-500/20 text-red-400':'bg-indigo-500/20 text-indigo-300'}`}>{log.type}</span> 
-                                                    <span className="text-slate-300">{log.msg}</span>
-                                                </div>
-                                            </div>
-                                            <div className="text-slate-500 text-xs font-bold uppercase bg-slate-800 px-2 py-1 rounded self-start sm:self-center">{log.branchId}</div>
+                                        <div key={log.id} className="bg-slate-900 p-3 rounded-xl border border-slate-700/50 text-xs flex gap-3 text-slate-400">
+                                            <span className="font-mono text-indigo-500">{log.timestamp?.seconds ? new Date(log.timestamp.seconds*1000).toLocaleTimeString() : '-'}</span>
+                                            <span className="text-white flex-1">{log.msg}</span>
+                                            <span className="font-bold uppercase">{log.branchId}</span>
                                         </div>
                                     ))}
-                                    {systemLogs.length === 0 && <div className="text-slate-500 italic text-center py-10">Keine Einträge vorhanden.</div>}
                                 </div>
                             </div>
                         )}
