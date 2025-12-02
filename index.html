@@ -211,7 +211,7 @@
         const AppLogo = ({ company, large, design }) => {
             // Hier prüfen wir zuerst, ob ein Firmenlogo existiert. 
             // Wenn nicht, nutzen wir dein neues Bild als Standard.
-            const logoUrl = company?.design?.logoUrl || design?.logoUrl || "Gemini_Generated_Image_h3eilmh3eilmh3ei.png";
+            const logoUrl = company?.design?.logoUrl || design?.logoUrl || "1000137489-removebg-preview.png";
             
             if (logoUrl) { 
                 return <img src={logoUrl} alt="Logo" className={`${large ? 'h-48 drop-shadow-2xl' : 'h-12'} object-contain mx-auto rounded-lg transition-all`} />; 
