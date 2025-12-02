@@ -118,7 +118,33 @@
         };
 
         const DICTIONARY = {
-            de: { start: "Filiale Öffnen", id: "Restaurant ID", login: "Team Login", role: "Rolle", pin: "PIN", admin: "Filialleitung", k_lead: "Küchenleitung", s_lead: "Serviceleitung", kitchen: "Küche", service: "Service", save: "Speichern", cancel: "Abbrechen", prep: "Vorbereitung", stock: "Bestand", clean: "Putzplan", oil: "Fett & Öl", temp: "Kühlung", dash: "Übersicht", morning: "Frühschicht Info", yesterday: "Fettliste vom Vortag", missing: "NICHT gemacht!", dev: "Entwickelt von Marvin Ringer", worker: "Mitarbeiter", logout: "Abmelden", sign: "Signieren", pdf: "Protokoll (PDF)", create: "Erstellen", inventory: "Einkauf", time: "Stempeluhr", news: "Team News" },
+            de: { 
+                start: "Filiale Öffnen", id: "Restaurant ID", login: "Team Login", role: "Rolle", pin: "PIN", 
+                admin: "Filialleitung", k_lead: "Küchenleitung", s_lead: "Serviceleitung", kitchen: "Küche", service: "Service", 
+                save: "Speichern", cancel: "Abbrechen", prep: "Vorbereitung", stock: "Bestand", clean: "Putzplan", 
+                oil: "Fett & Öl", temp: "Kühlung", dash: "Übersicht", morning: "Frühschicht Info", yesterday: "Fettliste vom Vortag", 
+                missing: "NICHT gemacht!", dev: "Entwickelt von Marvin Ringer", worker: "Mitarbeiter", logout: "Abmelden", 
+                sign: "Signieren", pdf: "Protokoll (PDF)", create: "Erstellen", inventory: "Einkauf", time: "Stempeluhr", news: "Team News",
+                settings: "Einstellungen", delete_branch: "Filiale löschen", danger: "Gefahrenzone", math_check: "Sicherheitsfrage"
+            },
+            en: { 
+                start: "Open Branch", id: "Restaurant ID", login: "Team Login", role: "Role", pin: "PIN", 
+                admin: "Manager", k_lead: "Kitchen Lead", s_lead: "Service Lead", kitchen: "Kitchen", service: "Service", 
+                save: "Save", cancel: "Cancel", prep: "Prep", stock: "Stock", clean: "Cleaning", 
+                oil: "Oil & Fat", temp: "Cooling", dash: "Dashboard", morning: "Morning Brief", yesterday: "Yesterday's Oil", 
+                missing: "NOT done!", dev: "Dev by Marvin Ringer", worker: "Staff", logout: "Logout", 
+                sign: "Sign", pdf: "Protocol (PDF)", create: "Create", inventory: "Inventory", time: "Time Clock", news: "Team News",
+                settings: "Setup", delete_branch: "Delete Branch", danger: "Danger Zone", math_check: "Security Check"
+            },
+            tr: { 
+                start: "Şubeyi Aç", id: "Restoran ID", login: "Ekip Girişi", role: "Rol", pin: "PIN", 
+                admin: "Müdür", k_lead: "Mutfak Şefi", s_lead: "Servis Şefi", kitchen: "Mutfak", service: "Servis", 
+                save: "Kaydet", cancel: "İptal", prep: "Hazırlık", stock: "Stok", clean: "Temizlik", 
+                oil: "Yağ Kontrol", temp: "Soğutma", dash: "Panel", morning: "Sabah Bilgisi", yesterday: "Dünkü Yağ Listesi", 
+                missing: "YAPILMADI!", dev: "Marvin Ringer tarafından", worker: "Personel", logout: "Çıkış", 
+                sign: "İmzala", pdf: "Protokol (PDF)", create: "Oluştur", inventory: "Alışveriş", time: "Zaman Saati", news: "Ekip Haberleri",
+                settings: "Ayarlar", delete_branch: "Şubeyi Sil", danger: "Tehlike Bölgesi", math_check: "Güvenlik Sorusu"
+            }
         };
 
         const logSystemAction = async (type, msg, branchId = 'SYSTEM') => {
@@ -336,6 +362,24 @@
                 } else { showToast("Falscher Schlüssel", "error"); }
             };
 
+            // Füge diese Funktion innerhalb der App() Komponente hinzu (vor dem return)
+            const performDeleteBranch = async () => {
+                if(!appId) return;
+                try {
+                    // Löscht die Referenz im Browser
+                    localStorage.removeItem('gastro_app_id');
+                    // Optional: Markiere in Firestore als gelöscht (Soft Delete)
+                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), { deleted: true, deletedAt: serverTimestamp() });
+                    showToast("Filiale vom Gerät entfernt.");
+                    setTimeout(() => window.location.reload(), 1500);
+                } catch(e) {
+                    console.error(e);
+                    showToast("Fehler beim Löschen", "error");
+                }
+            };
+
+            // ... im return Statement der App() Komponente, update die Admin Props:
+            // {view === 'admin' && ... <Admin ... deleteBranch={performDeleteBranch} ... />}
             useEffect(() => { signInAnonymously(auth).catch(e=>console.error(e)); return onAuthStateChanged(auth, u => { setUser(u); if(!u) setLoading(false); }); }, []);
 
             useEffect(() => {
@@ -704,6 +748,7 @@
                 : tab==='modules' ? (<ModuleConfigurator data={data.settings?.modules} appId={appId} showToast={showToast} btnStyle={btnStyle}/>)
                 : tab==='audit' ? (<AuditLog appId={appId} />) 
                 : tab==='company' ? (<CompanyEditor data={data.company} appId={appId} showToast={showToast}/>) 
+                : tab==='settings' ? (<SettingsEditor data={data.settings} appId={appId} showToast={showToast} btnStyle={btnStyle} deleteBranch={deleteBranch} lang={lang} />)
                 : tab==='settings' ? (<SettingsEditor data={data.settings} appId={appId} showToast={showToast} btnStyle={btnStyle} />) 
                 : edit ? (<Editor type={tab} data={edit} close={()=>setEdit(null)} appId={appId} showToast={showToast} btnStyle={btnStyle} />) 
                 : (<div className="space-y-4 animate-in"><Button variant="ghost" onClick={()=>setEdit({isNew:true})} className="border-dashed py-5 text-slate-400 bg-slate-50 hover:bg-slate-100 hover:text-slate-600"><Plus size={20}/> Neuen Eintrag hinzufügen</Button><div className="divide-y divide-slate-100">{(data[tab]||[]).map(item => (<div key={item.id} className="py-4 flex justify-between items-center group"><div><div className="font-bold text-slate-700 text-lg">{item.name}</div></div><div className="flex gap-2"><button onClick={()=>setEdit(item)} className="p-3 bg-indigo-50 text-indigo-500 rounded-xl hover:bg-indigo-100"><Settings size={18}/></button><button onClick={()=>delItem(item.id)} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-100"><Trash2 size={18}/></button></div></div>))}</div></div>)}</div></div>); };
@@ -746,8 +791,65 @@
         const ColorPicker = ({ label, val, set }) => ( <div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">{label}</span><div className="flex gap-3 items-center"><input type="color" value={val || '#000000'} onChange={e=>set(e.target.value)} className="h-12 w-12 rounded-xl border-none cursor-pointer" /><div className="flex-1 bg-slate-50 p-3 rounded-xl text-slate-500 text-sm border border-slate-200 uppercase font-mono">{val}</div></div></div> );
 
         const CompanyEditor = ({ data, appId, showToast }) => { const [f, setF] = useState(data||{}); const save = async () => { await setDoc(doc(db,'artifacts',appId,'public','data','company','info'), f); showToast("Firmendaten gespeichert"); }; return <div className="space-y-4 animate-in"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Betriebsname</span><Input value={f.name||''} onChange={e=>setF({...f,name:e.target.value})} /></div><Button onClick={save}>Speichern</Button></div> };
-        const SettingsEditor = ({ data, appId, showToast, btnStyle }) => { const [key, setKey] = useState(data.masterKey||''); const save = async () => { await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { masterKey: key }, {merge:true}); showToast("Einstellungen gespeichert"); }; return <div className="space-y-4 animate-in"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Master Key (Notfall-Passwort)</span><Input value={key} onChange={e=>setKey(e.target.value)} className="font-mono tracking-widest text-center" /></div><Button onClick={save} style={btnStyle}>Speichern</Button></div> };
-        
+        const SettingsEditor = ({ data, appId, showToast, btnStyle, deleteBranch, lang }) => { 
+            const [key, setKey] = useState(data.masterKey||''); 
+            const [delInput, setDelInput] = useState('');
+            const [math, setMath] = useState({ q: '', a: 0 });
+            const [showDelete, setShowDelete] = useState(false);
+            const t = DICTIONARY[lang] || DICTIONARY.de;
+
+            useEffect(() => {
+                const a = Math.floor(Math.random() * 10) + 1;
+                const b = Math.floor(Math.random() * 10) + 1;
+                setMath({ q: `${a} + ${b}`, a: a + b });
+            }, [showDelete]);
+
+            const save = async () => { await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { masterKey: key }, {merge:true}); showToast(t.save + " OK"); }; 
+            
+            const handleDelete = () => {
+                if(parseInt(delInput) === math.a) {
+                    deleteBranch();
+                } else {
+                    showToast("Falsches Ergebnis / Wrong Result", "error");
+                }
+            };
+
+            return (
+                <div className="space-y-8 animate-in">
+                    <div className="space-y-4">
+                        <h3 className="font-bold text-lg">{t.settings}</h3>
+                        <div className="space-y-2">
+                            <span className="text-xs font-bold uppercase text-slate-400">Master Key (Recovery)</span>
+                            <Input value={key} onChange={e=>setKey(e.target.value)} className="font-mono tracking-widest text-center" />
+                        </div>
+                        <Button onClick={save} style={btnStyle}>{t.save}</Button>
+                    </div>
+
+                    <div className="border-t border-slate-200 pt-6">
+                        <div className="bg-red-50 rounded-2xl p-4 border border-red-100 space-y-4">
+                            <h4 className="text-red-800 font-bold flex items-center gap-2"><AlertTriangle size={18}/> {t.danger}</h4>
+                            {!showDelete ? (
+                                <button onClick={()=>setShowDelete(true)} className="w-full py-3 bg-white border border-red-200 text-red-600 font-bold rounded-xl hover:bg-red-100 transition-colors">
+                                    {t.delete_branch}
+                                </button>
+                            ) : (
+                                <div className="space-y-3 animate-in">
+                                    <p className="text-xs text-red-600 font-medium">Berechnung lösen zum Bestätigen:</p>
+                                    <div className="flex gap-2 items-center">
+                                        <span className="font-black text-xl text-slate-700 min-w-[60px]">{math.q} = ?</span>
+                                        <input type="number" value={delInput} onChange={e=>setDelInput(e.target.value)} className="w-full p-2 rounded-xl border border-red-200 outline-none" placeholder="Ergebnis"/>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={()=>setShowDelete(false)} className="flex-1 py-2 bg-slate-200 text-slate-600 font-bold rounded-xl">{t.cancel}</button>
+                                        <button onClick={handleDelete} className="flex-1 py-2 bg-red-600 text-white font-bold rounded-xl shadow-lg shadow-red-200">LÖSCHEN</button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            ); 
+        };
         // --- DETAILED AUDIT LOG ---
         const AuditLog = ({ appId }) => { 
             const [logs, setLogs] = useState([]); 
@@ -823,8 +925,124 @@
             );
         };
         
-        const SmartHistory = ({ appId, setView, data }) => { const [date, setDate] = useState(getTodayStr()); const [historyData, setHistoryData] = useState({ cleaning: [], temp: [], oil: [], prep: [], time: [] }); const [loading, setLoading] = useState(false); useEffect(() => { const loadHistory = async () => { setLoading(true); try { const [sClean, sTemp, sOil, sPrep, sTime] = await Promise.all([getDocs(query(collection(db,'artifacts',appId,'public','data','logs_cleaning'), where('dateStr','==',date))), getDocs(query(collection(db,'artifacts',appId,'public','data','logs_temp'), where('dateStr','==',date))), getDocs(query(collection(db,'artifacts',appId,'public','data','logs_oil'), where('dateStr','==',date))), getDocs(query(collection(db,'artifacts',appId,'public','data','logs_prep'), where('dateStr','==',date))), getDocs(query(collection(db,'artifacts',appId,'public','data','logs_time'), where('dateStr','==',date)))]); setHistoryData({ cleaning: sClean.docs.map(d=>d.data()), temp: sTemp.docs.map(d=>d.data()), oil: sOil.docs.map(d=>d.data()), prep: sPrep.docs.map(d=>d.data()), time: sTime.docs.map(d=>d.data()) }); } catch(e) { console.error(e); } setLoading(false); }; loadHistory(); }, [date]); const Empty = () => <div className="text-center p-4 text-slate-400 text-xs italic">Keine Einträge für diesen Tag.</div>; return (<div className="animate-in space-y-5 pb-10"><div className="flex items-center gap-3 mb-2"><button onClick={()=>setView('admin')} className="p-2 bg-slate-100 rounded-full"><ChevronLeft/></button><div><h2 className="text-3xl font-black text-inherit">Protokolle</h2><p className="text-inherit opacity-60 text-sm font-medium">HACCP & Zeiten</p></div></div><div className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4"><div className="bg-indigo-50 p-3 rounded-2xl text-indigo-600"><Calendar size={24}/></div><div className="flex-1"><div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Datum wählen</div><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full font-bold text-lg bg-transparent outline-none text-slate-800"/></div></div>{loading ? <div className="p-10 text-center"><Loader2 className="animate-spin inline text-indigo-500"/></div> : (<div className="space-y-6"><div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm"><div className="bg-violet-50 px-6 py-3 border-b border-violet-100 flex items-center gap-2 text-violet-800 font-bold uppercase tracking-wider text-sm"><Clock size={16}/> Arbeitszeiten</div>{historyData.time.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.time.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.userName}</span><span className="font-mono bg-violet-100 text-violet-700 px-2 py-1 rounded font-bold">{c.start} - {c.end || '...'}</span></div>))}</div>)}</div><div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm"><div className="bg-emerald-50 px-6 py-3 border-b border-emerald-100 flex items-center gap-2 text-emerald-800 font-bold uppercase tracking-wider text-sm"><Sparkles size={16}/> Hygiene & Reinigung</div>{historyData.cleaning.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.cleaning.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.taskName}</span><span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold flex gap-1 items-center"><User size={10}/> {c.user}</span></div>))}</div>)}</div></div>)}</div>); };
+        const SmartHistory = ({ appId, setView, data, lang }) => { 
+            const [date, setDate] = useState(getTodayStr()); 
+            const [historyData, setHistoryData] = useState({ cleaning: [], temp: [], oil: [], prep: [], time: [] }); 
+            const [loading, setLoading] = useState(false); 
+            const t = DICTIONARY[lang] || DICTIONARY.de;
 
+            useEffect(() => { 
+                const loadHistory = async () => { 
+                    setLoading(true); 
+                    try { 
+                        const [sClean, sTemp, sOil, sPrep, sTime] = await Promise.all([
+                            getDocs(query(collection(db,'artifacts',appId,'public','data','logs_cleaning'), where('dateStr','==',date))), 
+                            getDocs(query(collection(db,'artifacts',appId,'public','data','logs_temp'), where('dateStr','==',date))), 
+                            getDocs(query(collection(db,'artifacts',appId,'public','data','logs_oil'), where('dateStr','==',date))), 
+                            getDocs(query(collection(db,'artifacts',appId,'public','data','logs_prep'), where('dateStr','==',date))), 
+                            getDocs(query(collection(db,'artifacts',appId,'public','data','logs_time'), where('dateStr','==',date)))
+                        ]); 
+                        setHistoryData({ 
+                            cleaning: sClean.docs.map(d=>d.data()), 
+                            temp: sTemp.docs.map(d=>d.data()), 
+                            oil: sOil.docs.map(d=>d.data()), 
+                            prep: sPrep.docs.map(d=>d.data()), 
+                            time: sTime.docs.map(d=>d.data()) 
+                        }); 
+                    } catch(e) { console.error(e); } 
+                    setLoading(false); 
+                }; 
+                loadHistory(); 
+            }, [date, appId]); 
+
+            const downloadPDF = () => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                
+                doc.setFontSize(18);
+                doc.text(`HACCP Protokoll: ${date}`, 14, 20);
+                doc.setFontSize(10);
+                doc.text(`Erstellt am: ${new Date().toLocaleString()}`, 14, 26);
+
+                let yPos = 35;
+
+                const addTable = (title, headers, bodyData) => {
+                    if(bodyData.length === 0) return;
+                    doc.setFontSize(12);
+                    doc.setTextColor(0, 0, 0);
+                    doc.text(title, 14, yPos);
+                    
+                    doc.autoTable({
+                        startY: yPos + 2,
+                        head: [headers],
+                        body: bodyData,
+                        theme: 'striped',
+                        headStyles: { fillColor: [40, 40, 40] }
+                    });
+                    yPos = doc.lastAutoTable.finalY + 15;
+                };
+
+                // Temperaturen
+                const tempData = historyData.temp.map(x => [x.deviceName, x.temp + ' °C', x.user, x.createdAt?.seconds ? new Date(x.createdAt.seconds*1000).toLocaleTimeString() : '-']);
+                addTable(t.temp, ['Gerät', 'Wert', 'User', 'Zeit'], tempData);
+
+                // Reinigung
+                const cleanData = historyData.cleaning.map(x => [x.taskName, 'OK', x.user, x.createdAt?.seconds ? new Date(x.createdAt.seconds*1000).toLocaleTimeString() : '-']);
+                addTable(t.clean, ['Aufgabe', 'Status', 'User', 'Zeit'], cleanData);
+
+                // Öl
+                const oilData = historyData.oil.map(x => [x.deviceName, x.temp + ' °C', x.tpm + ' %', x.user]);
+                addTable(t.oil, ['Gerät', 'Temp', 'TPM', 'User'], oilData);
+                
+                // Zeiten
+                const timeData = historyData.time.map(x => [x.userName, x.start, x.end || 'Läuft...']);
+                addTable(t.time, ['Mitarbeiter', 'Start', 'Ende'], timeData);
+
+                doc.save(`HACCP_${date}.pdf`);
+            };
+
+            const Empty = () => <div className="text-center p-4 text-slate-400 text-xs italic">Keine Einträge.</div>; 
+            
+            return (
+                <div className="animate-in space-y-5 pb-10">
+                    <div className="flex items-center gap-3 mb-2">
+                        <button onClick={()=>setView('admin')} className="p-2 bg-slate-100 rounded-full"><ChevronLeft/></button>
+                        <div><h2 className="text-3xl font-black text-inherit">Protokolle</h2><p className="text-inherit opacity-60 text-sm font-medium">HACCP & Zeiten</p></div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                         <div className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4 flex-1">
+                            <div className="bg-indigo-50 p-3 rounded-2xl text-indigo-600"><Calendar size={24}/></div>
+                            <div className="flex-1">
+                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Datum</div>
+                                <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full font-bold text-lg bg-transparent outline-none text-slate-800"/>
+                            </div>
+                        </div>
+                        <button onClick={downloadPDF} className="bg-slate-900 text-white rounded-[2rem] px-6 font-bold flex flex-col items-center justify-center gap-1 shadow-lg active:scale-95 transition-transform">
+                            <FileText size={20}/>
+                            <span className="text-[10px] uppercase">PDF</span>
+                        </button>
+                    </div>
+
+                    {loading ? <div className="p-10 text-center"><Loader2 className="animate-spin inline text-indigo-500"/></div> : (
+                        <div className="space-y-6">
+                            <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+                                <div className="bg-violet-50 px-6 py-3 border-b border-violet-100 flex items-center gap-2 text-violet-800 font-bold uppercase tracking-wider text-sm"><Clock size={16}/> {t.time}</div>
+                                {historyData.time.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.time.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.userName}</span><span className="font-mono bg-violet-100 text-violet-700 px-2 py-1 rounded font-bold">{c.start} - {c.end || '...'}</span></div>))}</div>)}
+                            </div>
+                            <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+                                <div className="bg-emerald-50 px-6 py-3 border-b border-emerald-100 flex items-center gap-2 text-emerald-800 font-bold uppercase tracking-wider text-sm"><Sparkles size={16}/> {t.clean}</div>
+                                {historyData.cleaning.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.cleaning.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.taskName}</span><span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold flex gap-1 items-center"><User size={10}/> {c.user}</span></div>))}</div>)}
+                            </div>
+                            <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+                                <div className="bg-sky-50 px-6 py-3 border-b border-sky-100 flex items-center gap-2 text-sky-800 font-bold uppercase tracking-wider text-sm"><Thermometer size={16}/> {t.temp}</div>
+                                {historyData.temp.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.temp.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.deviceName}</span><span className="text-xs bg-sky-100 text-sky-700 px-2 py-1 rounded font-bold">{c.temp}°C</span></div>))}</div>)}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            ); 
+        };
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
