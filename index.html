@@ -208,13 +208,40 @@
             if (logoUrl) { return <img src={logoUrl} alt="Logo" className={`${large ? 'h-32' : 'h-12'} object-contain mx-auto rounded-lg transition-all`} />; }
             return (<div><h1 className={`${large ? 'text-4xl' : 'text-xl'} font-black italic tracking-tighter`} style={{ color: 'inherit' }}>{company?.name || 'GASTROMASTER'}</h1>{large && <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v37.0</p>}</div>);
         };*/
-        const AppLogo = ({ company, large, design }) => {
+        /*const AppLogo = ({ company, large, design }) => {
             // Hier prüfen wir zuerst, ob ein Firmenlogo existiert. 
             // Wenn nicht, nutzen wir dein neues Bild als Standard.
             const logoUrl = company?.design?.logoUrl || design?.logoUrl || "1000137489-removebg-preview.png";
             
             if (logoUrl) { 
                 return <img src={logoUrl} alt="Logo" className={`${large ? 'h-48 drop-shadow-2xl' : 'h-12'} object-contain mx-auto rounded-lg transition-all`} />; 
+            }
+            
+            return (
+                <div>
+                    <h1 className={`${large ? 'text-4xl' : 'text-xl'} font-black italic tracking-tighter`} style={{ color: 'inherit' }}>
+                        {company?.name || 'GASTROMASTER'}
+                    </h1>
+                    {large && <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Enterprise v37.0</p>}
+                </div>
+            );
+        };*/
+        const AppLogo = ({ company, large, design }) => {
+            const logoUrl = company?.design?.logoUrl || design?.logoUrl || "1000137489-removebg-preview.png";
+            
+            if (logoUrl) { 
+                return (
+                    <img 
+                        src={logoUrl} 
+                        alt="Logo" 
+                        // HIER SIND DIE ÄNDERUNGEN:
+                        // 1. h-56: Macht das Logo größer
+                        // 2. brightness-150: Macht das Logo 50% heller (damit man die Schrift liest)
+                        // 3. saturate-150: Macht die Farben (Gold/Rot) knalliger
+                        // 4. drop-shadow: Fügt einen leichten weißen Schimmer hinzu
+                        className={`${large ? 'h-56 filter brightness-150 saturate-150 drop-shadow-[0_0_15px_rgba(255,255,255,0.15)]' : 'h-12'} object-contain mx-auto rounded-lg transition-all`} 
+                    />
+                ); 
             }
             
             return (
