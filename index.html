@@ -494,9 +494,8 @@ const DistrictDashboard = ({ districtId, onLogout, showToast }) => {
     const [addId, setAddId] = useState('');
     const [addCode, setAddCode] = useState('');
     const [loading, setLoading] = useState(false);
-    const [viewingBranch, setViewingBranch] = useState(null);
+    const [showHelp, setShowHelp] = useState(false); // State für Hilfe
 
-    // Live-Sync der verknüpften Filialen
     useEffect(() => {
         const unsub = onSnapshot(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'district_managers', districtId), (s) => {
             if(s.exists()) setBranches(s.data().branches || []);
@@ -505,35 +504,23 @@ const DistrictDashboard = ({ districtId, onLogout, showToast }) => {
     }, [districtId]);
 
     const linkBranch = async () => {
-        if(!addId || !addCode) return alert("Bitte ID und Verknüpfungs-Code eingeben");
+        if(!addId || !addCode) return alert("Bitte ID und Code eingeben");
         setLoading(true);
         try {
             const targetId = normalizeId(addId);
-            // Wir prüfen den Code in der Ziel-Filiale
             const settingsRef = doc(db, 'artifacts', targetId, 'public', 'data', 'settings', 'global');
             const snap = await getDoc(settingsRef);
-            
             if(!snap.exists()) throw new Error("Filiale existiert nicht.");
-            const data = snap.data();
+            if(snap.data().linkCode !== addCode) throw new Error("Falscher Code!");
             
-            if(data.linkCode !== addCode) throw new Error("Falscher Verknüpfungs-Code!");
-            
-            // Code stimmt -> Verknüpfung speichern
-            const newEntry = { id: targetId, name: data.restaurantName || targetId, addedAt: new Date().toISOString() };
-            
-            // 1. Beim Bezirksleiter speichern
+            const newEntry = { id: targetId, name: snap.data().restaurantName || targetId, addedAt: new Date().toISOString() };
             await updateDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'district_managers', districtId), {
                 branches: [newEntry, ...branches]
             });
-            
-            // 2. Code ungültig machen (Einmal-Nutzung)
-            await updateDoc(settingsRef, { linkCode: null });
-            
-            showToast(`Filiale ${targetId} erfolgreich verknüpft!`);
+            await updateDoc(settingsRef, { linkCode: null }); // Code entwerten
+            showToast(`Verknüpft: ${targetId}`);
             setAddId(''); setAddCode('');
-        } catch(e) {
-            alert(e.message);
-        }
+        } catch(e) { alert(e.message); }
         setLoading(false);
     };
 
@@ -543,9 +530,14 @@ const DistrictDashboard = ({ districtId, onLogout, showToast }) => {
         await updateDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'district_managers', districtId), { branches: newList });
     };
 
+    // --- HIER IST DER LOGIN FIX ---
     const loginAs = (branchId) => {
-        if(confirm(`In Filiale "${branchId}" wechseln?`)) {
+        if(confirm(`Als CHEF in Filiale "${branchId}" springen?`)) {
+            // 1. ID setzen
             localStorage.setItem('gastro_app_id', branchId);
+            // 2. "Chef-Ticket" für den Browser setzen
+            sessionStorage.setItem('gastro_district_override', 'true');
+            // 3. Neuladen
             window.location.reload();
         }
     };
@@ -554,39 +546,55 @@ const DistrictDashboard = ({ districtId, onLogout, showToast }) => {
         <div className="min-h-screen bg-slate-50 pb-20">
             <header className="bg-slate-900 text-white p-6 rounded-b-[2.5rem] shadow-xl mb-6">
                 <div className="flex justify-between items-center mb-4">
-                    <h1 className="text-2xl font-black italic">DISTRICT MANAGER</h1>
+                    <h1 className="text-2xl font-black italic">BEZIRKSLEITUNG</h1>
                     <button onClick={onLogout} className="bg-white/10 p-2 rounded-full hover:bg-red-500/20"><LogOut size={20}/></button>
                 </div>
-                <div className="text-indigo-200 text-xs font-bold uppercase tracking-widest">Bezirk: {districtId}</div>
+                <div className="flex justify-between items-end">
+                    <div className="text-indigo-200 text-xs font-bold uppercase tracking-widest">ID: {districtId}</div>
+                    <button onClick={()=>setShowHelp(!showHelp)} className="text-xs bg-white/20 px-3 py-1 rounded-lg font-bold flex items-center gap-1"><Info size={14}/> Anleitung</button>
+                </div>
             </header>
 
             <div className="max-w-md mx-auto px-6 space-y-6">
-                {/* Hinzufügen Box */}
+                
+                {/* ANLEITUNG BOX */}
+                {showHelp && (
+                    <div className="bg-indigo-50 border border-indigo-100 p-5 rounded-[2rem] animate-in text-sm text-indigo-900 space-y-3">
+                        <h4 className="font-bold flex items-center gap-2"><Link size={16}/> Wie verknüpfe ich eine Filiale?</h4>
+                        <ol className="list-decimal list-inside space-y-1 opacity-80">
+                            <li>Loggen Sie sich in der Ziel-Filiale als Admin ein.</li>
+                            <li>Gehen Sie zu <b>Admin &rarr; Einstellungen</b>.</li>
+                            <li>Klicken Sie auf <b>"Code generieren"</b> im Bereich Bezirksleitung.</li>
+                            <li>Geben Sie die <b>Restaurant-ID</b> und diesen <b>Code</b> hier unten ein.</li>
+                        </ol>
+                        <p className="text-xs font-bold pt-2">Hinweis: Der Login erfolgt dann automatisch mit vollen Admin-Rechten.</p>
+                    </div>
+                )}
+
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
                     <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Plus className="text-emerald-500"/> Filiale verknüpfen</h3>
                     <div className="space-y-3">
                         <Input value={addId} onChange={e=>setAddId(e.target.value)} placeholder="Restaurant ID" />
-                        <Input value={addCode} onChange={e=>setAddCode(e.target.value)} placeholder="Verknüpfungs-Code (vom Admin)" />
+                        <Input value={addCode} onChange={e=>setAddCode(e.target.value)} placeholder="Verknüpfungs-Code" />
                         <Button onClick={linkBranch} loading={loading} className="shadow-emerald-200 bg-emerald-600">Verknüpfen</Button>
                     </div>
                 </div>
 
-                {/* Liste */}
                 <div className="space-y-3">
                     <h3 className="font-bold text-slate-400 text-xs uppercase ml-2 tracking-widest">Meine Filialen ({branches.length})</h3>
                     {branches.map(b => (
                         <div key={b.id} className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex justify-between items-center group">
                             <div>
-                                <div className="font-black text-lg text-slate-800">{b.id}</div>
-                                <div className="text-xs text-slate-400">Hinzugefügt: {new Date(b.addedAt).toLocaleDateString()}</div>
+                                <div className="font-black text-lg text-slate-800">{b.name || b.id}</div>
+                                <div className="text-xs text-slate-400 font-mono">{b.id}</div>
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={()=>loginAs(b.id)} className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl font-bold text-sm hover:bg-indigo-100 transition-colors">Login</button>
-                                <button onClick={()=>removeBranch(b.id)} className="bg-slate-50 text-slate-300 p-2 rounded-xl hover:text-red-500 hover:bg-red-50 transition-colors"><Trash2 size={18}/></button>
+                                <button onClick={()=>loginAs(b.id)} className="bg-indigo-600 text-white px-5 py-2 rounded-xl font-bold text-sm shadow-lg shadow-indigo-200 active:scale-95 transition-all">Login</button>
+                                <button onClick={()=>removeBranch(b.id)} className="bg-slate-50 text-slate-300 p-3 rounded-xl hover:text-red-500 hover:bg-red-50 transition-colors"><Trash2 size={18}/></button>
                             </div>
                         </div>
                     ))}
-                    {branches.length === 0 && <div className="text-center text-slate-400 text-sm italic py-10">Noch keine Filialen verknüpft.</div>}
+                    {branches.length === 0 && <div className="text-center text-slate-400 text-sm italic py-10">Keine Filialen. Klicken Sie oben auf Anleitung.</div>}
                 </div>
             </div>
         </div>
@@ -641,6 +649,24 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
                 return () => unsub();
             }, []);
 
+            useEffect(() => {
+                const isDistrictOverride = sessionStorage.getItem('gastro_district_override');
+                if (isDistrictOverride && appId) {
+                    // Wir simulieren einen User mit maximalen Rechten
+                    setAppUser({ 
+                        name: 'BEZIRKSLEITUNG', 
+                        role: 'admin', 
+                        id: 'district_super_admin',
+                        departments: ['kitchen', 'service'], // Voller Zugriff
+                        isDistrictOverride: true 
+                    });
+                    
+                    // Optional: Flag entfernen, damit beim Neuladen (F5) wieder Sicherheit besteht
+                    sessionStorage.removeItem('gastro_district_override'); 
+                    
+                    showToast("Willkommen Chef! Voller Zugriff aktiviert.");
+                }
+            }, [appId]);
             // --- Bestehende Logik ---
             const handleRestaurantLogin = (id) => {
                 if(id === 'head-admin') { setView('head-login'); } else {
