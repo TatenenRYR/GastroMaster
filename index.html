@@ -944,6 +944,7 @@
         const HeadAdminLogin = ({ onSuccess, onBack }) => { const [pw, setPw] = useState(''); const check = () => { if(pw === HEAD_ADMIN_PASS) onSuccess(); else alert("Zugriff verweigert"); }; return <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 text-center text-slate-800"><div className="bg-white p-8 rounded-3xl max-w-sm mx-auto w-full shadow-2xl animate-in space-y-4"><h2 className="text-2xl font-black text-slate-800">Head Admin</h2><Input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="Passwort" /><Button variant="head" onClick={check}>Login</Button><button onClick={onBack} className="text-xs text-slate-400 underline pt-4">Zurück</button></div></div>; };
         const HeadAdminPanel = ({ onLogout, showToast }) => {
             const [token, setToken] = useState(null);
+            const [customToken, setCustomToken] = useState('');
             const [allTokens, setAllTokens] = useState([]);
             const [allBranches, setAllBranches] = useState([]);
             const [systemLogs, setSystemLogs] = useState([]);
@@ -961,7 +962,7 @@
                     onSnapshot(query(collection(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'branches'), orderBy('createdAt', 'desc')), s => setAllBranches(s.docs.map(d => ({id:d.id, ...d.data()})))),
                     onSnapshot(query(collection(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'system_logs'), orderBy('timestamp', 'desc'), limit(50)), s => setSystemLogs(s.docs.map(d => ({id:d.id, ...d.data()}))))
                 ];
-                // Support Tickets laden (Wir speichern die im SYSTEM_ID damit sie zentral sind)
+                
                 const supportUnsub = onSnapshot(query(collection(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'support_tickets'), orderBy('createdAt', 'desc')), s => {
                     setSupportTickets(s.docs.map(d => ({id:d.id, ...d.data()})));
                 });
@@ -972,8 +973,42 @@
                 return () => { unsubs.forEach(u=>u()); supportUnsub(); };
             }, []);
 
-            const createToken = async () => { const t = generateToken(); await setDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'tokens', t), { created: serverTimestamp(), active: true, usedBy: null }); setToken(t); };
-            
+            // --- NEUE KEY FUNKTIONEN ---
+            const createRandomToken = async () => { 
+                const t = generateToken(); 
+                await saveToken(t);
+            };
+
+            const createCustomToken = async () => {
+                if(!customToken || customToken.length < 3) return alert("Code zu kurz!");
+                const t = customToken.trim().toUpperCase().replace(/\s+/g, '-');
+                await saveToken(t);
+                setCustomToken('');
+            };
+
+            const saveToken = async (t) => {
+                // Prüfen ob existiert
+                const check = await getDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'tokens', t));
+                if(check.exists()) return alert("Dieser Code existiert bereits!");
+
+                await setDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'tokens', t), { created: serverTimestamp(), active: true, usedBy: null });
+                setToken(t);
+                showToast("Key erstellt: " + t);
+            };
+
+            const deleteToken = async (id) => {
+                if(!confirm(`Key ${id} wirklich löschen?`)) return;
+                await deleteDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'tokens', id));
+                showToast("Key gelöscht");
+            };
+
+            // --- GOD MODE ---
+            const loginAsBranch = (branchId) => {
+                if(!confirm(`Als "${branchId}" einloggen? Du verlässt den Admin-Bereich.`)) return;
+                localStorage.setItem('gastro_app_id', branchId);
+                window.location.reload();
+            };
+
             const sendBroadcast = async () => { 
                 setMsgSent('loading'); 
                 await setDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'settings', 'global'), { broadcastMessage: globalMsg }, { merge: true }); 
@@ -1007,12 +1042,10 @@
                 try {
                     const dataDump = { id: bId, exportedAt: new Date().toISOString(), collections: {} };
                     const cols = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'prep_tasks', 'settings', 'company', 'logs_time', 'logs_oil', 'logs_temp', 'logs_cleaning'];
-                    
                     for(const c of cols) {
                         const snap = await getDocs(collection(db, 'artifacts', bId, 'public', 'data', c));
                         dataDump.collections[c] = snap.docs.map(d => ({id:d.id, ...d.data()}));
                     }
-                    
                     const blob = new Blob([JSON.stringify(dataDump, null, 2)], {type: "application/json"});
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -1033,49 +1066,98 @@
 
             return (
                 <div className="min-h-screen bg-slate-900 text-white p-6 pb-20">
-                    <div className="max-w-6xl mx-auto space-y-8">
-                        <div className="flex justify-between items-center">
-                            <div>
-                                <h1 className="text-3xl font-black italic tracking-tighter bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">HEAD ADMIN v3.0</h1>
-                                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Command Center</p>
+                    <div className="max-w-7xl mx-auto space-y-6">
+                        {/* Header Stats */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700">
+                                <div className="text-xs text-slate-400 font-bold uppercase">Filialen</div>
+                                <div className="text-2xl font-black">{allBranches.length}</div>
                             </div>
-                            <div className="flex gap-3">
-                                {maintenance && <div className="px-3 py-1 bg-red-500/20 text-red-400 border border-red-500/50 rounded-lg text-xs font-bold flex items-center gap-2 animate-pulse"><AlertTriangle size={14}/> WARTUNG</div>}
-                                <button onClick={onLogout} className="bg-white/10 p-3 rounded-full hover:bg-red-600 transition-colors"><LogOut size={20}/></button>
+                            <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700">
+                                <div className="text-xs text-slate-400 font-bold uppercase">Offene Keys</div>
+                                <div className="text-2xl font-black text-emerald-400">{allTokens.filter(t=>t.active).length}</div>
+                            </div>
+                            <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700">
+                                <div className="text-xs text-slate-400 font-bold uppercase">Tickets</div>
+                                <div className="text-2xl font-black text-amber-400">{supportTickets.length}</div>
+                            </div>
+                            <div className={`${maintenance ? 'bg-red-900/40 border-red-500' : 'bg-slate-800 border-slate-700'} p-4 rounded-2xl border transition-colors`}>
+                                <div className="text-xs text-slate-400 font-bold uppercase">Status</div>
+                                <div className="text-xl font-black">{maintenance ? 'WARTUNG' : 'ONLINE'}</div>
                             </div>
                         </div>
 
+                        <div className="flex justify-between items-center pt-4">
+                            <div>
+                                <h1 className="text-3xl font-black italic tracking-tighter bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">HEAD ADMIN v4.0</h1>
+                            </div>
+                            <button onClick={onLogout} className="bg-white/10 px-6 py-2 rounded-full hover:bg-red-600 transition-colors font-bold text-sm">Logout</button>
+                        </div>
+
                         <div className="flex gap-2 border-b border-white/10 pb-4 overflow-x-auto no-scrollbar">
-                            {['overview', 'branches', 'support', 'tools', 'logs'].map(t => (
+                            {['overview', 'keys', 'branches', 'support', 'tools', 'logs'].map(t => (
                                 <button key={t} onClick={()=>setTab(t)} className={`px-4 py-2 rounded-xl font-bold capitalize transition-all whitespace-nowrap ${tab===t?'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30':'hover:bg-white/5 text-slate-400'}`}>
-                                    {t === 'support' && supportTickets.length > 0 ? `Support (${supportTickets.length})` : t}
+                                    {t === 'support' && supportTickets.length > 0 ? `Support (${supportTickets.length})` : t === 'keys' ? 'Key Manager' : t}
                                 </button>
                             ))}
                         </div>
 
                         {tab === 'overview' && (
                             <div className="grid md:grid-cols-2 gap-6 animate-in">
-                                <div className="space-y-6">
-                                    <div className="bg-gradient-to-br from-indigo-600 to-violet-600 p-8 rounded-[2rem] shadow-2xl relative overflow-hidden group">
-                                        <h3 className="font-bold text-2xl mb-4 relative z-10">Neuen Key generieren</h3>
-                                        {token ? (
-                                            <div className="bg-white/90 backdrop-blur-sm text-slate-900 p-6 rounded-2xl font-mono text-2xl font-black text-center tracking-widest select-all cursor-pointer shadow-xl mb-4" onClick={()=>navigator.clipboard.writeText(token)}>{token}</div>
-                                        ) : (
-                                            <button onClick={createToken} className="relative z-10 bg-white text-indigo-600 w-full py-4 rounded-xl font-black uppercase tracking-wider hover:bg-indigo-50 transition-colors shadow-lg">Code Erstellen</button>
-                                        )}
-                                    </div>
-                                    <div className="bg-slate-800/50 border border-white/5 p-6 rounded-[2rem]">
-                                        <h3 className="font-bold text-sm uppercase text-slate-400 mb-4 flex items-center gap-2"><Megaphone size={16}/> Globaler Broadcast</h3>
-                                        <div className="flex gap-2">
-                                            <input value={globalMsg} onChange={e=>setGlobalMsg(e.target.value)} placeholder="Nachricht an alle..." className="w-full p-4 rounded-xl bg-slate-900 border border-slate-700 text-white outline-none"/>
-                                            <button onClick={sendBroadcast} className={`px-6 rounded-xl font-bold flex items-center justify-center transition-all ${msgSent===true?'bg-emerald-500':'bg-indigo-600 hover:bg-indigo-500'}`}>{msgSent===true?<Check/>:<Save/>}</button>
-                                        </div>
+                                <div className="bg-gradient-to-br from-indigo-600 to-violet-600 p-8 rounded-[2rem] shadow-2xl relative overflow-hidden">
+                                    <h3 className="font-bold text-2xl mb-2 relative z-10">Schnellstart</h3>
+                                    <p className="text-indigo-200 mb-6 relative z-10">Generiere sofort einen zufälligen Zugangscode.</p>
+                                    {token ? (
+                                        <div className="bg-white/90 backdrop-blur-sm text-slate-900 p-6 rounded-2xl font-mono text-2xl font-black text-center tracking-widest select-all cursor-pointer shadow-xl mb-4" onClick={()=>navigator.clipboard.writeText(token)}>{token}</div>
+                                    ) : (
+                                        <button onClick={createRandomToken} className="relative z-10 bg-white text-indigo-600 w-full py-4 rounded-xl font-black uppercase tracking-wider hover:bg-indigo-50 transition-colors shadow-lg">Random Key Generieren</button>
+                                    )}
+                                </div>
+                                <div className="bg-slate-800/50 border border-white/5 p-6 rounded-[2rem]">
+                                    <h3 className="font-bold text-sm uppercase text-slate-400 mb-4 flex items-center gap-2"><Megaphone size={16}/> Globaler Broadcast</h3>
+                                    <div className="flex gap-2">
+                                        <input value={globalMsg} onChange={e=>setGlobalMsg(e.target.value)} placeholder="Nachricht an alle..." className="w-full p-4 rounded-xl bg-slate-900 border border-slate-700 text-white outline-none"/>
+                                        <button onClick={sendBroadcast} className={`px-6 rounded-xl font-bold flex items-center justify-center transition-all ${msgSent===true?'bg-emerald-500':'bg-indigo-600 hover:bg-indigo-500'}`}>{msgSent===true?<Check/>:<Save/>}</button>
                                     </div>
                                 </div>
-                                <div className="bg-slate-800/50 border border-white/5 p-6 rounded-[2rem] flex flex-col h-[500px]">
-                                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2 px-2"><Ticket size={20}/> Aktive Token ({allTokens.filter(t=>t.active).length})</h3>
+                            </div>
+                        )}
+
+                        {tab === 'keys' && (
+                            <div className="grid md:grid-cols-3 gap-6 animate-in">
+                                {/* Create Custom */}
+                                <div className="bg-slate-800/50 border border-white/5 p-6 rounded-[2rem] col-span-1 h-fit">
+                                    <h3 className="font-bold text-xl mb-4 text-emerald-400">Custom Key</h3>
+                                    <div className="space-y-3">
+                                        <input value={customToken} onChange={e=>setCustomToken(e.target.value)} placeholder="z.B. BERLIN-2024" className="w-full p-3 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono uppercase text-center"/>
+                                        <button onClick={createCustomToken} className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-bold shadow-lg shadow-emerald-900/20">Erstellen</button>
+                                        <div className="border-t border-white/10 my-4"></div>
+                                        <button onClick={createRandomToken} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-bold shadow-lg shadow-indigo-900/20">Zufalls-Code</button>
+                                    </div>
+                                </div>
+
+                                {/* List */}
+                                <div className="bg-slate-800/50 border border-white/5 p-6 rounded-[2rem] col-span-2 min-h-[500px] flex flex-col">
+                                    <h3 className="font-bold text-xl mb-4 flex justify-between">
+                                        <span>Token Liste</span>
+                                        <span className="text-sm opacity-50 bg-slate-700 px-2 py-1 rounded">{allTokens.length} Total</span>
+                                    </h3>
                                     <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-2">
-                                        {allTokens.map(t => (<div key={t.id} className="flex justify-between items-center bg-slate-900 p-3 rounded-xl border border-slate-700/50"><span className="font-mono text-sm text-indigo-300 font-bold">{t.id}</span>{t.active?<span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded">FREI</span>:<span className="text-[10px] text-slate-400">{t.usedBy}</span>}</div>))}
+                                        {allTokens.map(t => (
+                                            <div key={t.id} className="flex justify-between items-center bg-slate-900 p-3 rounded-xl border border-slate-700/50 group hover:border-slate-500 transition-colors">
+                                                <div className="flex flex-col">
+                                                    <span className="font-mono text-lg text-indigo-300 font-bold tracking-wider">{t.id}</span>
+                                                    <span className="text-[10px] text-slate-500">{t.created?.seconds ? new Date(t.created.seconds*1000).toLocaleDateString() : '-'}</span>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    {t.active ? 
+                                                        <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded border border-emerald-500/20">AKTIV</span> : 
+                                                        <span className="text-[10px] font-bold bg-slate-700 text-slate-400 px-2 py-1 rounded flex items-center gap-1"><User size={10}/> {t.usedBy}</span>
+                                                    }
+                                                    <button onClick={()=>deleteToken(t.id)} className="p-2 bg-slate-800 text-slate-500 hover:text-red-500 rounded-lg transition-colors"><Trash2 size={16}/></button>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
@@ -1086,10 +1168,14 @@
                                 <div className="flex justify-between items-center gap-4 mb-6"><h3 className="font-bold text-2xl">Filialen</h3><input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="Suche..." className="bg-slate-900 border border-slate-700 text-white px-4 py-2 rounded-xl outline-none"/></div>
                                 <div className="grid gap-3">
                                     {filteredBranches.map(branch => (
-                                        <div key={branch.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-700 flex flex-col sm:flex-row justify-between items-center gap-4">
-                                            <div className="flex items-center gap-4"><div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-400 font-bold">{branch.id.substring(0,2)}</div><div><div className="font-bold text-white">{branch.id}</div><div className="text-xs text-slate-500">Seit: {branch.createdAt?.seconds ? new Date(branch.createdAt.seconds*1000).toLocaleDateString() : '-'}</div></div></div>
-                                            <div className="flex gap-2">
-                                                <button onClick={()=>downloadBranchData(branch.id)} disabled={dumping===branch.id} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-xs font-bold flex items-center gap-2 text-cyan-400">{dumping===branch.id?<Loader2 className="animate-spin" size={14}/>:<Database size={14}/>} Backup JSON</button>
+                                        <div key={branch.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-700 flex flex-col md:flex-row justify-between items-center gap-4">
+                                            <div className="flex items-center gap-4 w-full md:w-auto">
+                                                <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 font-bold text-xl">{branch.id.substring(0,2).toUpperCase()}</div>
+                                                <div><div className="font-bold text-white text-lg">{branch.id}</div><div className="text-xs text-slate-500">Reg: {branch.createdAt?.seconds ? new Date(branch.createdAt.seconds*1000).toLocaleDateString() : '-'}</div></div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2 justify-end w-full md:w-auto">
+                                                <button onClick={()=>loginAsBranch(branch.id)} className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-900/20"><LogOut size={14}/> Login als...</button>
+                                                <button onClick={()=>downloadBranchData(branch.id)} disabled={dumping===branch.id} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-xs font-bold flex items-center gap-2 text-cyan-400">{dumping===branch.id?<Loader2 className="animate-spin" size={14}/>:<Database size={14}/>} Dump</button>
                                                 <button onClick={()=>resetBranchMasterKey(branch.id)} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-xs font-bold flex items-center gap-2"><Key size={14}/> Reset</button>
                                                 <button onClick={()=>deleteBranchRegistry(branch.id)} className="px-3 py-2 bg-slate-800 hover:bg-red-900/30 border border-slate-600 hover:border-red-500 text-red-400 rounded-lg text-xs font-bold"><Trash2 size={14}/></button>
                                             </div>
@@ -1110,7 +1196,10 @@
                                                 <div className="font-bold text-white text-lg">{t.message}</div>
                                                 <div className="text-sm text-slate-400 mt-1">Von: {t.user}</div>
                                             </div>
-                                            <button onClick={()=>closeTicket(t.id)} className="p-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-xl transition-colors"><CheckCircle/></button>
+                                            <div className="flex flex-col gap-2">
+                                                <button onClick={()=>loginAsBranch(t.branchId)} className="p-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-xl transition-colors text-xs font-bold">Visit</button>
+                                                <button onClick={()=>closeTicket(t.id)} className="p-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-xl transition-colors"><CheckCircle size={20}/></button>
+                                            </div>
                                         </div>
                                     ))}
                                     {supportTickets.length === 0 && <div className="text-center text-slate-500 py-10">Alles ruhig. Keine offenen Tickets.</div>}
