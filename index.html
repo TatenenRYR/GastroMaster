@@ -660,7 +660,7 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
                         departments: ['kitchen', 'service'], // Voller Zugriff
                         isDistrictOverride: true 
                     });
-                    
+                    setView('dashboard');
                     // Optional: Flag entfernen, damit beim Neuladen (F5) wieder Sicherheit besteht
                     sessionStorage.removeItem('gastro_district_override'); 
                     
