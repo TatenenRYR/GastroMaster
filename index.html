@@ -323,6 +323,121 @@
                 </div>
             );
         };
+        const Dashboard = ({ user, status, data, setView, modulesConfig, lang, showToast, appId }) => {
+            const t = DICTIONARY[lang];
+            
+            // Berechnung der offenen Aufgaben für die Anzeige
+            const openClean = (data.tasks || []).filter(i => !status.cleaningLogs[i.id]).length;
+            
+            // Relevante Prep-Tasks filtern (nur heutiger Tag)
+            const day = getWeekdayShort();
+            const relevantPrep = (data.prep || []).filter(i => i.schedule?.[day]);
+            const openPrep = relevantPrep.filter(i => !status.prepLogs[i.id]).length;
+            
+            const activeCooling = (data.cooling || []).filter(d => d.status !== 'defekt');
+            const openTemp = activeCooling.filter(d => !status.tempLogs.find(l => l.deviceId === d.id)).length;
+            
+            const activeFryers = (data.fryers || []).filter(d => d.status !== 'defekt');
+            const openOil = activeFryers.filter(d => !status.oilLogs[d.id]).length;
+
+            // Status für Stempeluhr
+            const myTime = status.myTimeLog;
+            const timeStatus = myTime && !myTime.end ? (myTime.status === 'break' ? 'PAUSE' : 'LÄUFT') : 'STARTEN';
+
+            // Berechtigungen prüfen
+            const hasKitchenAccess = user.role === 'admin' || user.role === 'kitchen_lead' || (user.departments || []).includes('kitchen');
+
+            return (
+                <div className="animate-in space-y-6">
+                    <div className="flex justify-between items-center">
+                       <div>
+                           <h2 className="text-3xl font-black text-inherit">Hi, {user.name}</h2>
+                           <p className="text-inherit opacity-60 text-sm font-bold">{t.dash}</p>
+                       </div>
+                       <div className="text-right">
+                           <div className="text-xs font-bold opacity-50 uppercase">{getTodayStr()}</div>
+                       </div>
+                    </div>
+
+                    {/* Team Nachrichten Board */}
+                    <TeamBoard messages={data.messages || []} user={user} appId={appId} showToast={showToast} />
+
+                    <div className="grid grid-cols-2 gap-4 pb-20">
+                        {/* Stempeluhr */}
+                         {modulesConfig.time?.enabled && (
+                            <DashCard
+                                title={t.time}
+                                icon={<Clock/>}
+                                col="bg-violet-500"
+                                customStatus={timeStatus}
+                                onClick={() => setView('time')}
+                                sub="Zeiterfassung"
+                            />
+                        )}
+
+                        {/* Mise en Place */}
+                        {modulesConfig.prep?.enabled && (
+                            <DashCard
+                                title={t.prep}
+                                val={openPrep}
+                                icon={<ClipboardList/>}
+                                col="bg-indigo-500"
+                                onClick={() => setView('prep')}
+                                sub="Mise en place"
+                            />
+                        )}
+
+                        {/* Putzplan */}
+                        {modulesConfig.cleaning?.enabled && (
+                            <DashCard
+                                title={t.clean}
+                                val={openClean}
+                                icon={<Sparkles/>}
+                                col="bg-emerald-500"
+                                onClick={() => setView('cleaning')}
+                                sub="Hygienekonzept"
+                            />
+                        )}
+
+                        {/* Kühlung */}
+                        {modulesConfig.cooling?.enabled && (
+                            <DashCard
+                                title={t.temp}
+                                val={openTemp}
+                                icon={<Snowflake/>}
+                                col="bg-sky-500"
+                                onClick={() => setView('cooling')}
+                                sub="Temperaturen"
+                            />
+                        )}
+
+                        {/* Fett & Öl (Nur Küche) */}
+                        {modulesConfig.oil?.enabled && hasKitchenAccess && (
+                            <DashCard
+                                title={t.oil}
+                                val={openOil}
+                                icon={<Droplet/>}
+                                col="bg-amber-500"
+                                onClick={() => setView('oil')}
+                                sub="Fett & Öl"
+                            />
+                        )}
+
+                        {/* Einkauf */}
+                        {modulesConfig.inventory?.enabled && (
+                            <DashCard
+                                title={t.inventory}
+                                val={status.shoppingList?.length || 0}
+                                icon={<Truck/>}
+                                col="bg-slate-500"
+                                onClick={() => setView('inventory')}
+                                sub="Bestellliste"
+                            />
+                        )}
+                    </div>
+                </div>
+            );
+        };
 
         // --- APP CONTROLLER ---
         
