@@ -468,8 +468,8 @@
             const themeStyle = { backgroundColor: design.backgroundColor || '#f8fafc', color: design.textColor || '#1e293b' };
             const btnStyle = { backgroundColor: design.primaryColor || '#0f172a', color: '#ffffff' };
             const headerStyle = { backgroundColor: design.headerColor || design.primaryColor || '#0f172a', color: '#ffffff' };
-            const modulesConfig = data.settings?.modules || DEFAULT_MODULES_CONFIG;
-            
+            // Wir mischen (mergen) die Standards mit den gespeicherten Daten
+const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules || {}) };
             const showToast = (msg, type='success') => { setToast({msg, type}); setTimeout(() => setToast(null), 3000); };
 
             // --- NEU: System Listener (Wartungsmodus & Broadcasts) ---
@@ -1138,11 +1138,18 @@
                 : (<div className="space-y-4 animate-in"><Button variant="ghost" onClick={()=>setEdit({isNew:true})} className="border-dashed py-5 text-slate-400 bg-slate-50 hover:bg-slate-100 hover:text-slate-600"><Plus size={20}/> Neuen Eintrag hinzufügen</Button><div className="divide-y divide-slate-100">{(data[tab]||[]).map(item => (<div key={item.id} className="py-4 flex justify-between items-center group"><div><div className="font-bold text-slate-700 text-lg">{item.name}</div></div><div className="flex gap-2"><button onClick={()=>setEdit(item)} className="p-3 bg-indigo-50 text-indigo-500 rounded-xl hover:bg-indigo-100"><Settings size={18}/></button><button onClick={()=>delItem(item.id)} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-100"><Trash2 size={18}/></button></div></div>))}</div></div>)}</div></div>); };
         
         const ModuleConfigurator = ({ data, appId, showToast, btnStyle }) => {
-            const [modules, setModules] = useState(data || DEFAULT_MODULES_CONFIG);
+            // HIER IST DER FIX: Wir laden Standards UND gespeicherte Daten zusammen
+            const [modules, setModules] = useState({ ...DEFAULT_MODULES_CONFIG, ...(data || {}) });
+            
             const handleToggle = (key) => setModules(p => ({...p, [key]: { ...p[key], enabled: !p[key].enabled } }));
             const handleNameChange = (key, val) => setModules(p => ({...p, [key]: { ...p[key], name: val } }));
             const handleIconChange = (key, val) => setModules(p => ({...p, [key]: { ...p[key], icon: val } }));
-            const save = async () => { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), { modules }, { merge: true }); showToast("Module gespeichert! Bitte neuladen."); };
+            
+            const save = async () => { 
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), { modules }, { merge: true }); 
+                showToast("Module gespeichert! Bitte neuladen."); 
+            };
+            
             return (
                 <div className="space-y-6 animate-in">
                     <div><h3 className="font-bold text-lg">Module & Funktionen</h3><p className="text-slate-400 text-sm">Aktiviere, was du brauchst.</p></div>
