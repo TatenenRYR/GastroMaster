@@ -659,7 +659,6 @@
                             {view === 'oil' && hasAccess('kitchen') && <Oil {...common} />}
                             {view === 'inventory' && <Inventory {...common} />}
                             {view === 'waste' && <WasteManager {...common} />}
-                            {view === 'waste' && <WasteManager {...common} />}
                             {view === 'admin' && (appUser.role === 'admin' || ['kitchen_lead','service_lead'].includes(appUser.role)) && <Admin {...common} debugMode={debugMode} setView={setView} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} deleteBranch={deleteBranchLocal} currentUser={appUser} lang={lang} />}
                             {view === 'history' && appUser?.role === 'admin' && <SmartHistory {...common} setView={setView} />}
                         </main>
@@ -909,37 +908,45 @@
 
             useEffect(() => {
                 if(!appId) return;
-                // Live-Abfrage der heutigen Einträge
+                
+                // KORREKTUR: Wir entfernen 'orderBy' aus der Datenbank-Abfrage
                 const q = query(
                     collection(db, 'artifacts', appId, 'public', 'data', 'logs_waste'),
-                    where('dateStr', '==', getTodayStr()),
-                    orderBy('createdAt', 'desc')
+                    where('dateStr', '==', getTodayStr())
                 );
+
                 const unsub = onSnapshot(q, (s) => {
-                    setLogs(s.docs.map(d => ({id: d.id, ...d.data()})));
+                    // Wir sortieren die Daten hier im Browser (JavaScript) statt in der Datenbank
+                    const loadedLogs = s.docs.map(d => ({id: d.id, ...d.data()}));
+                    
+                    // Sortierung: Neueste zuerst
+                    loadedLogs.sort((a, b) => {
+                        const timeA = a.createdAt?.seconds || 0;
+                        const timeB = b.createdAt?.seconds || 0;
+                        return timeB - timeA;
+                    });
+                    
+                    setLogs(loadedLogs);
                 });
                 return () => unsub();
             }, [appId]);
 
             const save = async () => {
-                // 1. Prüfung: Sind die Felder leer?
                 if(!item.trim() || !qty.trim()) {
                     showToast("Bitte Produkt und Menge eingeben!", "error");
                     return;
                 }
 
                 try {
-                    // 2. Speichern in Firebase
                     await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_waste'), {
                         item: item.trim(), 
                         qty: qty.trim(), 
                         reason, 
-                        user: user?.name || 'Mitarbeiter', // Fallback, falls Name fehlt
+                        user: user?.name || 'Mitarbeiter',
                         dateStr: getTodayStr(), 
                         createdAt: serverTimestamp()
                     });
                     
-                    // 3. Reset und Erfolg
                     setItem(''); 
                     setQty(''); 
                     showToast("Schwund erfolgreich eingetragen", "success");
@@ -987,7 +994,7 @@
                         <h3 className="text-xs font-bold uppercase text-slate-400 ml-2 tracking-widest">Heute erfasst</h3>
                         {logs.length === 0 && <div className="text-center p-4 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Noch keine Einträge heute.</div>}
                         {logs.map(l => (
-                            <div key={l.id} className="bg-white p-4 rounded-2xl flex justify-between items-center text-sm border border-slate-100 shadow-sm">
+                            <div key={l.id} className="bg-white p-4 rounded-2xl flex justify-between items-center text-sm border border-slate-100 shadow-sm animate-in">
                                 <div>
                                     <div className="font-bold text-slate-800 text-base">{l.item}</div>
                                     <div className="text-slate-500 text-xs flex gap-2 items-center">
