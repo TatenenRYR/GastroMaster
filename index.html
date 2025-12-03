@@ -659,6 +659,7 @@
                             {view === 'oil' && hasAccess('kitchen') && <Oil {...common} />}
                             {view === 'inventory' && <Inventory {...common} />}
                             {view === 'waste' && <WasteManager {...common} />}
+                            {view === 'waste' && <WasteManager {...common} />}
                             {view === 'admin' && (appUser.role === 'admin' || ['kitchen_lead','service_lead'].includes(appUser.role)) && <Admin {...common} debugMode={debugMode} setView={setView} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} deleteBranch={deleteBranchLocal} currentUser={appUser} lang={lang} />}
                             {view === 'history' && appUser?.role === 'admin' && <SmartHistory {...common} setView={setView} />}
                         </main>
@@ -901,68 +902,109 @@
         };
 
         const WasteManager = ({ user, appId, showToast }) => {
-    const [item, setItem] = useState('');
-    const [qty, setQty] = useState('');
-    const [reason, setReason] = useState('Verdorben');
-    const [logs, setLogs] = useState([]);
+            const [item, setItem] = useState('');
+            const [qty, setQty] = useState('');
+            const [reason, setReason] = useState('Verdorben');
+            const [logs, setLogs] = useState([]);
 
-    useEffect(() => {
-        // Lädt die heutigen Schwund-Einträge
-        const q = query(
-            collection(db, 'artifacts', appId, 'public', 'data', 'logs_waste'),
-            where('dateStr', '==', getTodayStr()),
-            orderBy('createdAt', 'desc')
-        );
-        return onSnapshot(q, (s) => setLogs(s.docs.map(d => ({id: d.id, ...d.data()}))));
-    }, [appId]);
+            useEffect(() => {
+                if(!appId) return;
+                // Live-Abfrage der heutigen Einträge
+                const q = query(
+                    collection(db, 'artifacts', appId, 'public', 'data', 'logs_waste'),
+                    where('dateStr', '==', getTodayStr()),
+                    orderBy('createdAt', 'desc')
+                );
+                const unsub = onSnapshot(q, (s) => {
+                    setLogs(s.docs.map(d => ({id: d.id, ...d.data()})));
+                });
+                return () => unsub();
+            }, [appId]);
 
-    const save = async () => {
-        if(!item || !qty) return;
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_waste'), {
-            item, qty, reason, user: user.name, dateStr: getTodayStr(), createdAt: serverTimestamp()
-        });
-        setItem(''); setQty(''); showToast("Schwund erfasst", "error");
-    };
+            const save = async () => {
+                // 1. Prüfung: Sind die Felder leer?
+                if(!item.trim() || !qty.trim()) {
+                    showToast("Bitte Produkt und Menge eingeben!", "error");
+                    return;
+                }
 
-    return (
-        <div className="animate-in space-y-6">
-            <div><h2 className="text-3xl font-black text-inherit">Schwund</h2><p className="opacity-60 text-sm">Was wurde weggeworfen?</p></div>
+                try {
+                    // 2. Speichern in Firebase
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_waste'), {
+                        item: item.trim(), 
+                        qty: qty.trim(), 
+                        reason, 
+                        user: user?.name || 'Mitarbeiter', // Fallback, falls Name fehlt
+                        dateStr: getTodayStr(), 
+                        createdAt: serverTimestamp()
+                    });
+                    
+                    // 3. Reset und Erfolg
+                    setItem(''); 
+                    setQty(''); 
+                    showToast("Schwund erfolgreich eingetragen", "success");
+                } catch(e) {
+                    console.error("Fehler beim Speichern:", e);
+                    showToast("Fehler: Konnte nicht speichern.", "error");
+                }
+            };
             
-            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 space-y-4">
-                <div>
-                    <label className="text-[10px] uppercase font-bold text-slate-400">Produkt</label>
-                    <Input value={item} onChange={e=>setItem(e.target.value)} placeholder="z.B. Milch" />
-                </div>
-                <div className="flex gap-4">
-                    <div className="flex-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-400">Menge</label>
-                        <Input value={qty} onChange={e=>setQty(e.target.value)} placeholder="z.B. 2 Liter" />
-                    </div>
-                    <div className="flex-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-400">Grund</label>
-                        <Select value={reason} onChange={e=>setReason(e.target.value)}>
-                            <option>Verdorben</option>
-                            <option>Runtergefallen</option>
-                            <option>Überproduktion</option>
-                            <option>MHD abgelaufen</option>
-                        </Select>
-                    </div>
-                </div>
-                <Button onClick={save} className="bg-red-500 hover:bg-red-600 shadow-red-200 text-white">Eintragen</Button>
-            </div>
+            const deleteLog = async (id) => {
+                if(confirm("Eintrag löschen?")) {
+                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_waste', id));
+                }
+            };
 
-            <div className="space-y-2">
-                <h3 className="text-xs font-bold uppercase text-slate-400 ml-2">Heute entsorgt</h3>
-                {logs.map(l => (
-                    <div key={l.id} className="bg-slate-50 p-4 rounded-2xl flex justify-between items-center text-sm border border-slate-100">
-                        <div><span className="font-bold text-slate-700">{l.item}</span> <span className="text-slate-500">({l.qty})</span></div>
-                        <div className="text-xs font-bold bg-red-100 text-red-600 px-2 py-1 rounded">{l.reason}</div>
+            return (
+                <div className="animate-in space-y-6">
+                    <div><h2 className="text-3xl font-black text-inherit">Schwund & Bruch</h2><p className="opacity-60 text-sm font-medium">Was muss entsorgt werden?</p></div>
+                    
+                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 space-y-4">
+                        <div>
+                            <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Produkt / Artikel</label>
+                            <Input value={item} onChange={e=>setItem(e.target.value)} placeholder="z.B. Tomaten, Milch..." />
+                        </div>
+                        <div className="flex gap-4">
+                            <div className="flex-1">
+                                <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Menge / Gewicht</label>
+                                <Input value={qty} onChange={e=>setQty(e.target.value)} placeholder="z.B. 2kg, 3 Stück" />
+                            </div>
+                            <div className="flex-1">
+                                <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Grund</label>
+                                <Select value={reason} onChange={e=>setReason(e.target.value)}>
+                                    <option value="Verdorben">Verdorben / Schimmel</option>
+                                    <option value="Runtergefallen">Runtergefallen / Bruch</option>
+                                    <option value="MHD">MHD abgelaufen</option>
+                                    <option value="Fehlproduktion">Fehlproduktion</option>
+                                    <option value="Qualität">Qualitätsmangel</option>
+                                </Select>
+                            </div>
+                        </div>
+                        <Button onClick={save} className="bg-red-500 hover:bg-red-600 shadow-lg shadow-red-200 text-white mt-2">Eintragen</Button>
                     </div>
-                ))}
-            </div>
-        </div>
-    );
-};
+
+                    <div className="space-y-2 pt-4">
+                        <h3 className="text-xs font-bold uppercase text-slate-400 ml-2 tracking-widest">Heute erfasst</h3>
+                        {logs.length === 0 && <div className="text-center p-4 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Noch keine Einträge heute.</div>}
+                        {logs.map(l => (
+                            <div key={l.id} className="bg-white p-4 rounded-2xl flex justify-between items-center text-sm border border-slate-100 shadow-sm">
+                                <div>
+                                    <div className="font-bold text-slate-800 text-base">{l.item}</div>
+                                    <div className="text-slate-500 text-xs flex gap-2 items-center">
+                                        <span className="font-bold bg-slate-100 px-1.5 py-0.5 rounded">{l.qty}</span>
+                                        <span>durch {l.user}</span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <div className="text-[10px] font-bold uppercase bg-red-50 text-red-600 px-2 py-1 rounded border border-red-100">{l.reason}</div>
+                                    <button onClick={()=>deleteLog(l.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
         const Inventory = ({ data, status, appId, showToast, lang }) => { 
             const [newItem, setNewItem] = useState(''); const list = status.shoppingList || []; 
             const add = async () => { if(!newItem.trim()) return; await addDoc(collection(db,'artifacts',appId,'public','data','shopping_list'), { name: newItem, createdAt: serverTimestamp() }); setNewItem(''); }; 
