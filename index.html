@@ -294,7 +294,27 @@
                 </div>
             );
         };
+// 1. Neue Komponente: Zeigt Warnung bei Internetverlust
+        const ConnectionBanner = () => {
+            const [online, setOnline] = useState(navigator.onLine);
+            useEffect(() => {
+                const setOn = () => setOnline(true);
+                const setOff = () => setOnline(false);
+                window.addEventListener('online', setOn);
+                window.addEventListener('offline', setOff);
+                return () => { window.removeEventListener('online', setOn); window.removeEventListener('offline', setOff); };
+            }, []);
 
+            if (online) return null;
+
+            return (
+                <div className="bg-red-600 text-white text-center py-2 px-4 text-xs font-bold uppercase tracking-widest animate-pulse sticky top-0 z-[60]">
+                    <div className="flex justify-center items-center gap-2">
+                        <Monitor size={14}/> Keine Internetverbindung - Daten werden lokal gepuffert
+                    </div>
+                </div>
+            );
+        };
 
         // --- APP CONTROLLER ---
         
@@ -485,6 +505,7 @@
 
             return (
                 <ErrorBoundary>
+                    <ConnectionBanner /> {/* <--- HIER EINFÜGEN */}
                     <div className="min-h-full font-sans pb-20 transition-colors duration-300" style={themeStyle}>
                         <header className="pt-[max(1rem,env(safe-area-inset-top))] pb-4 px-5 sticky top-0 z-50 shadow-lg flex justify-between items-center transition-colors duration-300" style={headerStyle}>
                             <div className="flex items-center gap-3">
@@ -608,36 +629,43 @@
             );
         };
 
-        const Dashboard = ({ user, data, status, setView, lang, btnStyle, modulesConfig, appId, showToast }) => {
-            const day = getWeekdayShort(); const longDay = getWeekdayLong(); const t = DICTIONARY[lang];
-            const relevantTasks = (data.tasks || []).filter(t => t.schedule?.[day] && (user.role==='admin' || ['kitchen_lead','service_lead'].includes(user.role) || (user.departments||[]).includes(t.dept)));
-            const done = relevantTasks.filter(t => status.cleaningLogs[t.id]).length;
-            const openTemp = (data.cooling || []).filter(d => d.status!=='defekt').length - status.tempLogs.length;
-            const prepList = (data.prep || []).filter(t => t.schedule?.[day] && (user.role==='admin' || ['kitchen_lead','service_lead'].includes(user.role) || (user.departments||[]).includes(t.dept)));
-            const prepDone = prepList.filter(t => status.prepLogs[t.id]).length;
-            const fryers = data.fryers || []; const oilLogs = status.oilLogs || {};
-            const isClockedIn = status.myTimeLog && !status.myTimeLog.end;
-
-            const renderCard = (m, config) => {
-                if(!config.enabled) return null;
-                const name = config.name || t[m];
-                const Icon = ICON_MAP[config.icon] || MODULE_ICONS[m] || <CheckCircle/>;
-                
-                if(m === 'time') return <DashCard key={m} title={name} val={isClockedIn ? 0 : 1} icon={Icon} col={isClockedIn ? "bg-emerald-500" : "bg-indigo-500"} onClick={()=>setView('time')} sub={isClockedIn ? "Eingestempelt" : "Inaktiv"} customStatus={isClockedIn ? "LÄUFT" : "STARTEN"} />;
-                if(m === 'prep') return <DashCard key={m} title={name} val={prepList.length - prepDone} icon={Icon} col="bg-indigo-500" onClick={()=>setView('prep')} sub={t.stock} />;
-                if(m === 'cleaning') return <DashCard key={m} title={name} val={relevantTasks.length - done} icon={Icon} col="bg-violet-500" onClick={()=>setView('cleaning')} sub={t.clean} />;
-                if(m === 'cooling') return <DashCard key={m} title={name} val={openTemp} icon={Icon} col="bg-sky-500" onClick={()=>setView('cooling')} sub={t.temp} />;
-                if(m === 'oil') return <DashCard key={m} title={name} val={fryers.length - Object.keys(oilLogs).length} icon={Icon} col="bg-amber-500" onClick={()=>setView('oil')} sub={t.oil} />;
-                if(m === 'inventory') return <DashCard key={m} title={name} val={status.shoppingList.length} icon={Icon} col="bg-emerald-500" onClick={()=>setView('inventory')} sub="Liste" />;
-                return null;
-            };
+        const DashCard = ({ title, val, icon, col, onClick, sub, customStatus }) => {
+            // Berechne einen fiktiven Fortschritt oder nutze Werte, falls verfügbar
+            // Bei "Offen" (val > 0) ist der Balken nicht voll.
+            // Logik: Wenn val (offene Tasks) 0 ist, ist es 100%. Wenn val hoch ist, weniger.
+            // Dies ist eine visuelle Annäherung für besseres UX.
+            let progress = 0;
+            if(customStatus === 'LÄUFT') progress = 100;
+            else if(customStatus === 'STARTEN') progress = 0;
+            else if(val === 0) progress = 100;
+            else progress = Math.max(10, 100 - (val * 10)); // Grobe Schätzung für Visualisierung
 
             return (
-                <div className="animate-in space-y-6">
-                    <div className="text-white p-6 rounded-[2.5rem] shadow-xl flex justify-between items-center relative overflow-hidden transition-colors duration-300" style={btnStyle}><div className="relative z-10"><div className="text-xs font-bold opacity-80 uppercase mb-1">{longDay}</div><div className="text-3xl font-black tracking-tight">Hallo, {user.name}</div><div className="opacity-80 text-sm mt-1 font-medium">{done} Tasks • {prepDone} Prep erledigt</div></div><div className="bg-white/10 p-4 rounded-2xl shadow-inner relative z-10"><Activity className="text-white" size={32}/></div><div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full blur-[60px] opacity-20"></div></div>
-                    <TeamBoard messages={data.messages||[]} user={user} appId={appId} showToast={showToast} />
-                    <div className="grid grid-cols-2 gap-4">{Object.entries(modulesConfig).map(([key, config]) => renderCard(key, config))}</div>
-                </div>
+                <button type="button" onClick={onClick} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm text-left hover:shadow-lg transition-all active:scale-[0.98] relative overflow-hidden group h-full flex flex-col justify-between">
+                    <div className={`absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity ${col} text-white rounded-bl-3xl scale-150`}>{icon}</div>
+                    
+                    <div>
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white mb-3 shadow-md ${col} group-hover:scale-110 transition-transform`}>
+                            {React.cloneElement(icon, {size:22})}
+                        </div>
+                        <div className="font-black text-slate-700 text-lg leading-none mb-1">{title}</div>
+                        <div className="text-[10px] uppercase font-bold text-slate-400 mb-3">{sub}</div>
+                    </div>
+
+                    <div className="w-full space-y-2">
+                        <div className="flex justify-between items-end">
+                             {customStatus ? (
+                                <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${customStatus==='LÄUFT'?'bg-emerald-50 text-emerald-600':'bg-indigo-50 text-indigo-600'}`}>{customStatus}</div>
+                             ) : (
+                                val > 0 ? <div className="text-red-500 text-xs font-bold">{val} Offen</div> : <div className="text-emerald-500 text-xs font-bold">Fertig</div>
+                             )}
+                        </div>
+                        {/* Progress Bar */}
+                        <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full transition-all duration-1000 ${col}`} style={{width: `${progress}%`, opacity: 0.7}}></div>
+                        </div>
+                    </div>
+                </button>
             );
         };
         
@@ -646,28 +674,88 @@
 
         // --- MODULES ---
         const TimeClock = ({ user, appId, showToast, status }) => { 
-            const currentLog = status.myTimeLog; const isClockedIn = currentLog && !currentLog.end; 
-            const handleClock = async () => { 
-                const now = new Date(); const timeStr = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}); 
-                if(isClockedIn) { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { end: timeStr }); await logBranchAction(appId, user.name, 'CLOCK_OUT', `End: ${timeStr}`); showToast("Schönen Feierabend!"); } 
-                else { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), { userId: user.id, userName: user.name, dateStr: getTodayStr(), start: timeStr, end: null, createdAt: serverTimestamp() }); await logBranchAction(appId, user.name, 'CLOCK_IN', `Start: ${timeStr}`); showToast("Eingestempelt!"); } 
+            const currentLog = status.myTimeLog; 
+            // Prüfen ob eingestempelt UND ob gerade Pause ist
+            const isClockedIn = currentLog && !currentLog.end;
+            const isOnBreak = isClockedIn && currentLog.status === 'break';
+
+            const handleClock = async (action) => { 
+                const now = new Date(); 
+                const timeStr = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}); 
+                
+                if (action === 'start') {
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), { 
+                        userId: user.id, userName: user.name, dateStr: getTodayStr(), 
+                        start: timeStr, end: null, status: 'active', breaks: [], createdAt: serverTimestamp() 
+                    });
+                    await logBranchAction(appId, user.name, 'CLOCK_IN', `Start: ${timeStr}`);
+                    showToast("Eingestempelt!");
+                }
+                else if (action === 'pause') {
+                    // Pause starten: Wir fügen einen neuen Pause-Eintrag hinzu
+                    const breaks = currentLog.breaks || [];
+                    breaks.push({ start: timeStr, end: null });
+                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { 
+                        status: 'break', breaks 
+                    });
+                    showToast("Pause gestartet");
+                }
+                else if (action === 'resume') {
+                    // Pause beenden: Den letzten Eintrag schließen
+                    const breaks = currentLog.breaks || [];
+                    if(breaks.length > 0) {
+                        breaks[breaks.length-1].end = timeStr;
+                    }
+                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { 
+                        status: 'active', breaks 
+                    });
+                    showToast("Willkommen zurück!");
+                }
+                else if (action === 'stop') {
+                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { 
+                        end: timeStr, status: 'closed' 
+                    }); 
+                    await logBranchAction(appId, user.name, 'CLOCK_OUT', `End: ${timeStr}`); 
+                    showToast("Schönen Feierabend!"); 
+                } 
             }; 
+
             return (
                 <div className="animate-in space-y-6 text-center">
                     <div><h2 className="text-3xl font-black text-inherit">Stempeluhr</h2><p className="text-inherit opacity-60 text-sm font-medium">Arbeitszeiterfassung</p></div>
                     <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 relative overflow-hidden">
-                        <div className={`absolute top-0 left-0 w-full h-2 ${isClockedIn ? 'bg-emerald-500' : 'bg-slate-200'}`}></div>
+                        <div className={`absolute top-0 left-0 w-full h-2 ${!isClockedIn ? 'bg-slate-200' : isOnBreak ? 'bg-amber-400' : 'bg-emerald-500'}`}></div>
                         <div className="text-sm font-bold uppercase text-slate-400 mb-2">{getTodayStr()}</div>
                         <div className="text-5xl font-black text-slate-800 mb-8 font-mono">{new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
-                        <button onClick={handleClock} className={`w-32 h-32 rounded-full flex flex-col items-center justify-center transition-all shadow-xl active:scale-95 mx-auto ${isClockedIn ? 'bg-red-50 text-red-600 hover:bg-red-100 shadow-red-200' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 shadow-emerald-200'}`}>
-                            {isClockedIn ? <StopCircle size={48} /> : <PlayCircle size={48} />}<span className="font-bold text-xs mt-2 uppercase">{isClockedIn ? 'STOP' : 'START'}</span>
-                        </button>
-                        <div className="mt-8 text-sm font-medium text-slate-500">{isClockedIn ? `Eingestempelt seit ${currentLog.start} Uhr` : 'Aktuell nicht eingestempelt'}</div>
+                        
+                        {!isClockedIn ? (
+                            <button onClick={()=>handleClock('start')} className="w-32 h-32 rounded-full flex flex-col items-center justify-center transition-all shadow-xl active:scale-95 mx-auto bg-emerald-50 text-emerald-600 hover:bg-emerald-100 shadow-emerald-200">
+                                <PlayCircle size={48} /><span className="font-bold text-xs mt-2 uppercase">START</span>
+                            </button>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-4 max-w-[250px] mx-auto">
+                                {isOnBreak ? (
+                                    <button onClick={()=>handleClock('resume')} className="h-32 rounded-[2.5rem] flex flex-col items-center justify-center transition-all shadow-lg active:scale-95 bg-indigo-50 text-indigo-600">
+                                        <PlayCircle size={32}/><span className="font-bold text-[10px] mt-2 uppercase">Weiter</span>
+                                    </button>
+                                ) : (
+                                    <button onClick={()=>handleClock('pause')} className="h-32 rounded-[2.5rem] flex flex-col items-center justify-center transition-all shadow-lg active:scale-95 bg-amber-50 text-amber-600">
+                                        <Coffee size={32}/><span className="font-bold text-[10px] mt-2 uppercase">Pause</span>
+                                    </button>
+                                )}
+                                <button onClick={()=>handleClock('stop')} className="h-32 rounded-[2.5rem] flex flex-col items-center justify-center transition-all shadow-lg active:scale-95 bg-red-50 text-red-600">
+                                    <StopCircle size={32}/><span className="font-bold text-[10px] mt-2 uppercase">Ende</span>
+                                </button>
+                            </div>
+                        )}
+                        
+                        <div className="mt-8 text-sm font-medium text-slate-500">
+                            {isClockedIn ? (isOnBreak ? '⏸️ In Pause' : '⏱️ Arbeitszeit läuft') : 'Aktuell nicht eingestempelt'}
+                        </div>
                     </div>
                 </div>
             ); 
         };
-
         const Cleaning = ({ data, status, user, appId, showToast, lang }) => { 
             const day = getWeekdayShort(); const list = data.tasks || []; const myDepts = user.departments || []; 
             const relevant = list.filter(i => i.schedule?.[day] && (user.role==='admin' || ['kitchen_lead','service_lead'].includes(user.role) || myDepts.includes(i.dept))); 
