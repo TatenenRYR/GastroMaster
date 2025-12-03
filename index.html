@@ -107,7 +107,15 @@
             Droplet: <Droplet/>, Truck: <Truck/>, Menu: <Menu/>, Settings: <Settings/>, Utensils: <Utensils/>,
             Coffee: <Coffee/>, ChefHat: <ChefHat/>, Box: <Box/>, Layers: <Layers/>, AlertTriangle: <AlertTriangle/>
         };
-
+// Fallback Icons for Dashboard if Customization is missing
+        const MODULE_ICONS = {
+            time: <Clock/>,
+            prep: <ClipboardList/>,
+            cleaning: <Sparkles/>,
+            cooling: <Snowflake/>,
+            oil: <Droplet/>,
+            inventory: <Truck/>
+        };
         const DEFAULT_MODULES_CONFIG = {
             time: { enabled: true, name: "Stempeluhr", icon: "Clock" },
             prep: { enabled: true, name: "Mise en Place", icon: "ClipboardList" },
