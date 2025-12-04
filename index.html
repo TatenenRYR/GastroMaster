@@ -681,7 +681,7 @@ const TerminalClock = ({ staff, appId, onClose }) => {
     const [pin, setPin] = useState('');
     const [identifiedUser, setIdentifiedUser] = useState(null);
     const [currentLog, setCurrentLog] = useState(null);
-    const [todayShift, setTodayShift] = useState(null); // NEU: Geplanter Dienst
+    const [todayShift, setTodayShift] = useState(null);
     const [loading, setLoading] = useState(false);
     const [msg, setMsg] = useState(null);
 
@@ -706,8 +706,8 @@ const TerminalClock = ({ staff, appId, onClose }) => {
                 const qLog = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), where('userId', '==', user.id), where('dateStr', '==', getTodayStr()), limit(1));
                 const snapLog = await getDocs(qLog);
                 
-                // 2. Dienstplan prüfen (NEU)
-                const dayShort = getWeekdayShort(); // z.B. "Mo"
+                // 2. Dienstplan prüfen
+                const dayShort = getWeekdayShort(); 
                 const docId = `${user.id}_${dayShort}`;
                 const snapShift = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shifts', docId));
                 
@@ -730,77 +730,63 @@ const TerminalClock = ({ staff, appId, onClose }) => {
 
         try {
             if (action === 'start') {
-                // --- INTELLIGENTE PRÜFUNG ---
+                // Dienstplan Prüfung
                 if (todayShift && todayShift.start) {
                     const startMins = timeToMins(todayShift.start);
-                    // Toleranz: Man darf 10 Minuten vor Schichtbeginn stempeln
+                    // 10 Min Toleranz
                     if (nowMins < (startMins - 10)) {
                         throw new Error(`Zu früh! Dein Dienst beginnt erst um ${todayShift.start} Uhr.`);
                     }
                 }
-                // -----------------------------
 
                 if(currentLog) throw new Error("Bereits eingestempelt!");
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), { 
                     userId: identifiedUser.id, userName: identifiedUser.name, dateStr: getTodayStr(), 
                     start: nowStr, end: null, status: 'active', breaks: [], createdAt: serverTimestamp() 
                 });
-                setMsg({ text: `Hallo ${identifiedUser.name}!`, sub: todayShift ? `Schichtstart: ${todayShift.start}` : "Frohes Schaffen", color: "bg-emerald-500" });
+                setMsg({ text: `Hallo ${identifiedUser.name}!`, sub: "Eingestempelt", color: "bg-emerald-500" });
             }
-            // ... (Pause und Stop Logik bleibt gleich wie vorher) ...
             else if (action === 'pause_start') {
-                 // ... Code für Pause Start ...
                  const breaks = currentLog.breaks || [];
                  breaks.push({ start: nowStr, end: null });
                  await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { status: 'break', breaks });
                  setMsg({ text: "Pause", sub: "Erhol dich gut", color: "bg-amber-500" });
             }
             else if (action === 'pause_end') {
-                 // ... Code für Pause Ende ...
                  const breaks = currentLog.breaks || [];
                  if(breaks.length > 0) breaks[breaks.length-1].end = nowStr;
                  await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { status: 'active', breaks });
                  setMsg({ text: "Weiter geht's", sub: "Power on", color: "bg-indigo-500" });
             }
             else if (action === 'stop') {
-                 // ... Code für Stop ...
                  await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { end: nowStr, status: 'closed' });
                  setMsg({ text: "Feierabend", sub: "Gut gemacht", color: "bg-slate-800" });
             }
 
             setTimeout(() => { onClose(); }, 2500);
         } catch (e) {
-            alert(e.message); // Zeigt "Zu früh!" an
+            alert(e.message);
             setLoading(false);
         }
     };
 
-    // ... (Render-Teil bleibt größtenteils gleich, nutzen Sie den Code von vorhin) ...
-    // Nur bei "ANSICHT 2" können Sie jetzt die geplante Zeit anzeigen:
-    /*
-        {todayShift && todayShift.start && (
-             <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-2">
-                 Geplanter Start: {todayShift.start} Uhr
-             </div>
-        )}
-    */
-    
-    // (Rest der TerminalClock Komponente von der vorherigen Antwort hier einfügen/behalten)
-    // Um Platz zu sparen, kopiere ich hier nicht den ganzen Render-Block nochmal, 
-    // er ist identisch zur vorherigen Version, außer dass Sie oben die Logik eingefügt haben.
-    
-    // Kurzform für den Render-Teil, damit es funktioniert:
     if (msg) return <div className={`fixed inset-0 z-[200] ${msg.color} flex flex-col items-center justify-center text-white animate-in`}><h2 className="text-4xl font-black">{msg.text}</h2><p>{msg.sub}</p></div>;
+    
     if (!identifiedUser) return (
         <div className="fixed inset-0 z-[200] bg-slate-900 flex flex-col items-center justify-center p-6 animate-in">
-             <button onClick={onClose} className="absolute top-6 right-6 text-white p-4"><X/></button>
+             <button onClick={onClose} className="absolute top-6 right-6 text-white p-4"><X size={32}/></button>
              <h2 className="text-3xl font-black text-white mb-8">PIN EINGABE</h2>
-             <div className="grid grid-cols-3 gap-4 w-full max-w-xs">{[1,2,3,4,5,6,7,8,9,0].map(n=><button key={n} onClick={()=>handleNum(n)} className="h-20 rounded-full bg-slate-800 text-white text-2xl font-bold">{n}</button>)}</div>
+             <div className="flex justify-center gap-4 mb-8">{[0,1,2,3].map(i => <div key={i} className={`w-4 h-4 rounded-full transition-all ${pin.length > i ? 'bg-indigo-500 scale-125' : 'bg-slate-700'}`}/>)}</div>
+             <div className="grid grid-cols-3 gap-4 w-full max-w-xs">
+                {[1,2,3,4,5,6,7,8,9,0].map(n => n===0 ? <React.Fragment key={0}><div/><button onClick={()=>handleNum(0)} className="h-20 rounded-full bg-slate-800 text-white text-2xl font-bold active:scale-90 transition-transform">0</button></React.Fragment> : <button key={n} onClick={()=>handleNum(n)} className="h-20 rounded-full bg-slate-800 text-white text-2xl font-bold active:scale-90 transition-transform shadow-lg">{n}</button>)}
+                <button onClick={()=>setPin(pin.slice(0,-1))} className="h-20 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center active:scale-90 transition-transform"><Eraser size={24}/></button>
+             </div>
         </div>
     );
-    // User erkannt Ansicht:
+
     const isWorking = currentLog && !currentLog.end;
     const isPause = isWorking && currentLog.status === 'break';
+    
     return (
         <div className="fixed inset-0 z-[200] bg-white flex flex-col p-6 animate-in">
             <button onClick={()=>setIdentifiedUser(null)} className="absolute top-6 right-6 bg-slate-100 p-3 rounded-full"><X/></button>
@@ -820,135 +806,7 @@ const TerminalClock = ({ staff, appId, onClose }) => {
     );
 };
 
-    // Stempel-Aktion ausführen
-    const handleAction = async (action) => {
-        setLoading(true);
-        const now = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-        
-        try {
-            if (action === 'start') {
-                if(currentLog) throw new Error("Schon eingestempelt!");
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), { 
-                    userId: identifiedUser.id, userName: identifiedUser.name, dateStr: getTodayStr(), 
-                    start: now, end: null, status: 'active', breaks: [], createdAt: serverTimestamp() 
-                });
-                setMsg({ text: `Hallo ${identifiedUser.name}!`, sub: "Eingestempelt", color: "bg-emerald-500" });
-            }
-            else if (action === 'pause_start') {
-                const breaks = currentLog.breaks || [];
-                breaks.push({ start: now, end: null });
-                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { status: 'break', breaks });
-                setMsg({ text: "Schöne Pause!", sub: "Bis gleich", color: "bg-amber-500" });
-            }
-            else if (action === 'pause_end') {
-                const breaks = currentLog.breaks || [];
-                if(breaks.length > 0) breaks[breaks.length-1].end = now;
-                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { status: 'active', breaks });
-                setMsg({ text: "Willkommen zurück!", sub: "Weiter geht's", color: "bg-indigo-500" });
-            }
-            else if (action === 'stop') {
-                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { end: now, status: 'closed' });
-                setMsg({ text: "Feierabend!", sub: "Gut gemacht", color: "bg-slate-800" });
-            }
-            
-            // Nach 2 Sekunden schließen
-            setTimeout(() => {
-                onClose();
-            }, 2000);
-
-        } catch (e) {
-            alert(e.message);
-            setLoading(false);
-        }
-    };
-
-    // ANSICHT 1: PIN EINGABE
-    if (!identifiedUser) {
-        return (
-            <div className="fixed inset-0 z-[200] bg-slate-900 flex flex-col items-center justify-center p-6 animate-in">
-                <button onClick={onClose} className="absolute top-6 right-6 text-white/50 hover:text-white p-4"><X size={32}/></button>
-                <div className="text-center mb-8">
-                    <div className="text-6xl mb-4">⏱️</div>
-                    <h2 className="text-3xl font-black text-white">Terminal</h2>
-                    <p className="text-slate-400">Bitte PIN eingeben</p>
-                </div>
-                
-                {/* Pin Punkte */}
-                <div className="flex justify-center gap-4 mb-8">
-                    {[0,1,2,3].map(i => <div key={i} className={`w-4 h-4 rounded-full transition-all ${pin.length > i ? 'bg-indigo-500 scale-125' : 'bg-slate-700'}`}/>)}
-                </div>
-
-                <div className="grid grid-cols-3 gap-4 w-full max-w-xs">
-                    {[1,2,3,4,5,6,7,8,9,0].map(n => 
-                        n===0 ? 
-                        <React.Fragment key="0"><div/><button onClick={()=>handleNum(0)} className="h-20 rounded-full bg-slate-800 text-white text-2xl font-bold active:scale-90 transition-transform">0</button></React.Fragment> 
-                        : 
-                        <button key={n} onClick={()=>handleNum(n)} className="h-20 rounded-full bg-slate-800 text-white text-2xl font-bold active:scale-90 transition-transform shadow-lg">{n}</button>
-                    )}
-                    <button onClick={()=>setPin(pin.slice(0,-1))} className="h-20 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center active:scale-90 transition-transform"><Eraser size={24}/></button>
-                </div>
-            </div>
-        );
-    }
-
-    // ANSICHT 3: ERFOLGS-MELDUNG
-    if (msg) {
-        return (
-            <div className={`fixed inset-0 z-[200] ${msg.color} flex flex-col items-center justify-center text-white animate-in`}>
-                <CheckCircle size={80} className="mb-6 animate-bounce"/>
-                <h2 className="text-4xl font-black mb-2">{msg.text}</h2>
-                <p className="text-xl opacity-80 uppercase tracking-widest font-bold">{msg.sub}</p>
-            </div>
-        );
-    }
-
-    // ANSICHT 2: AKTION WÄHLEN
-    const isWorking = currentLog && !currentLog.end;
-    const isPause = isWorking && currentLog.status === 'break';
-
-    return (
-        <div className="fixed inset-0 z-[200] bg-white flex flex-col p-6 animate-in">
-            <button onClick={()=>setIdentifiedUser(null)} className="absolute top-6 right-6 bg-slate-100 p-3 rounded-full"><X/></button>
-            
-            <div className="flex-1 flex flex-col justify-center items-center text-center space-y-2">
-                <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center text-3xl mb-4 shadow-inner">👤</div>
-                <h2 className="text-3xl font-black text-slate-900">Hallo, {identifiedUser.name}</h2>
-                <p className="text-slate-500 font-medium">
-                    {isWorking ? (isPause ? "⏸️ Du bist in Pause" : "⏱️ Du bist eingestempelt") : "Du bist nicht eingestempelt"}
-                </p>
-                {currentLog && <div className="bg-slate-50 px-4 py-2 rounded-lg font-mono text-slate-400 text-sm mt-2">Start: {currentLog.start}</div>}
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 mb-10 max-w-sm mx-auto w-full">
-                {!isWorking ? (
-                    <button onClick={()=>handleAction('start')} className="h-32 bg-emerald-500 text-white rounded-3xl font-black text-2xl shadow-xl shadow-emerald-200 active:scale-95 transition-transform flex flex-col items-center justify-center gap-2">
-                        <PlayCircle size={40}/> SCHICHT STARTEN
-                    </button>
-                ) : (
-                    <>
-                        {isPause ? (
-                            <button onClick={()=>handleAction('pause_end')} className="h-24 bg-indigo-500 text-white rounded-3xl font-bold text-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-3">
-                                <PlayCircle/> Pause beenden
-                            </button>
-                        ) : (
-                            <button onClick={()=>handleAction('pause_start')} className="h-24 bg-amber-400 text-white rounded-3xl font-bold text-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-3">
-                                <Coffee/> Pause machen
-                            </button>
-                        )}
-                        
-                        <button onClick={()=>handleAction('stop')} className="h-24 bg-slate-900 text-white rounded-3xl font-bold text-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-3">
-                            <StopCircle/> FEIERABEND
-                        </button>
-                    </>
-                )}
-            </div>
-        </div>
-    );
-};
-
-        // --- APP CONTROLLER ---
-        
-            
+// --- APP CONTROLLER ---
         function App() {
             const [user, setUser] = useState(null);
             const [appUser, setAppUser] = useState(null);
