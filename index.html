@@ -103,7 +103,7 @@
 
         // Available Icons for Customization
         const ICON_MAP = {
-            Clock: <Clock/>, Calendar: <Calendar/>, ClipboardList: <ClipboardList/>, Sparkles: <Sparkles/>, Snowflake: <Snowflake/>, 
+            Clock: <Clock/>, Palmtree: <Palmtree/>, Calendar: <Calendar/>, ClipboardList: <ClipboardList/>, Sparkles: <Sparkles/>, Snowflake: <Snowflake/>, 
             Droplet: <Droplet/>, Truck: <Truck/>, Menu: <Menu/>, Settings: <Settings/>, Utensils: <Utensils/>,
             Coffee: <Coffee/>, ChefHat: <ChefHat/>, Box: <Box/>, Layers: <Layers/>, AlertTriangle: <AlertTriangle/>
         };
@@ -124,7 +124,8 @@
             oil: { enabled: true, name: "Fett & Öl", icon: "Droplet" },
             inventory: { enabled: true, name: "Einkauf", icon: "Truck" },
             waste: { enabled: false, name: "Schwund", icon: "Trash2" },
-            shiftplan: { enabled: true, name: "Dienstplan", icon: "Calendar" }
+            shiftplan: { enabled: true, name: "Dienstplan", icon: "Calendar" },
+            absence: { enabled: true, name: "Urlaub & Frei", icon: "Palmtree" }
         };
 // --- NEUE REGELN FÜR AUTOMATIK ---
 const PEAK_HOURS = [12, 13, 18, 19, 20]; // Stunden, in denen viel los ist (Mittag & Abend)
@@ -696,40 +697,138 @@ const DistrictDashboard = ({ districtId, onLogout, showToast }) => {
             isAutoCorrected: finalBreakMins > breakMins // Markierung, falls das System eingegriffen hat
         };
     };
+    // --- URLAUBS-MANAGER ---
+const AbsenceManager = ({ user, appId, showToast, staff }) => {
+    const [tab, setTab] = useState('request'); // 'request', 'list'
+    const [start, setStart] = useState('');
+    const [end, setEnd] = useState('');
+    const [type, setType] = useState('vacation'); // vacation, sick, other
+    const [requests, setRequests] = useState([]);
     
-    // --- INTELLIGENTER DIENSTPLANER V5 (Full Config) ---
+    const isAdmin = ['admin', 'kitchen_lead', 'service_lead'].includes(user.role);
+
+    useEffect(() => {
+        // Alle Anfragen laden (Admin sieht alle, User nur eigene)
+        const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'requests_absence'), orderBy('createdAt', 'desc'));
+        return onSnapshot(q, s => {
+            const data = s.docs.map(d => ({id:d.id, ...d.data()}));
+            if(isAdmin) setRequests(data);
+            else setRequests(data.filter(r => r.userId === user.id));
+        });
+    }, [appId, user, isAdmin]);
+
+    const sendRequest = async () => {
+        if(!start || !end) return showToast("Datum fehlt", "error");
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'requests_absence'), {
+            userId: user.id, userName: user.name,
+            start, end, type, status: 'pending', // pending, approved, rejected
+            createdAt: serverTimestamp()
+        });
+        setStart(''); setEnd(''); showToast("Antrag gestellt!");
+        setTab('list');
+    };
+
+    const handleStatus = async (id, status) => {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'requests_absence', id), { status });
+    };
+
+    const getTypeLabel = (t) => t==='vacation'?'Urlaub':t==='sick'?'Krankheit':'Wunschfrei';
+
+    return (
+        <div className="animate-in space-y-6">
+            <div className="flex justify-between items-center">
+                <div><h2 className="text-3xl font-black text-slate-800">Abwesenheit</h2><p className="opacity-60 text-sm font-medium">Urlaub & Wünsche</p></div>
+                {isAdmin && <div className="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-xl font-bold text-xs">{requests.filter(r=>r.status==='pending').length} Offen</div>}
+            </div>
+
+            <div className="flex bg-white p-1 rounded-2xl border border-slate-100 mb-4">
+                <button onClick={()=>setTab('request')} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${tab==='request'?'bg-slate-900 text-white':'text-slate-400'}`}>Neuer Antrag</button>
+                <button onClick={()=>setTab('list')} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${tab==='list'?'bg-slate-900 text-white':'text-slate-400'}`}>Übersicht</button>
+            </div>
+
+            {tab === 'request' && (
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div><label className="text-[10px] font-bold uppercase text-slate-400">Von</label><input type="date" value={start} onChange={e=>setStart(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none"/></div>
+                        <div><label className="text-[10px] font-bold uppercase text-slate-400">Bis</label><input type="date" value={end} onChange={e=>setEnd(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none"/></div>
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-bold uppercase text-slate-400">Grund</label>
+                        <select value={type} onChange={e=>setType(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none">
+                            <option value="vacation">🏖️ Urlaub</option>
+                            <option value="other">📅 Wunschfrei / Termin</option>
+                            {isAdmin && <option value="sick">🤒 Krankmeldung</option>}
+                        </select>
+                    </div>
+                    <Button onClick={sendRequest} className="bg-emerald-500 shadow-emerald-200">Beantragen</Button>
+                </div>
+            )}
+
+            {tab === 'list' && (
+                <div className="space-y-3">
+                    {requests.map(r => (
+                        <div key={r.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden">
+                            <div className="flex justify-between items-start mb-2">
+                                <div>
+                                    <div className="font-black text-slate-800">{r.userName}</div>
+                                    <div className="text-xs text-slate-500 font-bold">{new Date(r.start).toLocaleDateString()} - {new Date(r.end).toLocaleDateString()}</div>
+                                </div>
+                                <div className={`text-[10px] font-bold px-2 py-1 rounded uppercase ${r.status==='approved'?'bg-emerald-100 text-emerald-700':r.status==='rejected'?'bg-red-50 text-red-500':'bg-amber-50 text-amber-600'}`}>
+                                    {r.status === 'pending' ? 'Wartet...' : r.status}
+                                </div>
+                            </div>
+                            <div className="text-xs bg-slate-50 p-2 rounded-lg inline-block text-slate-500 font-medium mb-2">{getTypeLabel(r.type)}</div>
+                            
+                            {isAdmin && r.status === 'pending' && (
+                                <div className="flex gap-2 mt-2 pt-2 border-t border-slate-50">
+                                    <button onClick={()=>handleStatus(r.id, 'approved')} className="flex-1 bg-emerald-50 text-emerald-600 py-2 rounded-xl font-bold text-xs hover:bg-emerald-100">Genehmigen</button>
+                                    <button onClick={()=>handleStatus(r.id, 'rejected')} className="flex-1 bg-red-50 text-red-600 py-2 rounded-xl font-bold text-xs hover:bg-red-100">Ablehnen</button>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                    {requests.length === 0 && <div className="text-center text-slate-400 py-10">Keine Anträge.</div>}
+                </div>
+            )}
+        </div>
+    );
+};
+   // --- INTELLIGENTER DIENSTPLANER V6 (Finance, PDF, Absence) ---
 const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
     const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); 
     const [shifts, setShifts] = useState([]);
     const [timeLogs, setTimeLogs] = useState([]); 
+    const [absences, setAbsences] = useState([]); // NEU: Abwesenheiten
     const [publishStatus, setPublishStatus] = useState(false);
     const [editor, setEditor] = useState(null);
-    const [settings, setSettings] = useState(null); // NEU: Settings laden
+    const [settings, setSettings] = useState(null);
 
     const isAdmin = ['admin', 'kitchen_lead', 'service_lead'].includes(user.role);
 
     useEffect(() => {
-        // 1. Settings laden (für Öffnungszeiten)
         getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global')).then(s => {
             if(s.exists()) setSettings(s.data());
         });
 
-        // 2. Schichten
+        // Schichten
         const qShifts = query(collection(db, 'artifacts', appId, 'public', 'data', 'shifts'), where('monthStr', '==', month));
         const unsubShifts = onSnapshot(qShifts, s => setShifts(s.docs.map(d => ({id:d.id, ...d.data()}))));
         
-        // 3. Logs
+        // Logs
         const startM = month + "-01";
         const endM = month + "-31";
         const qLogs = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), where('dateStr', '>=', startM), where('dateStr', '<=', endM));
         const unsubLogs = onSnapshot(qLogs, s => setTimeLogs(s.docs.map(d => d.data())));
 
+        // Abwesenheiten (Genehmigte)
+        const qAbs = query(collection(db, 'artifacts', appId, 'public', 'data', 'requests_absence'), where('status', '==', 'approved'));
+        const unsubAbs = onSnapshot(qAbs, s => setAbsences(s.docs.map(d => d.data())));
+
         getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shift_publish', month)).then(s => setPublishStatus(s.exists() && s.data().published));
         
-        return () => { unsubShifts(); unsubLogs(); };
+        return () => { unsubShifts(); unsubLogs(); unsubAbs(); };
     }, [appId, month]);
 
-    // Rechen-Logik
     const calcDuration = (start, end) => {
         if(!start || !end) return 0;
         const [h1, m1] = start.split(':').map(Number);
@@ -739,15 +838,76 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
         return diff / 60;
     };
 
-    // --- CHECK: ÖFFNUNGSZEITEN ---
-    const checkBusinessHours = (dateStr) => {
-        if(!settings?.businessHours) return { open: "00:00", close: "23:59" };
-        const day = new Date(dateStr).getDay();
-        const isWeekend = (day === 5 || day === 6 || day === 0);
-        return isWeekend ? settings.businessHours.weekend : settings.businessHours.weekday;
+    // --- FINANZ-KALKULATOR ---
+    const calculateFinance = () => {
+        let totalCost = 0;
+        let totalHours = 0;
+        
+        shifts.forEach(shift => {
+            const employee = staff.find(s => s.id === shift.userId);
+            if(employee) {
+                let shiftHours = 0;
+                (shift.slots || []).forEach(slot => shiftHours += calcDuration(slot.start, slot.end));
+                
+                const rate = parseFloat(employee.hourlyRate || 0);
+                totalHours += shiftHours;
+                totalCost += (shiftHours * rate);
+            }
+        });
+        return { totalCost, totalHours };
     };
 
-    // Editor & Speichern (wie zuvor, gekürzt)
+    // --- PDF EXPORT ---
+    const downloadPDF = () => {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('l', 'mm', 'a4'); // Querformat
+        
+        doc.setFontSize(18);
+        doc.text(`Dienstplan: ${month}`, 14, 15);
+        
+        const daysInM = new Date(month.split('-')[0], month.split('-')[1], 0).getDate();
+        const head = ['Mitarbeiter', ...Array.from({length: daysInM}, (_, i) => (i+1).toString())];
+        
+        const body = staff.map(s => {
+            const row = [s.name];
+            for(let i=1; i<=daysInM; i++) {
+                const dateStr = `${month}-${i.toString().padStart(2,'0')}`;
+                // Check Absence
+                const isAbsent = absences.find(a => a.userId === s.id && dateStr >= a.start && dateStr <= a.end);
+                if(isAbsent) {
+                    row.push(isAbsent.type === 'sick' ? 'KRANK' : 'URLAUB');
+                } else {
+                    // Check Shift
+                    const shift = shifts.find(sh => sh.userId === s.id && sh.date === dateStr);
+                    if(shift && shift.slots && shift.slots.length > 0) {
+                        const times = shift.slots.map(sl => `${sl.start}-${sl.end}`).join('\n');
+                        row.push(times);
+                    } else {
+                        row.push('');
+                    }
+                }
+            }
+            return row;
+        });
+
+        doc.autoTable({
+            head: [head],
+            body: body,
+            startY: 25,
+            theme: 'grid',
+            styles: { fontSize: 6, cellPadding: 1 },
+            headStyles: { fillColor: [40, 40, 40] }
+        });
+        
+        doc.save(`Dienstplan_${month}.pdf`);
+    };
+
+    // --- HELPER: Ist Mitarbeiter an Tag X abwesend? ---
+    const getAbsence = (userId, dateStr) => {
+        return absences.find(a => a.userId === userId && dateStr >= a.start && dateStr <= a.end);
+    };
+
+    // (Editor Funktionen - gekürzt)
     const openEditor = (userId, dateStr, userName) => {
         const existing = shifts.find(s => s.userId === userId && s.date === dateStr);
         setEditor({ userId, dateStr, name: userName, slots: existing?.slots || [] });
@@ -762,12 +922,13 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
         setEditor(null);
     };
     const addSlotToEditor = (typeKey) => {
-        // Standardzeiten basierend auf Config
         const tmpl = SHIFT_TEMPLATES[typeKey] || { start: "10:00", end: "18:00" };
         setEditor(prev => ({ ...prev, slots: [...prev.slots, { type: typeKey, start: tmpl.start, end: tmpl.end }] }));
     };
     const updateSlot = (i, f, v) => setEditor(p => { 
-        const n = [...p.slots]; n[i] = {...n[i], [f]: v}; return {...p, slots: n};
+        const n = [...p.slots]; n[i] = {...n[i], [f]: v}; 
+        if(f==='type' && SHIFT_TEMPLATES[v]) { n[i].start = SHIFT_TEMPLATES[v].start; n[i].end = SHIFT_TEMPLATES[v].end; }
+        return {...p, slots: n};
     });
     const removeSlot = (i) => setEditor(p => ({...p, slots: p.slots.filter((_,x)=>x!==i)}));
     const togglePublish = async () => {
@@ -786,167 +947,136 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
         return { d, dateStr, weekDay: dateObj.toLocaleDateString('de-DE', {weekday:'short'}), isWeekend: [0,5,6].includes(dateObj.getDay()) };
     });
 
-    // DEPARTMENT RENDERER
-    const DepartmentSection = ({ title, deptKey, color }) => {
-        const deptStaff = staff.filter(s => (s.departments || []).includes(deptKey));
-        if(deptStaff.length === 0) return null;
-
+    // --- VIEW: ADMIN ---
+    if (isAdmin) {
+        const finance = calculateFinance();
+        
         return (
-            <div className="mb-8">
-                <div className={`p-4 rounded-t-[2rem] border-b-2 flex items-center justify-between ${color === 'orange' ? 'bg-orange-50 border-orange-200' : 'bg-purple-50 border-purple-200'}`}>
-                    <h3 className={`font-black text-xl uppercase tracking-widest ${color === 'orange' ? 'text-orange-900' : 'text-purple-900'}`}>{title}</h3>
-                </div>
-
-                <div className="space-y-4 bg-white border-x border-b border-slate-100 p-4 rounded-b-[2rem]">
-                    {deptStaff.map(s => {
-                        let plannedSum = 0;
-                        shifts.filter(sh => sh.userId === s.id).forEach(sh => (sh.slots||[]).forEach(slot => plannedSum += calcDuration(slot.start, slot.end)));
-                        
-                        // VERTRAGSPRÜFUNG
-                        const contract = parseInt(s.contractHours) || 0; // Standard 0 wenn nicht gesetzt
-                        const isOver = contract > 0 && plannedSum > contract;
-                        const isUnder = contract > 0 && plannedSum < (contract * 0.9); // 10% Toleranz
-
-                        return (
-                            <div key={s.id} className="border-b border-slate-50 last:border-0 pb-4 last:pb-0">
-                                <div className="flex justify-between items-center mb-2 px-1">
-                                    <div className="font-bold text-slate-700">{s.name}</div>
-                                    <div className="text-[10px] font-mono font-bold bg-slate-100 px-2 py-1 rounded flex items-center gap-2">
-                                        <span>Plan: {plannedSum.toFixed(1)}h</span>
-                                        {contract > 0 && (
-                                            <span className={isOver ? 'text-red-500' : isUnder ? 'text-amber-500' : 'text-emerald-500'}>
-                                                / {contract}h (Vertrag)
-                                            </span>
-                                        )}
-                                    </div>
+            <div className="animate-in space-y-6">
+                {/* EDITOR POPUP */}
+                {editor && (
+                    <div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4">
+                        <div className="bg-white w-full max-w-md rounded-[2rem] p-6 shadow-2xl relative">
+                            <button onClick={()=>setEditor(null)} className="absolute top-4 right-4 p-2 bg-slate-100 rounded-full"><X/></button>
+                            <h3 className="font-black text-xl mb-6">{editor.name}</h3>
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-4 gap-2 mb-4">
+                                    <button onClick={()=>addSlotToEditor('early')} className="bg-amber-100 text-amber-800 py-3 rounded-xl font-bold text-xs">Früh</button>
+                                    <button onClick={()=>addSlotToEditor('day')} className="bg-sky-100 text-sky-800 py-3 rounded-xl font-bold text-xs">Tag</button>
+                                    <button onClick={()=>addSlotToEditor('late')} className="bg-indigo-100 text-indigo-800 py-3 rounded-xl font-bold text-xs">Spät</button>
+                                    <button onClick={()=>addSlotToEditor('custom')} className="bg-purple-100 text-purple-800 py-3 rounded-xl font-bold text-xs">Indiv.</button>
                                 </div>
-
-                                <div className="overflow-x-auto custom-scrollbar flex gap-2 pb-2">
-                                    {daysArray.map(({dateStr, isWeekend}) => {
-                                        const shiftData = shifts.find(x => x.userId === s.id && x.date === dateStr);
-                                        const slots = shiftData?.slots || [];
-                                        
-                                        // PRÜFUNG: ÖFFNUNGSZEITEN
-                                        const biz = checkBusinessHours(dateStr);
-                                        // Check ob irgend ein Slot ausserhalb der Öffnungszeiten liegt
-                                        const isOutside = slots.some(sl => sl.start < biz.open || sl.end > biz.close);
-
-                                        return (
-                                            <button 
-                                                key={dateStr} 
-                                                onClick={() => openEditor(s.id, dateStr, s.name)}
-                                                className={`flex-shrink-0 w-24 h-14 rounded-lg border text-left p-1 transition-all relative ${isWeekend ? 'bg-slate-50' : 'bg-white'} ${slots.length > 0 ? 'border-indigo-200 bg-indigo-50/10' : 'border-slate-100'}`}
-                                            >
-                                                {isOutside && <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-white" title="Außerhalb Öffnungszeiten!"></div>}
-                                                
-                                                {slots.length === 0 ? <div className="w-full h-full flex items-center justify-center opacity-10"><Plus size={10}/></div> : 
-                                                <div className="flex flex-col justify-center h-full gap-0.5">
-                                                    {slots.map((sl, i) => (
-                                                        <div key={i} className={`text-[8px] font-bold px-1 rounded truncate ${SHIFT_TEMPLATES[sl.type]?.color || 'bg-gray-200'}`}>
-                                                            {SHIFT_TEMPLATES[sl.type]?.short} {sl.start}-{sl.end}
-                                                        </div>
-                                                    ))}
-                                                </div>}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-        );
-    };
-
-    if (isAdmin) return (
-        <div className="animate-in space-y-6">
-            {/* EDITOR POPUP */}
-            {editor && (
-                <div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-md rounded-[2rem] p-6 shadow-2xl relative max-h-[80vh] overflow-y-auto">
-                        <button onClick={()=>setEditor(null)} className="absolute top-4 right-4 p-2 bg-slate-100 rounded-full"><X/></button>
-                        <h3 className="font-black text-xl mb-1">{editor.name}</h3>
-                        <div className="text-xs font-bold text-slate-400 uppercase mb-4">{new Date(editor.dateStr).toLocaleDateString('de-DE', {weekday:'long', day:'numeric', month:'long'})}</div>
-                        
-                        {/* Öffnungszeiten Info im Editor */}
-                        {(() => {
-                            const biz = checkBusinessHours(editor.dateStr);
-                            return <div className="bg-slate-50 p-2 rounded-lg text-[10px] text-center mb-4 text-slate-500">Geöffnet: {biz.open} - {biz.close} Uhr</div>
-                        })()}
-
-                        <div className="space-y-4">
-                            {/* Schnellwahl Buttons */}
-                            <div className="grid grid-cols-4 gap-2 mb-4">
-                                <button onClick={()=>addSlotToEditor('early')} className="bg-amber-100 text-amber-800 py-3 rounded-xl font-bold text-xs shadow-sm active:scale-95">Früh</button>
-                                <button onClick={()=>addSlotToEditor('day')} className="bg-sky-100 text-sky-800 py-3 rounded-xl font-bold text-xs shadow-sm active:scale-95">Tag</button>
-                                <button onClick={()=>addSlotToEditor('late')} className="bg-indigo-100 text-indigo-800 py-3 rounded-xl font-bold text-xs shadow-sm active:scale-95">Spät</button>
-                                <button onClick={()=>addSlotToEditor('custom')} className="bg-purple-100 text-purple-800 py-3 rounded-xl font-bold text-xs shadow-sm active:scale-95">Indiv.</button>
-                            </div>
-
-                            {/* Aktive Slots */}
-                            {editor.slots.map((slot, idx) => (
-                                <div key={idx} className="bg-slate-50 p-4 rounded-2xl border border-slate-200 relative">
-                                    <button onClick={()=>removeSlot(idx)} className="absolute -top-2 -right-2 bg-red-500 text-white p-1.5 rounded-full shadow-md"><Trash2 size={12}/></button>
-                                    <div className="flex gap-2 items-center">
-                                        <input type="time" value={slot.start} onChange={e=>updateSlot(idx,'start',e.target.value)} className="flex-1 p-3 rounded-xl border text-center font-bold text-slate-700 outline-none focus:border-indigo-500"/>
-                                        <span className="font-bold text-slate-300">-</span>
-                                        <input type="time" value={slot.end} onChange={e=>updateSlot(idx,'end',e.target.value)} className="flex-1 p-3 rounded-xl border text-center font-bold text-slate-700 outline-none focus:border-indigo-500"/>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        <button onClick={saveEditor} className="w-full mt-6 py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg shadow-xl active:scale-95 transition-transform">Speichern</button>
-                    </div>
-                </div>
-            )}
-
-            {/* HEADER */}
-            <div className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 flex justify-between items-center sticky top-0 z-20">
-                <div>
-                    <h2 className="text-xl font-black text-slate-800">Dienstplan</h2>
-                    <div className="flex items-center gap-2 mt-1">
-                        <input type="month" value={month} onChange={e=>setMonth(e.target.value)} className="bg-transparent font-bold text-slate-500 text-sm outline-none"/>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${publishStatus?'bg-emerald-100 text-emerald-700':'bg-red-50 text-red-500'}`}>{publishStatus?'Öffentlich':'Entwurf'}</span>
-                    </div>
-                </div>
-                <button onClick={togglePublish} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-xl font-bold text-xs">{publishStatus?'Sperren':'Freigeben'}</button>
-            </div>
-
-            {/* SEKTIONEN */}
-            <DepartmentSection title="Küche" deptKey="kitchen" color="orange" />
-            <DepartmentSection title="Service" deptKey="service" color="purple" />
-        </div>
-    );
-
-    // Mitarbeiter View (identisch wie zuvor)
-    const myShifts = shifts.filter(s => s.userId === user.id).sort((a,b) => a.date.localeCompare(b.date));
-    return (
-        <div className="animate-in space-y-6">
-            <h2 className="text-3xl font-black text-slate-800">Mein Dienstplan</h2>
-            {publishStatus ? (
-                <div className="space-y-3">
-                    {myShifts.map(s => (
-                        <div key={s.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
-                            <div className="text-center bg-slate-50 px-3 py-1 rounded-xl">
-                                <div className="text-xs font-bold text-slate-400">{new Date(s.date).toLocaleDateString('de-DE',{weekday:'short'})}</div>
-                                <div className="font-black text-slate-800">{s.date.split('-')[2]}</div>
-                            </div>
-                            <div className="space-y-1">
-                                {(s.slots||[]).map((sl,i)=>(
-                                    <div key={i} className="text-sm font-bold text-slate-600 flex items-center gap-2">
-                                        <span className={`w-2 h-2 rounded-full ${SHIFT_TEMPLATES[sl.type]?.color.split(' ')[0]||'bg-gray-400'}`}></span>
-                                        {sl.start} - {sl.end}
+                                {editor.slots.map((slot, idx) => (
+                                    <div key={idx} className="bg-slate-50 p-4 rounded-2xl border border-slate-200 relative">
+                                        <button onClick={()=>removeSlot(idx)} className="absolute -top-2 -right-2 bg-red-500 text-white p-1.5 rounded-full"><Trash2 size={12}/></button>
+                                        <div className="flex gap-2 items-center">
+                                            <input type="time" value={slot.start} onChange={e=>updateSlot(idx,'start',e.target.value)} className="flex-1 p-3 rounded-xl border font-bold"/>
+                                            <span>-</span>
+                                            <input type="time" value={slot.end} onChange={e=>updateSlot(idx,'end',e.target.value)} className="flex-1 p-3 rounded-xl border font-bold"/>
+                                        </div>
                                     </div>
                                 ))}
+                            </div>
+                            <button onClick={saveEditor} className="w-full mt-6 py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg shadow-xl">Speichern</button>
+                        </div>
+                    </div>
+                )}
+
+                {/* HEADER MIT FINANZ-ÜBERSICHT */}
+                <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 sticky top-0 z-20">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h2 className="text-xl font-black text-slate-800">Dienstplan</h2>
+                            <div className="text-[10px] font-bold text-slate-400 uppercase mt-1">
+                                Gesamt: {finance.totalHours.toFixed(0)} Std • {finance.totalCost.toFixed(0)} €
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <button onClick={downloadPDF} className="bg-slate-100 p-2 rounded-xl text-slate-600"><FileText/></button>
+                            <button onClick={togglePublish} className={`px-4 py-2 rounded-xl font-bold text-xs text-white ${publishStatus?'bg-emerald-500':'bg-slate-900'}`}>{publishStatus?'Live':'Entwurf'}</button>
+                        </div>
+                    </div>
+                    <input type="month" value={month} onChange={e=>setMonth(e.target.value)} className="w-full bg-slate-50 p-3 rounded-xl font-bold text-slate-600 outline-none"/>
+                </div>
+
+                {/* MITARBEITER GRID */}
+                <div className="space-y-6">
+                    {staff.map(s => (
+                        <div key={s.id} className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+                            <div className="bg-slate-50 p-3 border-b border-slate-100 flex justify-between items-center">
+                                <span className="font-black text-slate-700">{s.name}</span>
+                                <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-1 rounded border">{s.role}</span>
+                            </div>
+                            <div className="overflow-x-auto custom-scrollbar flex p-2 gap-2">
+                                {daysArray.map(({d, dateStr, weekDay, isWeekend}) => {
+                                    // 1. Check Urlaub
+                                    const absence = getAbsence(s.id, dateStr);
+                                    if(absence) {
+                                        return (
+                                            <div key={dateStr} className="flex-shrink-0 w-24 min-h-[70px] p-2 rounded-xl border border-slate-100 bg-slate-50/50 flex flex-col justify-center items-center opacity-50">
+                                                <div className="text-[9px] font-bold mb-1">{weekDay} {d}.</div>
+                                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                                                    {absence.type === 'sick' ? 'Krank' : 'Urlaub'}
+                                                </span>
+                                            </div>
+                                        );
+                                    }
+
+                                    // 2. Normale Schicht
+                                    const shiftData = shifts.find(x => x.userId === s.id && x.date === dateStr);
+                                    const slots = shiftData?.slots || [];
+                                    
+                                    return (
+                                        <button 
+                                            key={dateStr} 
+                                            onClick={() => openEditor(s.id, dateStr, s.name)}
+                                            className={`flex-shrink-0 w-24 min-h-[70px] p-2 rounded-xl border flex flex-col gap-1 transition-all text-left ${isWeekend ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-100'} ${slots.length>0 ? 'ring-1 ring-indigo-100 bg-indigo-50/10' : ''}`}
+                                        >
+                                            <div className="text-[9px] font-bold text-slate-400 mb-1">{weekDay} {d}.</div>
+                                            {slots.length === 0 ? <div className="flex-1 flex items-center justify-center opacity-10"><Plus size={12}/></div> : 
+                                            slots.map((slot, i) => (
+                                                <div key={i} className={`text-[8px] font-bold px-1 rounded truncate ${SHIFT_TEMPLATES[slot.type]?.color || 'bg-gray-200'}`}>
+                                                    {slot.start}-{slot.end}
+                                                </div>
+                                            ))}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
                     ))}
                 </div>
-            ) : <div className="p-6 bg-slate-100 rounded-[2rem] text-center italic text-slate-500">Plan noch nicht freigegeben.</div>}
+            </div>
+        );
+    }
+
+    // --- VIEW: MITARBEITER (READ ONLY) ---
+    const myShifts = shifts.filter(s => s.userId === user.id).sort((a,b) => a.date.localeCompare(b.date));
+    return (
+        <div className="animate-in space-y-6">
+            <h2 className="text-3xl font-black text-slate-800">Mein Plan</h2>
+            {!publishStatus ? <div className="p-6 bg-slate-100 rounded-[2rem] text-center italic text-slate-500">Plan noch nicht freigegeben.</div> :
+            <div className="space-y-3">
+                {myShifts.map(s => (
+                    <div key={s.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+                        <div className="text-center bg-slate-50 px-3 py-1 rounded-xl">
+                            <div className="text-xs font-bold text-slate-400">{new Date(s.date).toLocaleDateString('de-DE',{weekday:'short'})}</div>
+                            <div className="font-black text-slate-800">{s.date.split('-')[2]}</div>
+                        </div>
+                        <div className="space-y-1">
+                            {(s.slots||[]).map((sl,i)=>(
+                                <div key={i} className="text-sm font-bold text-slate-600 flex items-center gap-2">
+                                    <span className={`w-2 h-2 rounded-full ${SHIFT_TEMPLATES[sl.type]?.color.split(' ')[0]||'bg-gray-400'}`}></span>
+                                    {sl.start} - {sl.end}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>}
         </div>
     );
-};
+}; 
 // --- NEUE KOMPONENTE: SMARTE TERMINAL UHR ---
 const TerminalClock = ({ staff, appId, onClose }) => {
     const [pin, setPin] = useState('');
@@ -1430,6 +1560,14 @@ onSnapshot(query(pub('logs_time'), where('dateStr', '==', today), where('end', '
         user={appUser} // WICHTIG: User übergeben!
     />
 )}
+                            {view === 'absence' && (
+        <AbsenceManager 
+            user={appUser} 
+            appId={appId} 
+            showToast={showToast}
+            staff={data.staff} // Wichtig für Admin Übersicht
+        />
+    )}
                             {view === 'admin' && (appUser.role === 'admin' || ['kitchen_lead','service_lead'].includes(appUser.role)) && <Admin {...common} debugMode={debugMode} setView={setView} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} deleteBranch={deleteBranchLocal} currentUser={appUser} lang={lang} />}
                             {view === 'history' && appUser?.role === 'admin' && <SmartHistory {...common} setView={setView} />}
                       </main>
