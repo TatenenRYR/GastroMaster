@@ -900,6 +900,7 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
                     })
                 );
                 const today = getTodayStr();
+                // Suchen Sie diesen Block in function App()
                 const unsubsLive = [
                     onSnapshot(query(pub('logs_temp'), where('dateStr', '==', today)), s => setStatus(p => ({...p, tempLogs: s.docs.map(d=>d.data())}))),
                     onSnapshot(query(pub('logs_cleaning'), where('dateStr', '==', today)), s => { const l = {}; s.docs.forEach(d => l[d.data().taskId] = d.data()); setStatus(p => ({...p, cleaningLogs: l})); }),
@@ -910,6 +911,13 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
                     }),
                     onSnapshot(pub('shopping_list'), s => setStatus(p => ({...p, shoppingList: s.docs.map(d=>({...d.data(), id:d.id}))}))),
                     onSnapshot(query(pub('logs_signatures'), where('dateStr', '==', today)), s => { const sigs = {}; s.docs.forEach(d => sigs[d.data().module] = d.data()); setStatus(p => ({...p, signatures: sigs})); }),
+                    
+                    // --- NEU HINZUGEFÜGT: Wer arbeitet gerade? (Für den Login Screen) ---
+                    onSnapshot(query(pub('logs_time'), where('dateStr', '==', today), where('end', '==', null)), s => {
+                        // Wir speichern eine Liste der User-IDs, die gerade arbeiten
+                        const activeIds = s.docs.map(d => d.data().userId);
+                        setStatus(p => ({...p, activeWorkers: activeIds}));
+                    })
                 ];
                 let timeUnsub = null;
                 if(appUser) {
@@ -976,8 +984,24 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
             if (loading) return <Loading />;
             if (showTutorial) return <div className="fixed inset-0 z-[200] bg-slate-900/95 flex items-center justify-center p-6 animate-in text-white text-center"><h1>Setup Complete</h1><Button onClick={()=>setShowTutorial(false)}>OK</Button></div>;
 
-            if (!appUser) return <LoginScreen staff={data.staff} restaurantId={appId} company={data.company} yesterdayOil={status.yesterdayOil} fryers={data.fryers} onLogin={handleUserLogin} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} onSeed={()=>seedDB()} showToast={showToast} lang={lang} onMasterRecovery={handleMasterKeyRecovery} tempMasterPw={tempMasterPw} themeColor={design.primaryColor || '#0f172a'} />;
-
+            if (!appUser) return <LoginScreen 
+                staff={data.staff} 
+                restaurantId={appId} 
+                company={data.company} 
+                yesterdayOil={status.yesterdayOil} 
+                fryers={data.fryers} 
+                onLogin={handleUserLogin} 
+                onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} 
+                onSeed={()=>seedDB()} 
+                showToast={showToast} 
+                lang={lang} 
+                onMasterRecovery={handleMasterKeyRecovery} 
+                tempMasterPw={tempMasterPw} 
+                themeColor={design.primaryColor || '#0f172a'}
+                
+                // --- NEU HINZUGEFÜGT: ---
+                activeWorkers={status.activeWorkers || []} 
+            />;
             return (
                 <ErrorBoundary>
                     <ConnectionBanner />
@@ -1073,11 +1097,10 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
             );
         };
 
-        const LoginScreen = ({ staff, restaurantId, company, onLogoutSystem, yesterdayOil, fryers, onSeed, onLogin, showToast, lang, onMasterRecovery, tempMasterPw, themeColor }) => {
+        const LoginScreen = ({ staff, restaurantId, company, onLogoutSystem, yesterdayOil, fryers, onSeed, onLogin, showToast, lang, onMasterRecovery, tempMasterPw, themeColor, activeWorkers = [] }) => {
             const [selectedUser, setSelectedUser] = useState(null); 
             const [showPin, setShowPin] = useState(false); 
             const [recoveryMode, setRecoveryMode] = useState(false);
-            // NEU: Terminal State
             const [showTerminal, setShowTerminal] = useState(false);
 
             const oilLogs = Object.values(yesterdayOil || {});
@@ -1092,9 +1115,7 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
                 <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden text-slate-800">
                     <div className="absolute top-[-20%] right-[-20%] w-[80%] h-[80%] rounded-full blur-[150px] opacity-20 animate-pulse" style={{backgroundColor: themeColor}}></div>
                     
-                    {/* HIER WIRD DAS TERMINAL EINGEBLENDET */}
                     {showTerminal && <TerminalClock staff={staff} appId={restaurantId} onClose={()=>setShowTerminal(false)} />}
-
                     {showPin && (<PinPad title={recoveryMode ? "Master-Schlüssel" : `${t.pin} für ${selectedUser.name}`} targetPin={recoveryMode ? null : selectedUser.pin} onClose={()=>setShowPin(false)} onSuccess={onPinSuccess} />)}
                     
                     <div className="z-10 w-full max-w-sm mx-auto space-y-6 animate-in">
@@ -1109,7 +1130,7 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
                             </div>
                         </div>
 
-                        {/* NEUER TERMINAL BUTTON */}
+                        {/* TERMINAL BUTTON */}
                         <button onClick={()=>setShowTerminal(true)} className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-6 rounded-[2rem] shadow-2xl shadow-indigo-900/50 flex items-center justify-between group active:scale-95 transition-transform border border-white/10">
                             <div className="text-left">
                                 <div className="font-black text-xl mb-1">STEMPELUHR</div>
@@ -1126,16 +1147,38 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
                         
                         <div className="space-y-3">
                             <div className="text-slate-500 text-xs font-bold uppercase ml-2">{t.login}</div>
-                            {(staff||[]).map(s => (
-                                <button type="button" key={s.id} onClick={() => handleUserClick(s)} className="w-full bg-white/5 hover:bg-white/10 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm">
-                                    <div className="p-2.5 rounded-xl bg-white/10"><User size={20} className="text-white group-hover:text-white"/></div>
-                                    <div className="flex-1 text-left">
-                                        <div className="font-bold text-lg">{s.name}</div>
-                                        <div className="text-[11px] opacity-60 uppercase font-medium">{getRoleName(s.role)}</div>
-                                    </div>
-                                    {s.pin && String(s.pin).length>0 ? <Lock size={16} className="opacity-50"/> : <Unlock size={16} className="opacity-30 text-red-400"/>}
-                                </button>
-                            ))}
+                            {(staff||[]).map(s => {
+                                // PRÜFUNG: Ist dieser User gerade aktiv?
+                                const isWorking = activeWorkers.includes(s.id);
+                                
+                                return (
+                                    <button type="button" key={s.id} onClick={() => handleUserClick(s)} className="w-full bg-white/5 hover:bg-white/10 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm relative overflow-hidden">
+                                        
+                                        {/* Status Indikator an der linken Seite (optional) */}
+                                        {isWorking && <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 shadow-[0_0_10px_#10b981]"></div>}
+
+                                        <div className="p-2.5 rounded-xl bg-white/10 relative">
+                                            <User size={20} className="text-white group-hover:text-white"/>
+                                            {/* Kleiner grüner Punkt auf dem Avatar */}
+                                            {isWorking && <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-800"></div>}
+                                        </div>
+                                        
+                                        <div className="flex-1 text-left">
+                                            <div className="font-bold text-lg flex items-center gap-2">
+                                                {s.name}
+                                                {/* HIER IST DAS UHREN-ICON */}
+                                                {isWorking && (
+                                                    <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 border border-emerald-500/30 animate-pulse">
+                                                        <Clock size={10} /> IM DIENST
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="text-[11px] opacity-60 uppercase font-medium">{getRoleName(s.role)}</div>
+                                        </div>
+                                        {s.pin && String(s.pin).length>0 ? <Lock size={16} className="opacity-50"/> : <Unlock size={16} className="opacity-30 text-red-400"/>}
+                                    </button>
+                                );
+                            })}
                         </div>
                         {(staff||[]).length===0 && <div className="text-center pt-8"><p className="text-slate-500 text-sm mb-4">Erster Start?</p><button onClick={onSeed} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg">Datenbank Initialisieren</button></div>}
                     </div>
