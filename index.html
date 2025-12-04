@@ -126,7 +126,14 @@
             waste: { enabled: false, name: "Schwund", icon: "Trash2" },
             shiftplan: { enabled: true, name: "Dienstplan", icon: "Calendar" }
         };
-
+// --- KONFIGURATION: SCHICHT-TYPEN ---
+const SHIFT_TYPES = {
+    early: { label: "Frühschicht", short: "FRÜH", color: "bg-amber-100 text-amber-800 border-amber-200", start: "09:00", end: "17:00" },
+    lunch: { label: "Mittagsgeschäft", short: "MITTAG", color: "bg-sky-100 text-sky-800 border-sky-200", start: "11:30", end: "15:00" },
+    late: { label: "Spätschicht", short: "SPÄT", color: "bg-indigo-100 text-indigo-800 border-indigo-200", start: "17:00", end: "23:00" },
+    prep: { label: "Vorbereitung", short: "PREP", color: "bg-emerald-100 text-emerald-800 border-emerald-200", start: "08:00", end: "14:00" },
+    close: { label: "Schlussdienst", short: "CLOSE", color: "bg-slate-100 text-slate-800 border-slate-200", start: "18:00", end: "00:00" }
+};
         const DICTIONARY = {
             de: { 
                 start: "Filiale Öffnen", id: "Restaurant ID", login: "Team Login", role: "Rolle", pin: "PIN", 
@@ -602,143 +609,145 @@ const DistrictDashboard = ({ districtId, onLogout, showToast }) => {
     );
 };
 
-// --- NEUES PROFI-DIENSTPLAN SYSTEM (GASTROMATIC STYLE) ---
+// --- PROFI SHIFT PLANNER MIT GAP-ANALYSE ---
 const ShiftModule = ({ staff, appId, showToast, user }) => {
-    const [mode, setMode] = useState(
-        ['admin', 'kitchen_lead', 'service_lead'].includes(user.role) ? 'admin' : 'my_view'
-    );
-    const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); // "2023-10"
+    const [mode, setMode] = useState(['admin', 'kitchen_lead', 'service_lead'].includes(user.role) ? 'admin' : 'my_view');
+    const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); 
     const [shifts, setShifts] = useState([]);
-    const [logs, setLogs] = useState([]);
+    const [selectedDayDetail, setSelectedDayDetail] = useState(null); // Für die Detail-Ansicht eines Tages
     const [publishStatus, setPublishStatus] = useState(false);
-    const [loading, setLoading] = useState(false);
-
-    // Hilfsfunktion: Stunden berechnen
-    const calcDuration = (start, end) => {
-        if(!start || !end) return 0;
-        const [h1, m1] = start.split(':').map(Number);
-        const [h2, m2] = end.split(':').map(Number);
-        let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
-        if(diff < 0) diff += 24 * 60; // Nachtschicht
-        return diff / 60;
-    };
 
     // DATEN LADEN
     useEffect(() => {
-        setLoading(true);
-        // 1. Schichten laden für den Monat
         const qShifts = query(collection(db, 'artifacts', appId, 'public', 'data', 'shifts'), where('monthStr', '==', month));
-        const unsubShifts = onSnapshot(qShifts, s => {
-            setShifts(s.docs.map(d => ({id:d.id, ...d.data()})));
+        const unsub = onSnapshot(qShifts, s => setShifts(s.docs.map(d => ({id:d.id, ...d.data()}))));
+        
+        getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shift_publish', month)).then(s => {
+            setPublishStatus(s.exists() && s.data().published);
         });
+        return () => unsub();
+    }, [appId, month]);
 
-        // 2. Status laden (Ist der Monat veröffentlicht?)
-        const checkPublish = async () => {
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'shift_publish', month);
-            const snap = await getDoc(docRef);
-            setPublishStatus(snap.exists() && snap.data().published);
-        };
-        checkPublish();
-
-        // 3. Wenn Mitarbeiter: Eigene Stempelzeiten laden (für Kalkulation)
-        let unsubLogs = () => {};
-        if(mode === 'my_view') {
-            const startOfMonth = month + "-01";
-            const endOfMonth = month + "-31";
-            const qLogs = query(
-                collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'),
-                where('userId', '==', user.id),
-                where('dateStr', '>=', startOfMonth),
-                where('dateStr', '<=', endOfMonth)
-            );
-            unsubLogs = onSnapshot(qLogs, s => {
-                setLogs(s.docs.map(d => d.data()));
-            });
-        }
-
-        setLoading(false);
-        return () => { unsubShifts(); unsubLogs(); };
-    }, [appId, month, mode]);
-
-    // ADMIN: Schicht speichern
-    const saveShift = async (userId, dayDate, start, end) => {
+    const saveShift = async (userId, dayDate, typeKey) => {
         const id = `${userId}_${dayDate}`;
+        if(typeKey === 'DELETE') {
+            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shifts', id));
+            return;
+        }
+        
+        const template = SHIFT_TYPES[typeKey];
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shifts', id), {
-            userId, date: dayDate, monthStr: month, start, end, updatedAt: serverTimestamp()
+            userId, date: dayDate, monthStr: month, 
+            start: template.start, end: template.end, 
+            label: template.label, type: typeKey, // <-- Hier speichern wir den Namen
+            updatedAt: serverTimestamp()
         }, { merge: true });
     };
 
-    // ADMIN: Monat veröffentlichen
     const togglePublish = async () => {
         const newState = !publishStatus;
-        if(newState && !confirm(`Dienstplan für ${month} jetzt für ALLE sichtbar machen?`)) return;
-        
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shift_publish', month), {
-            published: newState, updatedAt: serverTimestamp(), by: user.name
-        });
+        if(newState && !confirm(`Plan für ${month} jetzt für ALLE freigeben?`)) return;
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shift_publish', month), { published: newState });
         setPublishStatus(newState);
-        showToast(newState ? "Plan Veröffentlicht!" : "Plan zurückgezogen (Entwurf)");
+        showToast(newState ? "Plan Veröffentlicht" : "Zurückgezogen");
     };
 
-    // --- VIEW: MITARBEITER (MEIN PLAN) ---
-    if (mode === 'my_view') {
-        const myShifts = shifts.filter(s => s.userId === user.id).sort((a,b) => a.date.localeCompare(b.date));
+    // Helper: Coverage berechnen (Wie viele Leute arbeiten um X Uhr?)
+    const getCoverage = (dayDate) => {
+        const dayShifts = shifts.filter(s => s.date === dayDate);
+        const hours = Array.from({length: 16}, (_, i) => i + 8); // 08:00 bis 23:00
         
-        // Kalkulation
-        const plannedHours = myShifts.reduce((acc, s) => acc + calcDuration(s.start, s.end), 0);
-        const workedHours = logs.reduce((acc, l) => {
-            // Einfache Rechnung: Ende - Start (ohne Pause Detail hier für Übersicht)
-            return acc + (l.end ? calcDuration(l.start, l.end) : 0);
-        }, 0);
+        return hours.map(h => {
+            const count = dayShifts.filter(s => {
+                const sH = parseInt(s.start.split(':')[0]);
+                const eH = parseInt(s.end.split(':')[0]);
+                return h >= sH && h < (eH === 0 ? 24 : eH);
+            }).length;
+            return { h, count };
+        });
+    };
+
+    // --- VIEW: ADMIN ---
+    if (mode === 'admin') {
+        const daysInMonth = new Date(month.split('-')[0], month.split('-')[1], 0).getDate();
+        const daysArray = Array.from({length: daysInMonth}, (_, i) => {
+            const d = i + 1;
+            const dateStr = `${month}-${d.toString().padStart(2, '0')}`;
+            const dateObj = new Date(dateStr);
+            return { d, dateStr, weekDay: dateObj.toLocaleDateString('de-DE', {weekday:'short'}), isWeekend: dateObj.getDay()===0||dateObj.getDay()===6 };
+        });
 
         return (
-            <div className="animate-in space-y-6">
-                <div className="flex justify-between items-center">
-                    <div>
-                        <h2 className="text-3xl font-black text-slate-800">Mein Plan</h2>
-                        <input type="month" value={month} onChange={e=>setMonth(e.target.value)} className="bg-transparent text-sm font-bold text-slate-400 outline-none"/>
+            <div className="animate-in space-y-4">
+                {/* Header & Controls */}
+                <div className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 sticky top-0 z-20">
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-2xl font-black text-slate-800">Planung</h2>
+                        <div className={`px-3 py-1 rounded-lg text-xs font-bold uppercase ${publishStatus ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                            {publishStatus ? 'Öffentlich' : 'Entwurf'}
+                        </div>
                     </div>
-                    {/* Switch für Chefs um zur Admin Sicht zu kommen */}
-                    {['admin', 'kitchen_lead', 'service_lead'].includes(user.role) && (
-                        <button onClick={()=>setMode('admin')} className="bg-slate-100 p-2 rounded-xl text-slate-500 hover:text-indigo-600"><Settings size={20}/></button>
-                    )}
-                </div>
-
-                {/* KPI KARTEN */}
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-                        <div className="text-[10px] font-bold uppercase text-slate-400">Soll (Plan)</div>
-                        <div className="text-2xl font-black text-indigo-600">{plannedHours.toFixed(1)}h</div>
+                    <div className="flex gap-2">
+                        <input type="month" value={month} onChange={e=>setMonth(e.target.value)} className="bg-slate-50 p-2 rounded-xl font-bold text-slate-600 outline-none"/>
+                        <button onClick={togglePublish} className="flex-1 bg-slate-900 text-white rounded-xl font-bold text-xs">{publishStatus ? 'Sperren' : 'Freigeben'}</button>
                     </div>
-                    <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-                        <div className="text-[10px] font-bold uppercase text-slate-400">Ist (Gestempelt)</div>
-                        <div className={`text-2xl font-black ${workedHours >= plannedHours ? 'text-emerald-500' : 'text-amber-500'}`}>{workedHours.toFixed(1)}h</div>
-                    </div>
-                </div>
-
-                {/* LISTE */}
-                <div className="space-y-3">
-                    {!publishStatus && <div className="p-4 bg-amber-50 text-amber-700 rounded-2xl text-sm font-bold border border-amber-100 flex items-center gap-2"><AlertTriangle size={16}/> Dienstplan für {month} ist noch nicht freigegeben.</div>}
                     
-                    {publishStatus && myShifts.length === 0 && <div className="text-center text-slate-400 py-10 italic">Keine Schichten eingetragen.</div>}
+                    {/* LEGENDE */}
+                    <div className="flex gap-2 mt-4 overflow-x-auto no-scrollbar pb-1">
+                        {Object.entries(SHIFT_TYPES).map(([k, v]) => (
+                            <span key={k} className={`text-[10px] font-bold px-2 py-1 rounded border whitespace-nowrap ${v.color}`}>{v.short}</span>
+                        ))}
+                    </div>
+                </div>
 
-                    {publishStatus && myShifts.map(s => {
-                        const log = logs.find(l => l.dateStr === s.date);
-                        const isDone = !!log?.end;
+                {/* PLANUNGSTABELLE */}
+                <div className="space-y-1">
+                    {daysArray.map(({d, dateStr, weekDay, isWeekend}) => {
+                        const coverage = getCoverage(dateStr);
+                        const hasGaps = coverage.some(c => c.h > 11 && c.h < 14 && c.count < 2); // Beispiel: Mittag min 2 Leute
                         
                         return (
-                            <div key={s.id} className={`p-4 rounded-2xl border flex justify-between items-center ${isDone ? 'bg-slate-50 border-slate-200 opacity-70' : 'bg-white border-slate-100 shadow-sm'}`}>
-                                <div className="flex items-center gap-4">
-                                    <div className="text-center bg-slate-100 rounded-xl px-3 py-1">
-                                        <div className="text-xs font-bold text-slate-400 uppercase">{new Date(s.date).toLocaleDateString('de-DE', {weekday:'short'})}</div>
-                                        <div className="font-black text-slate-800">{s.date.split('-')[2]}</div>
+                            <div key={dateStr} className={`bg-white rounded-xl border p-3 ${isWeekend ? 'border-indigo-100 bg-indigo-50/30' : 'border-slate-100'}`}>
+                                {/* ZEILE OBEN: DATUM & GAP ANALYSE */}
+                                <div className="flex justify-between items-center mb-3">
+                                    <div className="flex items-center gap-2 w-20">
+                                        <span className={`font-bold text-sm ${isWeekend ? 'text-indigo-600' : 'text-slate-500'}`}>{weekDay}</span>
+                                        <span className="font-black text-lg">{d}.</span>
                                     </div>
-                                    <div>
-                                        <div className="font-bold text-slate-700 text-lg">{s.start} - {s.end}</div>
-                                        {log && <div className="text-xs font-bold text-emerald-600">Gestempelt: {log.start} - {log.end || '...'}</div>}
+                                    
+                                    {/* VISUELLE LÜCKEN-LEISTE (8 bis 23 Uhr) */}
+                                    <div className="flex-1 flex gap-0.5 h-2 mx-2">
+                                        {coverage.map(c => (
+                                            <div key={c.h} className={`flex-1 rounded-sm ${c.count === 0 ? 'bg-slate-100' : c.count === 1 ? 'bg-amber-300' : 'bg-emerald-400'}`} title={`${c.h} Uhr: ${c.count} Pers.`}></div>
+                                        ))}
                                     </div>
+                                    
+                                    {/* WARNUNG ICON */}
+                                    {hasGaps && <AlertTriangle size={14} className="text-amber-400"/>}
                                 </div>
-                                {isDone ? <CheckCircle className="text-emerald-500"/> : <Clock className="text-slate-200"/>}
+
+                                {/* ZEILE UNTEN: MITARBEITER DROPDOOWNS */}
+                                <div className="grid grid-cols-2 gap-2">
+                                    {staff.map(s => {
+                                        const shift = shifts.find(x => x.userId === s.id && x.date === dateStr);
+                                        const type = shift ? SHIFT_TYPES[shift.type] : null;
+                                        
+                                        return (
+                                            <div key={s.id} className="relative">
+                                                <select 
+                                                    className={`w-full p-2 rounded-lg text-xs font-bold appearance-none border-2 outline-none transition-colors ${type ? type.color : 'bg-slate-50 text-slate-400 border-transparent'}`}
+                                                    onChange={(e) => saveShift(s.id, dateStr, e.target.value)}
+                                                    value={shift?.type || ''}
+                                                >
+                                                    <option value="DELETE">{s.name} (Frei)</option>
+                                                    {Object.entries(SHIFT_TYPES).map(([k, v]) => (
+                                                        <option key={k} value={k}>{s.name}: {v.label}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         );
                     })}
@@ -747,85 +756,31 @@ const ShiftModule = ({ staff, appId, showToast, user }) => {
         );
     }
 
-    // --- VIEW: ADMIN (PLANER) ---
-    const daysInMonth = new Date(month.split('-')[0], month.split('-')[1], 0).getDate();
-    const daysArray = Array.from({length: daysInMonth}, (_, i) => {
-        const d = i + 1;
-        const dateStr = `${month}-${d.toString().padStart(2, '0')}`;
-        const weekDay = new Date(dateStr).toLocaleDateString('de-DE', {weekday:'short'});
-        return { d, dateStr, weekDay };
-    });
-
+    // --- VIEW: MITARBEITER (READ ONLY) ---
+    const myShifts = shifts.filter(s => s.userId === user.id).sort((a,b) => a.date.localeCompare(b.date));
     return (
         <div className="animate-in space-y-6">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-3xl font-black text-inherit">Dienstplaner</h2>
-                    <div className="flex items-center gap-2">
-                        <input type="month" value={month} onChange={e=>setMonth(e.target.value)} className="bg-transparent font-bold text-slate-500 outline-none"/>
-                        {loading && <Loader2 className="animate-spin text-indigo-500" size={14}/>}
-                    </div>
-                </div>
-                <button onClick={()=>setMode('my_view')} className="bg-slate-100 px-4 py-2 rounded-xl text-xs font-bold uppercase text-slate-500">Meine Sicht</button>
-            </div>
-
-            {/* FREIGABE LEISTE */}
-            <div className={`p-4 rounded-2xl border flex justify-between items-center transition-colors ${publishStatus ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'}`}>
-                <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-full text-white ${publishStatus ? 'bg-emerald-500' : 'bg-red-500'}`}>
-                        {publishStatus ? <Globe size={20}/> : <Lock size={20}/>}
-                    </div>
-                    <div>
-                        <div className={`font-black uppercase ${publishStatus ? 'text-emerald-800' : 'text-red-800'}`}>
-                            {publishStatus ? 'Veröffentlicht' : 'Entwurf (Privat)'}
-                        </div>
-                        <div className="text-[10px] opacity-70 font-bold">
-                            {publishStatus ? 'Mitarbeiter sehen den Plan.' : 'Nur für Leitung sichtbar.'}
+            <h2 className="text-3xl font-black text-slate-800">Mein Dienstplan</h2>
+            {!publishStatus && <div className="p-4 bg-amber-50 text-amber-700 rounded-2xl text-sm font-bold flex items-center gap-2"><Lock size={16}/> Plan in Bearbeitung</div>}
+            
+            {publishStatus && myShifts.map(s => {
+                const style = SHIFT_TYPES[s.type] || { color: 'bg-slate-100', label: 'Schicht' };
+                return (
+                    <div key={s.id} className={`p-4 rounded-2xl border border-slate-100 flex justify-between items-center bg-white`}>
+                        <div className="flex items-center gap-4">
+                            <div className="text-center bg-slate-50 rounded-xl px-3 py-1 border border-slate-100">
+                                <div className="text-xs font-bold text-slate-400 uppercase">{new Date(s.date).toLocaleDateString('de-DE', {weekday:'short'})}</div>
+                                <div className="font-black text-slate-800">{s.date.split('-')[2]}</div>
+                            </div>
+                            <div>
+                                <div className={`inline-block text-[10px] uppercase font-bold px-2 py-0.5 rounded mb-1 ${style.color}`}>{style.label}</div>
+                                <div className="font-bold text-slate-700 text-lg">{s.start} - {s.end}</div>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <button onClick={togglePublish} className={`px-4 py-2 rounded-xl font-bold text-xs shadow-lg transition-transform active:scale-95 ${publishStatus ? 'bg-white text-red-500 border border-red-100' : 'bg-slate-900 text-white'}`}>
-                    {publishStatus ? 'Zurückziehen' : 'Freigeben'}
-                </button>
-            </div>
-
-            {/* PLANUNGS GRID (Vereinfacht für Mobile: Liste pro Mitarbeiter) */}
-            <div className="space-y-6">
-                {staff.map(s => (
-                    <div key={s.id} className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
-                        <div className="bg-slate-50 p-4 border-b border-slate-100 flex justify-between items-center">
-                            <span className="font-black text-slate-700">{s.name}</span>
-                            <span className="text-xs font-bold bg-white px-2 py-1 rounded border border-slate-200 text-slate-400">{s.role}</span>
-                        </div>
-                        
-                        {/* Horizontales Scrollen für die Tage */}
-                        <div className="overflow-x-auto custom-scrollbar flex p-2 gap-2">
-                            {daysArray.map(({d, dateStr, weekDay}) => {
-                                const shift = shifts.find(x => x.userId === s.id && x.date === dateStr) || {start:'', end:''};
-                                const isWeekend = weekDay === 'Sa' || weekDay === 'So';
-                                
-                                return (
-                                    <div key={dateStr} className={`flex-shrink-0 w-24 p-2 rounded-xl border flex flex-col gap-1 ${isWeekend ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-100'}`}>
-                                        <div className="text-center text-xs font-bold text-slate-400 mb-1">{weekDay} {d}.</div>
-                                        <input 
-                                            type="time" 
-                                            className="w-full text-center font-bold text-slate-800 bg-slate-100 rounded-lg text-sm outline-none focus:bg-indigo-50 focus:text-indigo-600"
-                                            value={shift.start}
-                                            onChange={e => saveShift(s.id, dateStr, e.target.value, shift.end)}
-                                        />
-                                        <input 
-                                            type="time" 
-                                            className="w-full text-center font-bold text-slate-800 bg-slate-100 rounded-lg text-sm outline-none focus:bg-indigo-50 focus:text-indigo-600"
-                                            value={shift.end}
-                                            onChange={e => saveShift(s.id, dateStr, shift.start, e.target.value)}
-                                        />
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                ))}
-            </div>
+                );
+            })}
+            {myShifts.length === 0 && <div className="text-center text-slate-400 italic">Keine Schichten.</div>}
         </div>
     );
 };
@@ -981,8 +936,26 @@ const TerminalClock = ({ staff, appId, onClose }) => {
                 {/* Status Text */}
                 {isClosed && <div className="text-red-500 font-bold mt-2 bg-red-50 px-4 py-2 rounded-xl">Bereits ausgecheckt: {currentLog.end}</div>}
                 {isWorking && <div className="text-emerald-500 font-bold mt-2 bg-emerald-50 px-4 py-2 rounded-xl">Startzeit: {currentLog.start}</div>}
-                {todayShift && <div className="text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest">Plan: {todayShift.start} - {todayShift.end}</div>}
-
+                {todayShift && (
+                    <div className="mt-4 bg-slate-50 border border-slate-100 p-4 rounded-2xl w-full max-w-xs mx-auto">
+                        <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
+                            Geplant für Heute:
+                        </div>
+                        <div className="text-xl font-black text-indigo-600">
+                            {todayShift.label || 'Standard-Schicht'}
+                        </div>
+                        <div className="text-sm font-medium text-slate-500">
+                            {todayShift.start} - {todayShift.end} Uhr
+                        </div>
+                        
+                        {/* Warnung wenn zu früh */}
+                        {(() => {
+                            const nowH = new Date().getHours();
+                            const startH = parseInt(todayShift.start.split(':')[0]);
+                            if (nowH < startH - 1) return <div className="mt-2 text-xs font-bold text-amber-500 bg-amber-50 px-2 py-1 rounded">⚠️ Du bist sehr früh dran!</div>
+                        })()}
+                    </div>
+                )}
                 <div className="mt-8 space-y-4 w-full max-w-sm">
                     {/* BUTTONS JE NACH STATUS */}
                     
