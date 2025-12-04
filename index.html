@@ -126,13 +126,20 @@
             waste: { enabled: false, name: "Schwund", icon: "Trash2" },
             shiftplan: { enabled: true, name: "Dienstplan", icon: "Calendar" }
         };
-// --- KONFIGURATION: SCHICHT-TYPEN ---
+// --- KONFIGURATION: SCHICHTEN & REGELN ---
 const SHIFT_TYPES = {
-    early: { label: "Frühschicht", short: "FRÜH", color: "bg-amber-100 text-amber-800 border-amber-200", start: "09:00", end: "17:00" },
-    lunch: { label: "Mittagsgeschäft", short: "MITTAG", color: "bg-sky-100 text-sky-800 border-sky-200", start: "11:30", end: "15:00" },
-    late: { label: "Spätschicht", short: "SPÄT", color: "bg-indigo-100 text-indigo-800 border-indigo-200", start: "17:00", end: "23:00" },
-    prep: { label: "Vorbereitung", short: "PREP", color: "bg-emerald-100 text-emerald-800 border-emerald-200", start: "08:00", end: "14:00" },
-    close: { label: "Schlussdienst", short: "CLOSE", color: "bg-slate-100 text-slate-800 border-slate-200", start: "18:00", end: "00:00" }
+    early: { label: "Frühschicht", short: "F", color: "bg-amber-100 text-amber-800 border-amber-200", start: "08:00", end: "16:00", break: 30 },
+    lunch: { label: "Mittagstisch", short: "M", color: "bg-sky-100 text-sky-800 border-sky-200", start: "11:00", end: "15:00", break: 0 },
+    late: { label: "Spätschicht", short: "S", color: "bg-indigo-100 text-indigo-800 border-indigo-200", start: "16:00", end: "00:00", break: 30 },
+    double: { label: "Teildienst", short: "TD", color: "bg-purple-100 text-purple-800 border-purple-200", start: "10:00", end: "22:00", break: 120 }, // Lange Pause
+    off: { label: "Frei / Urlaub", short: "FREI", color: "bg-slate-100 text-slate-400 border-slate-200", start: "", end: "", break: 0 }
+};
+
+// Regeln für die Warnungen
+const WORK_RULES = {
+    maxDaysPerWeek: 5,
+    maxHoursPerWeek: 48,
+    minRestHours: 11
 };
         const DICTIONARY = {
             de: { 
@@ -609,24 +616,65 @@ const DistrictDashboard = ({ districtId, onLogout, showToast }) => {
     );
 };
 
-// --- PROFI SHIFT PLANNER MIT GAP-ANALYSE ---
-const ShiftModule = ({ staff, appId, showToast, user }) => {
-    const [mode, setMode] = useState(['admin', 'kitchen_lead', 'service_lead'].includes(user.role) ? 'admin' : 'my_view');
+
+                // --- INTELLIGENTER DIENSTPLANER (Smart Edition) ---
+const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
     const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); 
     const [shifts, setShifts] = useState([]);
-    const [selectedDayDetail, setSelectedDayDetail] = useState(null); // Für die Detail-Ansicht eines Tages
     const [publishStatus, setPublishStatus] = useState(false);
+    
+    // Admin oder Mitarbeiter Ansicht?
+    const isAdmin = ['admin', 'kitchen_lead', 'service_lead'].includes(user.role);
 
-    // DATEN LADEN
     useEffect(() => {
-        const qShifts = query(collection(db, 'artifacts', appId, 'public', 'data', 'shifts'), where('monthStr', '==', month));
-        const unsub = onSnapshot(qShifts, s => setShifts(s.docs.map(d => ({id:d.id, ...d.data()}))));
+        // 1. Schichten laden
+        const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'shifts'), where('monthStr', '==', month));
+        const unsub = onSnapshot(q, s => setShifts(s.docs.map(d => ({id:d.id, ...d.data()}))));
         
+        // 2. Status laden
         getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shift_publish', month)).then(s => {
             setPublishStatus(s.exists() && s.data().published);
         });
         return () => unsub();
     }, [appId, month]);
+
+    // Hilfsfunktion: Stunden berechnen (inkl. Pause Abzug)
+    const getHours = (typeKey) => {
+        if(!typeKey || typeKey === 'off' || typeKey === 'DELETE') return 0;
+        const s = SHIFT_TYPES[typeKey];
+        if(!s) return 0;
+        const [h1, m1] = s.start.split(':').map(Number);
+        const [h2, m2] = s.end.split(':').map(Number);
+        let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if(diff < 0) diff += 24 * 60; 
+        return Math.max(0, (diff - s.break) / 60); // Pause abziehen
+    };
+
+    // --- DIE INTELLIGENZ: ANALYSE FUNKTION ---
+    const analyzeEmployee = (userId) => {
+        const myShifts = shifts.filter(s => s.userId === userId);
+        
+        // Summen berechnen
+        let totalHours = 0;
+        let workDays = 0;
+        
+        myShifts.forEach(s => {
+            if(s.type && s.type !== 'off') {
+                totalHours += getHours(s.type);
+                workDays++;
+            }
+        });
+
+        // Wochen-Durchschnitt (grob: Monat / 4.3)
+        const avgHoursPerWeek = totalHours / 4.3;
+        const avgDaysPerWeek = workDays / 4.3;
+
+        const alerts = [];
+        if(avgDaysPerWeek > WORK_RULES.maxDaysPerWeek) alerts.push("Zu viele Tage/Woche");
+        if(avgHoursPerWeek > WORK_RULES.maxHoursPerWeek) alerts.push("Zu viele Stunden");
+
+        return { totalHours, workDays, alerts };
+    };
 
     const saveShift = async (userId, dayDate, typeKey) => {
         const id = `${userId}_${dayDate}`;
@@ -635,155 +683,150 @@ const ShiftModule = ({ staff, appId, showToast, user }) => {
             return;
         }
         
-        const template = SHIFT_TYPES[typeKey];
+        const tmpl = SHIFT_TYPES[typeKey];
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shifts', id), {
-            userId, date: dayDate, monthStr: month, 
-            start: template.start, end: template.end, 
-            label: template.label, type: typeKey, // <-- Hier speichern wir den Namen
+            userId, date: dayDate, monthStr: month,
+            type: typeKey, start: tmpl.start, end: tmpl.end, label: tmpl.label,
             updatedAt: serverTimestamp()
         }, { merge: true });
     };
 
     const togglePublish = async () => {
         const newState = !publishStatus;
-        if(newState && !confirm(`Plan für ${month} jetzt für ALLE freigeben?`)) return;
+        if(newState && !confirm("Dienstplan veröffentlichen?")) return;
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shift_publish', month), { published: newState });
         setPublishStatus(newState);
-        showToast(newState ? "Plan Veröffentlicht" : "Zurückgezogen");
     };
 
-    // Helper: Coverage berechnen (Wie viele Leute arbeiten um X Uhr?)
-    const getCoverage = (dayDate) => {
-        const dayShifts = shifts.filter(s => s.date === dayDate);
-        const hours = Array.from({length: 16}, (_, i) => i + 8); // 08:00 bis 23:00
-        
-        return hours.map(h => {
-            const count = dayShifts.filter(s => {
-                const sH = parseInt(s.start.split(':')[0]);
-                const eH = parseInt(s.end.split(':')[0]);
-                return h >= sH && h < (eH === 0 ? 24 : eH);
-            }).length;
-            return { h, count };
-        });
-    };
+    // Kalender Daten generieren
+    const daysInMonth = new Date(month.split('-')[0], month.split('-')[1], 0).getDate();
+    const daysArray = Array.from({length: daysInMonth}, (_, i) => {
+        const d = i + 1;
+        const dateStr = `${month}-${d.toString().padStart(2, '0')}`;
+        const dateObj = new Date(dateStr);
+        return { d, dateStr, weekDay: dateObj.toLocaleDateString('de-DE', {weekday:'short'}), isWeekend: [0,6].includes(dateObj.getDay()) };
+    });
 
-    // --- VIEW: ADMIN ---
-    if (mode === 'admin') {
-        const daysInMonth = new Date(month.split('-')[0], month.split('-')[1], 0).getDate();
-        const daysArray = Array.from({length: daysInMonth}, (_, i) => {
-            const d = i + 1;
-            const dateStr = `${month}-${d.toString().padStart(2, '0')}`;
-            const dateObj = new Date(dateStr);
-            return { d, dateStr, weekDay: dateObj.toLocaleDateString('de-DE', {weekday:'short'}), isWeekend: dateObj.getDay()===0||dateObj.getDay()===6 };
-        });
-
+    // --- ANSICHT FÜR MITARBEITER (Einfache Liste) ---
+    if (!isAdmin) {
+        const myShifts = shifts.filter(s => s.userId === user.id).sort((a,b) => a.date.localeCompare(b.date));
         return (
-            <div className="animate-in space-y-4">
-                {/* Header & Controls */}
-                <div className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 sticky top-0 z-20">
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-2xl font-black text-slate-800">Planung</h2>
-                        <div className={`px-3 py-1 rounded-lg text-xs font-bold uppercase ${publishStatus ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                            {publishStatus ? 'Öffentlich' : 'Entwurf'}
-                        </div>
+            <div className="animate-in space-y-6">
+                <h2 className="text-3xl font-black text-slate-800">Mein Dienstplan</h2>
+                {!publishStatus ? (
+                    <div className="p-6 bg-slate-100 rounded-[2rem] text-center text-slate-500 italic">
+                        Plan für {month} ist noch in Bearbeitung.
                     </div>
-                    <div className="flex gap-2">
-                        <input type="month" value={month} onChange={e=>setMonth(e.target.value)} className="bg-slate-50 p-2 rounded-xl font-bold text-slate-600 outline-none"/>
-                        <button onClick={togglePublish} className="flex-1 bg-slate-900 text-white rounded-xl font-bold text-xs">{publishStatus ? 'Sperren' : 'Freigeben'}</button>
-                    </div>
-                    
-                    {/* LEGENDE */}
-                    <div className="flex gap-2 mt-4 overflow-x-auto no-scrollbar pb-1">
-                        {Object.entries(SHIFT_TYPES).map(([k, v]) => (
-                            <span key={k} className={`text-[10px] font-bold px-2 py-1 rounded border whitespace-nowrap ${v.color}`}>{v.short}</span>
-                        ))}
-                    </div>
-                </div>
-
-                {/* PLANUNGSTABELLE */}
-                <div className="space-y-1">
-                    {daysArray.map(({d, dateStr, weekDay, isWeekend}) => {
-                        const coverage = getCoverage(dateStr);
-                        const hasGaps = coverage.some(c => c.h > 11 && c.h < 14 && c.count < 2); // Beispiel: Mittag min 2 Leute
-                        
-                        return (
-                            <div key={dateStr} className={`bg-white rounded-xl border p-3 ${isWeekend ? 'border-indigo-100 bg-indigo-50/30' : 'border-slate-100'}`}>
-                                {/* ZEILE OBEN: DATUM & GAP ANALYSE */}
-                                <div className="flex justify-between items-center mb-3">
-                                    <div className="flex items-center gap-2 w-20">
-                                        <span className={`font-bold text-sm ${isWeekend ? 'text-indigo-600' : 'text-slate-500'}`}>{weekDay}</span>
-                                        <span className="font-black text-lg">{d}.</span>
+                ) : (
+                    <div className="space-y-3">
+                        {myShifts.length===0 && <div className="text-center text-slate-400 py-10">Keine Schichten.</div>}
+                        {myShifts.map(s => {
+                            const style = SHIFT_TYPES[s.type] || SHIFT_TYPES.off;
+                            return (
+                                <div key={s.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
+                                    <div className="flex items-center gap-4">
+                                        <div className="text-center bg-slate-50 px-3 py-1 rounded-xl">
+                                            <div className="text-xs font-bold text-slate-400 uppercase">{new Date(s.date).toLocaleDateString('de-DE', {weekday:'short'})}</div>
+                                            <div className="font-black text-slate-800">{s.date.split('-')[2]}</div>
+                                        </div>
+                                        <div>
+                                            <div className={`text-[10px] font-bold px-2 py-0.5 rounded w-fit mb-1 ${style.color}`}>{style.label}</div>
+                                            {s.type !== 'off' && <div className="font-bold text-slate-700">{s.start} - {s.end}</div>}
+                                        </div>
                                     </div>
-                                    
-                                    {/* VISUELLE LÜCKEN-LEISTE (8 bis 23 Uhr) */}
-                                    <div className="flex-1 flex gap-0.5 h-2 mx-2">
-                                        {coverage.map(c => (
-                                            <div key={c.h} className={`flex-1 rounded-sm ${c.count === 0 ? 'bg-slate-100' : c.count === 1 ? 'bg-amber-300' : 'bg-emerald-400'}`} title={`${c.h} Uhr: ${c.count} Pers.`}></div>
-                                        ))}
-                                    </div>
-                                    
-                                    {/* WARNUNG ICON */}
-                                    {hasGaps && <AlertTriangle size={14} className="text-amber-400"/>}
                                 </div>
-
-                                {/* ZEILE UNTEN: MITARBEITER DROPDOOWNS */}
-                                <div className="grid grid-cols-2 gap-2">
-                                    {staff.map(s => {
-                                        const shift = shifts.find(x => x.userId === s.id && x.date === dateStr);
-                                        const type = shift ? SHIFT_TYPES[shift.type] : null;
-                                        
-                                        return (
-                                            <div key={s.id} className="relative">
-                                                <select 
-                                                    className={`w-full p-2 rounded-lg text-xs font-bold appearance-none border-2 outline-none transition-colors ${type ? type.color : 'bg-slate-50 text-slate-400 border-transparent'}`}
-                                                    onChange={(e) => saveShift(s.id, dateStr, e.target.value)}
-                                                    value={shift?.type || ''}
-                                                >
-                                                    <option value="DELETE">{s.name} (Frei)</option>
-                                                    {Object.entries(SHIFT_TYPES).map(([k, v]) => (
-                                                        <option key={k} value={k}>{s.name}: {v.label}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
         );
     }
 
-    // --- VIEW: MITARBEITER (READ ONLY) ---
-    const myShifts = shifts.filter(s => s.userId === user.id).sort((a,b) => a.date.localeCompare(b.date));
+    // --- ANSICHT FÜR CHEF (Planung) ---
     return (
-        <div className="animate-in space-y-6">
-            <h2 className="text-3xl font-black text-slate-800">Mein Dienstplan</h2>
-            {!publishStatus && <div className="p-4 bg-amber-50 text-amber-700 rounded-2xl text-sm font-bold flex items-center gap-2"><Lock size={16}/> Plan in Bearbeitung</div>}
-            
-            {publishStatus && myShifts.map(s => {
-                const style = SHIFT_TYPES[s.type] || { color: 'bg-slate-100', label: 'Schicht' };
-                return (
-                    <div key={s.id} className={`p-4 rounded-2xl border border-slate-100 flex justify-between items-center bg-white`}>
-                        <div className="flex items-center gap-4">
-                            <div className="text-center bg-slate-50 rounded-xl px-3 py-1 border border-slate-100">
-                                <div className="text-xs font-bold text-slate-400 uppercase">{new Date(s.date).toLocaleDateString('de-DE', {weekday:'short'})}</div>
-                                <div className="font-black text-slate-800">{s.date.split('-')[2]}</div>
+        <div className="animate-in space-y-4">
+            {/* Header */}
+            <div className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 sticky top-0 z-30">
+                <div className="flex justify-between items-center mb-2">
+                    <h2 className="text-xl font-black text-slate-800">Smart Planner</h2>
+                    <div className={`text-[10px] font-bold px-2 py-1 rounded border uppercase ${publishStatus?'bg-emerald-100 text-emerald-700 border-emerald-200':'bg-red-50 text-red-500 border-red-100'}`}>
+                        {publishStatus ? 'Live' : 'Entwurf'}
+                    </div>
+                </div>
+                <div className="flex gap-2">
+                    <input type="month" value={month} onChange={e=>setMonth(e.target.value)} className="bg-slate-50 p-2 rounded-xl font-bold text-slate-600 outline-none flex-1"/>
+                    <button onClick={togglePublish} className="bg-slate-900 text-white px-4 rounded-xl font-bold text-xs">{publishStatus?'Sperren':'Freigeben'}</button>
+                </div>
+            </div>
+
+            {/* Mitarbeiter Loop */}
+            <div className="space-y-8">
+                {staff.map(s => {
+                    const stats = analyzeEmployee(s.id);
+                    const hasIssues = stats.alerts.length > 0;
+
+                    return (
+                        <div key={s.id} className={`bg-white rounded-[2rem] border overflow-hidden transition-all ${hasIssues ? 'border-red-200 shadow-red-100 ring-1 ring-red-100' : 'border-slate-100 shadow-sm'}`}>
+                            
+                            {/* Mitarbeiter Header mit Stats */}
+                            <div className="bg-slate-50 p-4 border-b border-slate-100 flex justify-between items-center">
+                                <div>
+                                    <div className="font-black text-slate-700 flex items-center gap-2">
+                                        {s.name}
+                                        {hasIssues && <AlertTriangle size={14} className="text-red-500 animate-pulse"/>}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 font-bold uppercase mt-1">
+                                        {stats.workDays} Tage • {stats.totalHours.toFixed(1)} Std.
+                                    </div>
+                                </div>
+                                {hasIssues ? (
+                                    <div className="text-[9px] font-bold bg-red-500 text-white px-2 py-1 rounded">{stats.alerts[0]}</div>
+                                ) : (
+                                    <div className="text-emerald-500"><CheckCircle size={18}/></div>
+                                )}
                             </div>
-                            <div>
-                                <div className={`inline-block text-[10px] uppercase font-bold px-2 py-0.5 rounded mb-1 ${style.color}`}>{style.label}</div>
-                                <div className="font-bold text-slate-700 text-lg">{s.start} - {s.end}</div>
+
+                            {/* Horizontale Tage-Leiste */}
+                            <div className="overflow-x-auto custom-scrollbar flex p-2 gap-2">
+                                {daysArray.map(({d, dateStr, weekDay, isWeekend}) => {
+                                    const shift = shifts.find(x => x.userId === s.id && x.date === dateStr);
+                                    const type = shift ? SHIFT_TYPES[shift.type] : null;
+                                    
+                                    return (
+                                        <div key={dateStr} className={`flex-shrink-0 w-28 p-2 rounded-xl border flex flex-col gap-1 ${isWeekend ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-100'} ${type ? type.color.replace('text-','border-') : ''}`}>
+                                            <div className="text-center text-[10px] font-bold text-slate-400 mb-1">{weekDay} {d}.</div>
+                                            
+                                            <select 
+                                                className={`w-full p-1.5 rounded-lg text-[10px] font-bold appearance-none outline-none cursor-pointer ${type ? 'bg-white/50' : 'bg-slate-100 text-slate-400'}`}
+                                                onChange={(e) => saveShift(s.id, dateStr, e.target.value)}
+                                                value={shift?.type || ''}
+                                            >
+                                                <option value="">-</option>
+                                                {Object.entries(SHIFT_TYPES).map(([k, v]) => (
+                                                    <option key={k} value={k}>{v.short} ({v.start})</option>
+                                                ))}
+                                                <option value="DELETE" className="text-red-500">Löschen</option>
+                                            </select>
+                                            
+                                            {/* Zeiten anzeigen wenn gesetzt */}
+                                            {type && type.start && (
+                                                <div className="text-[9px] text-center opacity-70 font-mono mt-0.5">
+                                                    {type.start}-{type.end}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
-                    </div>
-                );
-            })}
-            {myShifts.length === 0 && <div className="text-center text-slate-400 italic">Keine Schichten.</div>}
+                    );
+                })}
+            </div>
         </div>
     );
 };
+
 // --- NEUE KOMPONENTE: SMARTE TERMINAL UHR ---
 const TerminalClock = ({ staff, appId, onClose }) => {
     const [pin, setPin] = useState('');
@@ -1260,13 +1303,13 @@ onSnapshot(query(pub('logs_time'), where('dateStr', '==', today), where('end', '
                             {view === 'inventory' && <Inventory {...common} />}
                             {view === 'waste' && <WasteManager {...common} />}
                             {view === 'shiftplan' && (
-        <ShiftModule  // <--- Neuer Name
-            staff={data.staff} 
-            appId={appId} 
-            showToast={showToast}
-            user={appUser} // <--- WICHTIG: User übergeben für die Rollen-Prüfung
-        />
-    )}
+    <SmartShiftPlanner 
+        staff={data.staff} 
+        appId={appId} 
+        showToast={showToast} 
+        user={appUser} // WICHTIG: User übergeben!
+    />
+)}
                             {view === 'admin' && (appUser.role === 'admin' || ['kitchen_lead','service_lead'].includes(appUser.role)) && <Admin {...common} debugMode={debugMode} setView={setView} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} deleteBranch={deleteBranchLocal} currentUser={appUser} lang={lang} />}
                             {view === 'history' && appUser?.role === 'admin' && <SmartHistory {...common} setView={setView} />}
                       </main>
