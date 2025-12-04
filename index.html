@@ -600,6 +600,175 @@ const DistrictDashboard = ({ districtId, onLogout, showToast }) => {
         </div>
     );
 };
+
+
+        // --- NEUE KOMPONENTE: SCHNELLE STEMPELUHR (TERMINAL) ---
+const TerminalClock = ({ staff, appId, onClose }) => {
+    const [pin, setPin] = useState('');
+    const [identifiedUser, setIdentifiedUser] = useState(null);
+    const [currentLog, setCurrentLog] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [msg, setMsg] = useState(null); // Feedback Nachricht
+
+    // PIN Eingabe Logik
+    const handleNum = async (n) => {
+        if(loading || msg) return;
+        const newPin = pin + n;
+        setPin(newPin);
+
+        if (newPin.length === 4) {
+            setLoading(true);
+            // 1. User suchen
+            const user = staff.find(s => String(s.pin) === newPin);
+            
+            if (user) {
+                // 2. Status checken (Ist er schon eingestempelt?)
+                const q = query(
+                    collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'),
+                    where('userId', '==', user.id),
+                    where('dateStr', '==', getTodayStr()),
+                    limit(1) // Wir nehmen nur den heutigen Eintrag
+                );
+                const snap = await getDocs(q);
+                const log = !snap.empty ? { id: snap.docs[0].id, ...snap.docs[0].data() } : null;
+                
+                setIdentifiedUser(user);
+                setCurrentLog(log);
+                setPin(''); // Pin reset für Sicherheit
+            } else {
+                setPin('');
+                alert("PIN unbekannt!");
+            }
+            setLoading(false);
+        }
+    };
+
+    // Stempel-Aktion ausführen
+    const handleAction = async (action) => {
+        setLoading(true);
+        const now = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        
+        try {
+            if (action === 'start') {
+                if(currentLog) throw new Error("Schon eingestempelt!");
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), { 
+                    userId: identifiedUser.id, userName: identifiedUser.name, dateStr: getTodayStr(), 
+                    start: now, end: null, status: 'active', breaks: [], createdAt: serverTimestamp() 
+                });
+                setMsg({ text: `Hallo ${identifiedUser.name}!`, sub: "Eingestempelt", color: "bg-emerald-500" });
+            }
+            else if (action === 'pause_start') {
+                const breaks = currentLog.breaks || [];
+                breaks.push({ start: now, end: null });
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { status: 'break', breaks });
+                setMsg({ text: "Schöne Pause!", sub: "Bis gleich", color: "bg-amber-500" });
+            }
+            else if (action === 'pause_end') {
+                const breaks = currentLog.breaks || [];
+                if(breaks.length > 0) breaks[breaks.length-1].end = now;
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { status: 'active', breaks });
+                setMsg({ text: "Willkommen zurück!", sub: "Weiter geht's", color: "bg-indigo-500" });
+            }
+            else if (action === 'stop') {
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { end: now, status: 'closed' });
+                setMsg({ text: "Feierabend!", sub: "Gut gemacht", color: "bg-slate-800" });
+            }
+            
+            // Nach 2 Sekunden schließen
+            setTimeout(() => {
+                onClose();
+            }, 2000);
+
+        } catch (e) {
+            alert(e.message);
+            setLoading(false);
+        }
+    };
+
+    // ANSICHT 1: PIN EINGABE
+    if (!identifiedUser) {
+        return (
+            <div className="fixed inset-0 z-[200] bg-slate-900 flex flex-col items-center justify-center p-6 animate-in">
+                <button onClick={onClose} className="absolute top-6 right-6 text-white/50 hover:text-white p-4"><X size={32}/></button>
+                <div className="text-center mb-8">
+                    <div className="text-6xl mb-4">⏱️</div>
+                    <h2 className="text-3xl font-black text-white">Terminal</h2>
+                    <p className="text-slate-400">Bitte PIN eingeben</p>
+                </div>
+                
+                {/* Pin Punkte */}
+                <div className="flex justify-center gap-4 mb-8">
+                    {[0,1,2,3].map(i => <div key={i} className={`w-4 h-4 rounded-full transition-all ${pin.length > i ? 'bg-indigo-500 scale-125' : 'bg-slate-700'}`}/>)}
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 w-full max-w-xs">
+                    {[1,2,3,4,5,6,7,8,9,0].map(n => 
+                        n===0 ? 
+                        <React.Fragment key="0"><div/><button onClick={()=>handleNum(0)} className="h-20 rounded-full bg-slate-800 text-white text-2xl font-bold active:scale-90 transition-transform">0</button></React.Fragment> 
+                        : 
+                        <button key={n} onClick={()=>handleNum(n)} className="h-20 rounded-full bg-slate-800 text-white text-2xl font-bold active:scale-90 transition-transform shadow-lg">{n}</button>
+                    )}
+                    <button onClick={()=>setPin(pin.slice(0,-1))} className="h-20 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center active:scale-90 transition-transform"><Eraser size={24}/></button>
+                </div>
+            </div>
+        );
+    }
+
+    // ANSICHT 3: ERFOLGS-MELDUNG
+    if (msg) {
+        return (
+            <div className={`fixed inset-0 z-[200] ${msg.color} flex flex-col items-center justify-center text-white animate-in`}>
+                <CheckCircle size={80} className="mb-6 animate-bounce"/>
+                <h2 className="text-4xl font-black mb-2">{msg.text}</h2>
+                <p className="text-xl opacity-80 uppercase tracking-widest font-bold">{msg.sub}</p>
+            </div>
+        );
+    }
+
+    // ANSICHT 2: AKTION WÄHLEN
+    const isWorking = currentLog && !currentLog.end;
+    const isPause = isWorking && currentLog.status === 'break';
+
+    return (
+        <div className="fixed inset-0 z-[200] bg-white flex flex-col p-6 animate-in">
+            <button onClick={()=>setIdentifiedUser(null)} className="absolute top-6 right-6 bg-slate-100 p-3 rounded-full"><X/></button>
+            
+            <div className="flex-1 flex flex-col justify-center items-center text-center space-y-2">
+                <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center text-3xl mb-4 shadow-inner">👤</div>
+                <h2 className="text-3xl font-black text-slate-900">Hallo, {identifiedUser.name}</h2>
+                <p className="text-slate-500 font-medium">
+                    {isWorking ? (isPause ? "⏸️ Du bist in Pause" : "⏱️ Du bist eingestempelt") : "Du bist nicht eingestempelt"}
+                </p>
+                {currentLog && <div className="bg-slate-50 px-4 py-2 rounded-lg font-mono text-slate-400 text-sm mt-2">Start: {currentLog.start}</div>}
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 mb-10 max-w-sm mx-auto w-full">
+                {!isWorking ? (
+                    <button onClick={()=>handleAction('start')} className="h-32 bg-emerald-500 text-white rounded-3xl font-black text-2xl shadow-xl shadow-emerald-200 active:scale-95 transition-transform flex flex-col items-center justify-center gap-2">
+                        <PlayCircle size={40}/> SCHICHT STARTEN
+                    </button>
+                ) : (
+                    <>
+                        {isPause ? (
+                            <button onClick={()=>handleAction('pause_end')} className="h-24 bg-indigo-500 text-white rounded-3xl font-bold text-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-3">
+                                <PlayCircle/> Pause beenden
+                            </button>
+                        ) : (
+                            <button onClick={()=>handleAction('pause_start')} className="h-24 bg-amber-400 text-white rounded-3xl font-bold text-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-3">
+                                <Coffee/> Pause machen
+                            </button>
+                        )}
+                        
+                        <button onClick={()=>handleAction('stop')} className="h-24 bg-slate-900 text-white rounded-3xl font-bold text-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-3">
+                            <StopCircle/> FEIERABEND
+                        </button>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+
         // --- APP CONTROLLER ---
         
             
@@ -905,22 +1074,72 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
         };
 
         const LoginScreen = ({ staff, restaurantId, company, onLogoutSystem, yesterdayOil, fryers, onSeed, onLogin, showToast, lang, onMasterRecovery, tempMasterPw, themeColor }) => {
-            const [selectedUser, setSelectedUser] = useState(null); const [showPin, setShowPin] = useState(false); const [recoveryMode, setRecoveryMode] = useState(false);
+            const [selectedUser, setSelectedUser] = useState(null); 
+            const [showPin, setShowPin] = useState(false); 
+            const [recoveryMode, setRecoveryMode] = useState(false);
+            // NEU: Terminal State
+            const [showTerminal, setShowTerminal] = useState(false);
+
             const oilLogs = Object.values(yesterdayOil || {});
             const showOilWarning = (fryers||[]).length > 0;
             const t = DICTIONARY[lang] || DICTIONARY.de;
+            
             const handleUserClick = (u) => { const pin = String(u.pin || ''); if(pin.length > 0) { setSelectedUser({...u, pin}); setShowPin(true); setRecoveryMode(false); } else { onLogin(u); } };
             const onPinSuccess = (inputPin) => { setShowPin(false); if(recoveryMode) onMasterRecovery(inputPin); else onLogin(selectedUser); };
             const getRoleName = (r) => { if(r==='admin') return 'Filialleitung'; if(r==='kitchen_lead') return 'Küchenleitung'; if(r==='service_lead') return 'Serviceleitung'; return 'Mitarbeiter'; };
 
             return (
-                <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden text-slate-800"><div className="absolute top-[-20%] right-[-20%] w-[80%] h-[80%] rounded-full blur-[150px] opacity-20 animate-pulse" style={{backgroundColor: themeColor}}></div>
-                {showPin && (<PinPad title={recoveryMode ? "Master-Schlüssel" : `${t.pin} für ${selectedUser.name}`} targetPin={recoveryMode ? null : selectedUser.pin} onClose={()=>setShowPin(false)} onSuccess={onPinSuccess} />)}
-                <div className="z-10 w-full max-w-sm mx-auto space-y-6 animate-in"><div className="flex justify-between items-start"><div><AppLogo company={company} large design={company?.design}/><p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.3em] flex items-center gap-1 mt-2"><Store size={10}/> {restaurantId}</p></div><div className="flex gap-2"><button onClick={()=>{setRecoveryMode(true); setShowPin(true);}} className="text-amber-500 hover:text-amber-400 transition-colors bg-white/5 p-2 rounded-full"><Key size={20}/></button><button onClick={onLogoutSystem} className="text-slate-500 hover:text-white transition-colors bg-white/5 p-2 rounded-full"><LogOut size={20}/></button></div></div>
-                {showOilWarning && (<div className={`p-4 rounded-2xl backdrop-blur-sm shadow-xl border ${oilLogs.length === 0 ? 'bg-red-500/20 border-red-500/30 text-red-200' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}><div className="text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1"><AlertTriangle size={10}/> {t.yesterday}</div>{oilLogs.length === 0 ? (<div className="text-sm font-bold flex items-center gap-2"><X size={16}/> {t.missing}</div>) : (<div className="space-y-1">{oilLogs.map((l,i) => { const fname = (fryers||[]).find(f=>f.id===l.deviceId)?.name || 'Fritteuse'; return <div key={i} className="text-xs flex justify-between"><span>{fname}</span><span className="font-bold">OK ({l.tpm}%)</span></div> })}</div>)}</div>)}
-                <div className="space-y-3"><div className="text-slate-500 text-xs font-bold uppercase ml-2">{t.login}</div>{(staff||[]).map(s => (<button type="button" key={s.id} onClick={() => handleUserClick(s)} className="w-full bg-white/5 hover:bg-white/10 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm"><div className="p-2.5 rounded-xl bg-white/10"><User size={20} className="text-white group-hover:text-white"/></div><div className="flex-1 text-left"><div className="font-bold text-lg">{s.name}</div><div className="text-[11px] opacity-60 uppercase font-medium">{getRoleName(s.role)}</div></div>{s.pin && String(s.pin).length>0 ? <Lock size={16} className="opacity-50"/> : <Unlock size={16} className="opacity-30 text-red-400"/>}</button>))}</div>
-                {(staff||[]).length===0 && <div className="text-center pt-8"><p className="text-slate-500 text-sm mb-4">Erster Start?</p><button onClick={onSeed} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg">Datenbank Initialisieren</button></div>}
-                </div></div>
+                <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden text-slate-800">
+                    <div className="absolute top-[-20%] right-[-20%] w-[80%] h-[80%] rounded-full blur-[150px] opacity-20 animate-pulse" style={{backgroundColor: themeColor}}></div>
+                    
+                    {/* HIER WIRD DAS TERMINAL EINGEBLENDET */}
+                    {showTerminal && <TerminalClock staff={staff} appId={restaurantId} onClose={()=>setShowTerminal(false)} />}
+
+                    {showPin && (<PinPad title={recoveryMode ? "Master-Schlüssel" : `${t.pin} für ${selectedUser.name}`} targetPin={recoveryMode ? null : selectedUser.pin} onClose={()=>setShowPin(false)} onSuccess={onPinSuccess} />)}
+                    
+                    <div className="z-10 w-full max-w-sm mx-auto space-y-6 animate-in">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <AppLogo company={company} large design={company?.design}/>
+                                <p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.3em] flex items-center gap-1 mt-2"><Store size={10}/> {restaurantId}</p>
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={()=>{setRecoveryMode(true); setShowPin(true);}} className="text-amber-500 hover:text-amber-400 transition-colors bg-white/5 p-2 rounded-full"><Key size={20}/></button>
+                                <button onClick={onLogoutSystem} className="text-slate-500 hover:text-white transition-colors bg-white/5 p-2 rounded-full"><LogOut size={20}/></button>
+                            </div>
+                        </div>
+
+                        {/* NEUER TERMINAL BUTTON */}
+                        <button onClick={()=>setShowTerminal(true)} className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-6 rounded-[2rem] shadow-2xl shadow-indigo-900/50 flex items-center justify-between group active:scale-95 transition-transform border border-white/10">
+                            <div className="text-left">
+                                <div className="font-black text-xl mb-1">STEMPELUHR</div>
+                                <div className="text-indigo-200 text-xs font-bold uppercase tracking-widest">Terminal Modus</div>
+                            </div>
+                            <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <Clock size={24} className="text-white"/>
+                            </div>
+                        </button>
+
+                        <div className="border-t border-white/10 my-4"></div>
+
+                        {showOilWarning && (<div className={`p-4 rounded-2xl backdrop-blur-sm shadow-xl border ${oilLogs.length === 0 ? 'bg-red-500/20 border-red-500/30 text-red-200' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}><div className="text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1"><AlertTriangle size={10}/> {t.yesterday}</div>{oilLogs.length === 0 ? (<div className="text-sm font-bold flex items-center gap-2"><X size={16}/> {t.missing}</div>) : (<div className="space-y-1">{oilLogs.map((l,i) => { const fname = (fryers||[]).find(f=>f.id===l.deviceId)?.name || 'Fritteuse'; return <div key={i} className="text-xs flex justify-between"><span>{fname}</span><span className="font-bold">OK ({l.tpm}%)</span></div> })}</div>)}</div>)}
+                        
+                        <div className="space-y-3">
+                            <div className="text-slate-500 text-xs font-bold uppercase ml-2">{t.login}</div>
+                            {(staff||[]).map(s => (
+                                <button type="button" key={s.id} onClick={() => handleUserClick(s)} className="w-full bg-white/5 hover:bg-white/10 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm">
+                                    <div className="p-2.5 rounded-xl bg-white/10"><User size={20} className="text-white group-hover:text-white"/></div>
+                                    <div className="flex-1 text-left">
+                                        <div className="font-bold text-lg">{s.name}</div>
+                                        <div className="text-[11px] opacity-60 uppercase font-medium">{getRoleName(s.role)}</div>
+                                    </div>
+                                    {s.pin && String(s.pin).length>0 ? <Lock size={16} className="opacity-50"/> : <Unlock size={16} className="opacity-30 text-red-400"/>}
+                                </button>
+                            ))}
+                        </div>
+                        {(staff||[]).length===0 && <div className="text-center pt-8"><p className="text-slate-500 text-sm mb-4">Erster Start?</p><button onClick={onSeed} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg">Datenbank Initialisieren</button></div>}
+                    </div>
+                </div>
             );
         };
 
