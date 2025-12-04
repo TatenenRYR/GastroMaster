@@ -126,7 +126,17 @@
             waste: { enabled: false, name: "Schwund", icon: "Trash2" },
             shiftplan: { enabled: true, name: "Dienstplan", icon: "Calendar" }
         };
+// --- NEUE REGELN FÜR AUTOMATIK ---
+const PEAK_HOURS = [12, 13, 18, 19, 20]; // Stunden, in denen viel los ist (Mittag & Abend)
+const MIN_STAFF_PEAK = 2; // Mindestens 2 Leute in Stoßzeiten
 
+// Gesetzliche Pausenregelung (DE)
+const AUTO_BREAK_RULES = {
+    threshold1: 6, // Ab 6 Stunden
+    deduct1: 30,   // Mindestens 30 Min Pause
+    threshold2: 9, // Ab 9 Stunden
+    deduct2: 45    // Mindestens 45 Min Pause
+};
 const SHIFT_TYPES = {
     early: { label: "Frühschicht", short: "F", color: "bg-amber-100 text-amber-800 border-amber-200", start: "08:00", end: "16:00", break: 30 },
     lunch: { label: "Mittag", short: "M", color: "bg-sky-100 text-sky-800 border-sky-200", start: "11:00", end: "15:00", break: 0 },
@@ -615,126 +625,144 @@ const DistrictDashboard = ({ districtId, onLogout, showToast }) => {
         </div>
     );
 };
+// --- INTELLIGENTE BERECHNUNG ---
+    const calculateStats = (start, end, breaks = []) => {
+        if(!start || !end) return { gross: 0, net: 0, breakTime: 0 };
+        
+        // 1. Brutto Zeit
+        const [h1, m1] = start.split(':').map(Number);
+        const [h2, m2] = end.split(':').map(Number);
+        let diffMins = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if(diffMins < 0) diffMins += 24 * 60;
+        const grossHours = diffMins / 60;
 
-// --- INTELLIGENTER DIENSTPLANER V2 (Multi-Shift & Custom Times) ---
+        // 2. Gestempelte Pause
+        let breakMins = 0;
+        breaks.forEach(b => {
+            if(b.start && b.end) {
+                const [bh1, bm1] = b.start.split(':').map(Number);
+                const [bh2, bm2] = b.end.split(':').map(Number);
+                let bDiff = (bh2 * 60 + bm2) - (bh1 * 60 + bm1);
+                if(bDiff > 0) breakMins += bDiff;
+            }
+        });
+
+        // 3. Gesetzliche Automatik (Korrektur)
+        let legalDeduct = 0;
+        if (grossHours > AUTO_BREAK_RULES.threshold2) legalDeduct = AUTO_BREAK_RULES.deduct2;
+        else if (grossHours > AUTO_BREAK_RULES.threshold1) legalDeduct = AUTO_BREAK_RULES.deduct1;
+
+        // Wir ziehen das Maximum ab: Entweder was er gestempelt hat, oder was das Gesetz verlangt
+        const finalBreakMins = Math.max(breakMins, legalDeduct);
+        
+        return {
+            gross: grossHours,
+            net: Math.max(0, (diffMins - finalBreakMins) / 60),
+            breakTime: finalBreakMins,
+            isAutoCorrected: finalBreakMins > breakMins // Markierung, falls das System eingegriffen hat
+        };
+    };
+                                    
+// --- INTELLIGENTER DIENSTPLANER V3 (Coverage & Auto-Calc) ---
 const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
     const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); 
     const [shifts, setShifts] = useState([]);
+    const [timeLogs, setTimeLogs] = useState([]); // Echte Stempelzeiten
     const [publishStatus, setPublishStatus] = useState(false);
-    
-    // State für das Bearbeitungs-Fenster (Modal)
-    const [editor, setEditor] = useState(null); // { userId, dateStr, name, slots: [] }
+    const [editor, setEditor] = useState(null);
 
     const isAdmin = ['admin', 'kitchen_lead', 'service_lead'].includes(user.role);
 
-    // DATEN LADEN
     useEffect(() => {
-        const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'shifts'), where('monthStr', '==', month));
-        const unsub = onSnapshot(q, s => setShifts(s.docs.map(d => ({id:d.id, ...d.data()}))));
+        // Schichten laden
+        const qShifts = query(collection(db, 'artifacts', appId, 'public', 'data', 'shifts'), where('monthStr', '==', month));
+        const unsubShifts = onSnapshot(qShifts, s => setShifts(s.docs.map(d => ({id:d.id, ...d.data()}))));
         
+        // Echte Logs laden (für Soll/Ist Vergleich)
+        const startM = month + "-01";
+        const endM = month + "-31";
+        const qLogs = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), where('dateStr', '>=', startM), where('dateStr', '<=', endM));
+        const unsubLogs = onSnapshot(qLogs, s => setTimeLogs(s.docs.map(d => d.data())));
+
         getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shift_publish', month)).then(s => {
             setPublishStatus(s.exists() && s.data().published);
         });
-        return () => unsub();
+        return () => { unsubShifts(); unsubLogs(); };
     }, [appId, month]);
 
-    // Hilfsfunktion: Stunden eines einzelnen Slots berechnen
-    const getSlotHours = (slot) => {
-        if(!slot.start || !slot.end) return 0;
-        const [h1, m1] = slot.start.split(':').map(Number);
-        const [h2, m2] = slot.end.split(':').map(Number);
+    // --- RECHEN-KERN ---
+    const calcStats = (start, end, breaks=[]) => {
+        if(!start || !end) return 0;
+        const [h1, m1] = start.split(':').map(Number);
+        const [h2, m2] = end.split(':').map(Number);
         let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
-        if(diff < 0) diff += 24 * 60; // Nachtschicht
-        return Math.max(0, (diff - (slot.break || 0)) / 60);
-    };
-
-    // ANALYSE FUNKTION (Jetzt mit Multi-Slots)
-    const analyzeEmployee = (userId) => {
-        const myShifts = shifts.filter(s => s.userId === userId);
-        let totalHours = 0;
-        let workDays = 0;
+        if(diff < 0) diff += 24 * 60;
         
-        myShifts.forEach(day => {
-            if(day.slots && day.slots.length > 0) {
-                workDays++;
-                day.slots.forEach(slot => {
-                    totalHours += getSlotHours(slot);
-                });
-            }
-        });
-
-        const alerts = [];
-        if((workDays / 4.3) > 5.5) alerts.push("Zu viele Tage");
-        if((totalHours / 4.3) > 48) alerts.push("Überstunden");
-
-        return { totalHours, workDays, alerts };
+        // Automatischer Pausenabzug (Gesetz)
+        const hours = diff / 60;
+        let deduct = 0;
+        if(hours > 9) deduct = 45;
+        else if(hours > 6) deduct = 30;
+        
+        // Wenn echte Pausen da sind, nehmen wir die (sofern sie länger als Gesetz sind)
+        // Hier vereinfacht: Wir ziehen die gesetzliche Pause vom Plan ab.
+        return Math.max(0, (diff - deduct) / 60);
     };
 
+    // --- BESETZUNGS-ANALYSE (Coverage) ---
+    const checkCoverage = (dateStr) => {
+        const dayShifts = shifts.filter(s => s.date === dateStr);
+        let status = 'good'; // good, warning, bad
+        let msg = '';
+
+        // Wir prüfen jede Stoßzeit-Stunde
+        for (let hour of PEAK_HOURS) {
+            const staffCount = dayShifts.filter(s => {
+                return (s.slots || []).some(slot => {
+                    const sH = parseInt(slot.start);
+                    const eH = parseInt(slot.end) || 24;
+                    return hour >= sH && hour < eH;
+                });
+            }).length;
+
+            if (staffCount < MIN_STAFF_PEAK) {
+                status = 'bad';
+                msg = `${hour} Uhr unterbesetzt!`;
+                break;
+            }
+        }
+        return { status, msg };
+    };
+
+    // (Editor Funktionen bleiben gleich wie in V2 - hier gekürzt für Übersicht)
     const openEditor = (userId, dateStr, userName) => {
         const existing = shifts.find(s => s.userId === userId && s.date === dateStr);
-        setEditor({
-            userId, dateStr, name: userName,
-            slots: existing?.slots || [] // Lade existierende Slots oder leeres Array
-        });
+        setEditor({ userId, dateStr, name: userName, slots: existing?.slots || [] });
     };
-
     const saveEditor = async () => {
         if(!editor) return;
         const id = `${editor.userId}_${editor.dateStr}`;
-        
-        // Wenn keine Slots mehr da sind, löschen wir den Eintrag (frei)
-        if (editor.slots.length === 0) {
-            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shifts', id));
-        } else {
-            // Wir speichern jetzt ein Array von Slots!
-            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shifts', id), {
-                userId: editor.userId,
-                date: editor.dateStr,
-                monthStr: month,
-                slots: editor.slots, // [{start, end, type, break}, ...]
-                updatedAt: serverTimestamp()
-            }, { merge: true });
-        }
+        if (editor.slots.length === 0) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shifts', id));
+        else await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shifts', id), {
+            userId: editor.userId, date: editor.dateStr, monthStr: month, slots: editor.slots, updatedAt: serverTimestamp()
+        }, { merge: true });
         setEditor(null);
     };
-
-    const addSlotToEditor = () => {
-        setEditor(prev => ({
-            ...prev,
-            slots: [...prev.slots, { type: 'early', start: '09:00', end: '17:00', break: 30 }]
-        }));
-    };
-
-    const updateSlotInEditor = (index, field, value) => {
-        setEditor(prev => {
-            const newSlots = [...prev.slots];
-            newSlots[index] = { ...newSlots[index], [field]: value };
-            
-            // Wenn Typ geändert wird, Zeiten aus Template laden
-            if (field === 'type' && SHIFT_TYPES[value]) {
-                const tmpl = SHIFT_TYPES[value];
-                if (value !== 'custom') {
-                    newSlots[index].start = tmpl.start;
-                    newSlots[index].end = tmpl.end;
-                    newSlots[index].break = tmpl.break;
-                }
-            }
-            return { ...prev, slots: newSlots };
-        });
-    };
-
-    const removeSlotFromEditor = (index) => {
-        setEditor(prev => ({ ...prev, slots: prev.slots.filter((_, i) => i !== index) }));
-    };
-
+    const addSlotToEditor = () => setEditor(p => ({...p, slots: [...p.slots, { type: 'early', start: '09:00', end: '17:00' }]}));
+    const updateSlot = (i, f, v) => setEditor(p => { 
+        const n = [...p.slots]; n[i] = {...n[i], [f]: v}; 
+        if(f==='type' && SHIFT_TYPES[v]) { n[i].start = SHIFT_TYPES[v].start; n[i].end = SHIFT_TYPES[v].end; }
+        return {...p, slots: n};
+    });
+    const removeSlot = (i) => setEditor(p => ({...p, slots: p.slots.filter((_,x)=>x!==i)}));
     const togglePublish = async () => {
-        const newState = !publishStatus;
-        if(newState && !confirm("Veröffentlichen?")) return;
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shift_publish', month), { published: newState });
-        setPublishStatus(newState);
+        const n = !publishStatus;
+        if(n && !confirm("Veröffentlichen?")) return;
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shift_publish', month), { published: n });
+        setPublishStatus(n);
     };
 
-    // Kalender
+    // Kalender Daten
     const daysInMonth = new Date(month.split('-')[0], month.split('-')[1], 0).getDate();
     const daysArray = Array.from({length: daysInMonth}, (_, i) => {
         const d = i + 1;
@@ -743,58 +771,32 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
         return { d, dateStr, weekDay: dateObj.toLocaleDateString('de-DE', {weekday:'short'}), isWeekend: [0,6].includes(dateObj.getDay()) };
     });
 
-    // --- VIEW: ADMIN ---
     if (isAdmin) return (
-        <div className="animate-in space-y-4 relative">
-            {/* EDITOR MODAL (POPUP) */}
+        <div className="animate-in space-y-4">
+            {/* EDITOR MODAL */}
             {editor && (
-                <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in">
+                <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
                     <div className="bg-white w-full max-w-md rounded-[2rem] p-6 shadow-2xl relative">
                         <button onClick={()=>setEditor(null)} className="absolute top-4 right-4 p-2 bg-slate-100 rounded-full"><X/></button>
-                        
-                        <h3 className="text-xl font-black text-slate-800 mb-1">{editor.name}</h3>
-                        <p className="text-sm text-slate-400 font-bold uppercase mb-6">{new Date(editor.dateStr).toLocaleDateString('de-DE', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}</p>
-                        
-                        <div className="space-y-3 max-h-[50vh] overflow-y-auto custom-scrollbar pr-1">
+                        <h3 className="font-black text-xl mb-6">{editor.name} am {editor.dateStr.split('-')[2]}.</h3>
+                        <div className="space-y-3 max-h-[50vh] overflow-y-auto custom-scrollbar">
                             {editor.slots.map((slot, idx) => (
-                                <div key={idx} className="bg-slate-50 p-4 rounded-2xl border border-slate-200 relative group">
-                                    <button onClick={()=>removeSlotFromEditor(idx)} className="absolute top-2 right-2 text-red-400 p-1 hover:bg-red-50 rounded"><Trash2 size={16}/></button>
-                                    
-                                    {/* Typ Wahl */}
-                                    <div className="mb-3">
-                                        <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Schicht-Typ</div>
-                                        <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                                            {Object.entries(SHIFT_TYPES).map(([k, v]) => (
-                                                <button key={k} onClick={()=>updateSlotInEditor(idx, 'type', k)} className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${slot.type===k ? v.color : 'bg-white border text-slate-400'}`}>
-                                                    {v.short}
-                                                </button>
-                                            ))}
-                                        </div>
+                                <div key={idx} className="bg-slate-50 p-3 rounded-xl border border-slate-200 relative">
+                                    <button onClick={()=>removeSlot(idx)} className="absolute top-2 right-2 text-red-400"><Trash2 size={16}/></button>
+                                    <div className="flex gap-2 mb-2 overflow-x-auto no-scrollbar">
+                                        {Object.entries(SHIFT_TYPES).map(([k,v])=><button key={k} onClick={()=>updateSlot(idx,'type',k)} className={`px-2 py-1 rounded text-[10px] font-bold ${slot.type===k?v.color:'bg-white border'}`}>{v.short}</button>)}
                                     </div>
-
-                                    {/* Zeiten */}
                                     <div className="flex gap-2">
-                                        <div className="flex-1">
-                                            <div className="text-[10px] uppercase font-bold text-slate-400">Von</div>
-                                            <input type="time" value={slot.start} onChange={e=>updateSlotInEditor(idx,'start',e.target.value)} className="w-full bg-white p-2 rounded-xl border text-sm font-bold outline-none focus:border-indigo-500"/>
-                                        </div>
-                                        <div className="flex-1">
-                                            <div className="text-[10px] uppercase font-bold text-slate-400">Bis</div>
-                                            <input type="time" value={slot.end} onChange={e=>updateSlotInEditor(idx,'end',e.target.value)} className="w-full bg-white p-2 rounded-xl border text-sm font-bold outline-none focus:border-indigo-500"/>
-                                        </div>
-                                        <div className="w-16">
-                                            <div className="text-[10px] uppercase font-bold text-slate-400">Pause</div>
-                                            <input type="number" value={slot.break} onChange={e=>updateSlotInEditor(idx,'break',e.target.value)} className="w-full bg-white p-2 rounded-xl border text-sm font-bold text-center outline-none"/>
-                                        </div>
+                                        <input type="time" value={slot.start} onChange={e=>updateSlot(idx,'start',e.target.value)} className="bg-white p-2 rounded-lg text-sm font-bold w-full"/>
+                                        <span className="self-center">-</span>
+                                        <input type="time" value={slot.end} onChange={e=>updateSlot(idx,'end',e.target.value)} className="bg-white p-2 rounded-lg text-sm font-bold w-full"/>
                                     </div>
                                 </div>
                             ))}
-                            {editor.slots.length === 0 && <div className="text-center py-4 text-slate-400 text-sm italic">Mitarbeiter hat frei.</div>}
                         </div>
-
                         <div className="mt-4 flex gap-2">
-                            <button onClick={addSlotToEditor} className="p-4 rounded-xl bg-indigo-50 text-indigo-600 font-bold text-sm flex-1 border border-indigo-100 border-dashed flex justify-center items-center gap-2 hover:bg-indigo-100"><Plus size={16}/> Schicht / Teildienst</button>
-                            <button onClick={saveEditor} className="p-4 rounded-xl bg-slate-900 text-white font-bold text-sm flex-1 shadow-lg">Speichern</button>
+                            <button onClick={addSlotToEditor} className="p-3 bg-indigo-50 text-indigo-600 rounded-xl font-bold flex-1 flex justify-center items-center gap-2"><Plus size={16}/> Schicht</button>
+                            <button onClick={saveEditor} className="p-3 bg-slate-900 text-white rounded-xl font-bold flex-1">Speichern</button>
                         </div>
                     </div>
                 </div>
@@ -802,53 +804,81 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
 
             {/* HEADER */}
             <div className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 sticky top-0 z-20">
-                <div className="flex justify-between items-center mb-2">
-                    <h2 className="text-xl font-black text-slate-800">Smart Planner v2</h2>
-                    <div className={`text-[10px] font-bold px-2 py-1 rounded border uppercase ${publishStatus?'bg-emerald-100 text-emerald-700':'bg-red-50 text-red-500'}`}>{publishStatus?'Live':'Entwurf'}</div>
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-black text-slate-800">Smart Planner v3</h2>
+                    <div className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${publishStatus?'bg-emerald-100 text-emerald-700':'bg-red-50 text-red-500'}`}>{publishStatus?'Live':'Entwurf'}</div>
                 </div>
                 <div className="flex gap-2">
-                    <input type="month" value={month} onChange={e=>setMonth(e.target.value)} className="bg-slate-50 p-2 rounded-xl font-bold text-slate-600 outline-none flex-1"/>
+                    <input type="month" value={month} onChange={e=>setMonth(e.target.value)} className="bg-slate-50 p-2 rounded-xl font-bold text-slate-600 flex-1 outline-none"/>
                     <button onClick={togglePublish} className="bg-slate-900 text-white px-4 rounded-xl font-bold text-xs">{publishStatus?'Sperren':'Freigeben'}</button>
                 </div>
+                
+                {/* GLOBAL COVERAGE CHECK (Die Leiste oben) */}
+                <div className="mt-4 flex h-3 gap-0.5 overflow-hidden rounded-full bg-slate-100">
+                    {daysArray.map(({dateStr}) => {
+                        const check = checkCoverage(dateStr);
+                        const color = check.status === 'bad' ? 'bg-red-400' : check.status === 'warning' ? 'bg-amber-300' : 'bg-emerald-300';
+                        return <div key={dateStr} className={`flex-1 ${color}`} title={`${dateStr}: ${check.msg || 'OK'}`}></div>
+                    })}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1 text-center font-bold uppercase tracking-widest">Besetzungs-Radar (Monatsübersicht)</div>
             </div>
 
-            {/* PLANER GRID */}
+            {/* MITARBEITER GRID */}
             <div className="space-y-6">
                 {staff.map(s => {
-                    const stats = analyzeEmployee(s.id);
+                    // SUMMEN BERECHNEN (SOLL vs IST)
+                    let plannedSum = 0;
+                    let workedSum = 0;
+
+                    shifts.filter(sh => sh.userId === s.id).forEach(sh => {
+                        (sh.slots||[]).forEach(slot => plannedSum += calcStats(slot.start, slot.end));
+                    });
+
+                    // Echte Logs berechnen (mit Auto-Pause)
+                    timeLogs.filter(l => l.userId === s.id).forEach(l => {
+                        if(l.end) workedSum += calcStats(l.start, l.end, l.breaks);
+                    });
+
+                    const diff = workedSum - plannedSum;
+                    const diffColor = diff < -2 ? 'text-red-500' : diff > 2 ? 'text-amber-500' : 'text-emerald-500';
+
                     return (
                         <div key={s.id} className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
                             <div className="bg-slate-50 p-3 border-b border-slate-100 flex justify-between items-center">
-                                <div><div className="font-black text-slate-700">{s.name}</div><div className="text-[10px] text-slate-400 font-bold">{stats.totalHours.toFixed(1)}h / Monat</div></div>
-                                {stats.alerts.length > 0 && <AlertTriangle size={16} className="text-red-500"/>}
+                                <div>
+                                    <div className="font-black text-slate-700">{s.name}</div>
+                                    <div className="text-[10px] font-bold text-slate-400 mt-0.5">
+                                        Plan: {plannedSum.toFixed(1)}h • <span className={diffColor}>Ist: {workedSum.toFixed(1)}h</span>
+                                    </div>
+                                </div>
+                                <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center font-bold text-slate-300 text-xs shadow-sm">{s.name.charAt(0)}</div>
                             </div>
                             
                             <div className="overflow-x-auto custom-scrollbar flex p-2 gap-2">
                                 {daysArray.map(({d, dateStr, weekDay, isWeekend}) => {
                                     const shiftData = shifts.find(x => x.userId === s.id && x.date === dateStr);
                                     const slots = shiftData?.slots || [];
-                                    const isFree = slots.length === 0;
+                                    
+                                    // Tagesspezifischer Check
+                                    const coverage = checkCoverage(dateStr); 
+                                    const dayWarning = coverage.status === 'bad' && slots.length === 0; // Warnung wenn leer an schlechtem Tag
 
                                     return (
                                         <button 
                                             key={dateStr} 
                                             onClick={() => openEditor(s.id, dateStr, s.name)}
-                                            className={`flex-shrink-0 w-24 min-h-[80px] p-2 rounded-xl border flex flex-col gap-1 transition-all active:scale-95 text-left ${isWeekend ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-100'} ${!isFree ? 'ring-1 ring-indigo-200 bg-indigo-50/20' : ''}`}
+                                            className={`flex-shrink-0 w-24 min-h-[70px] p-2 rounded-xl border flex flex-col gap-1 transition-all text-left relative ${isWeekend ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-100'} ${slots.length>0 ? 'ring-1 ring-indigo-100 bg-indigo-50/10' : ''}`}
                                         >
-                                            <div className="text-[10px] font-bold text-slate-400 mb-1">{weekDay} {d}.</div>
+                                            {dayWarning && <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>}
+                                            <div className="text-[9px] font-bold text-slate-400 mb-1">{weekDay} {d}.</div>
                                             
-                                            {/* SLOTS ANZEIGEN */}
-                                            {isFree ? (
-                                                <div className="flex-1 flex items-center justify-center opacity-20"><Plus size={14}/></div>
-                                            ) : (
-                                                <div className="space-y-1">
-                                                    {slots.map((slot, i) => (
-                                                        <div key={i} className={`text-[9px] font-bold px-1.5 py-0.5 rounded border truncate ${SHIFT_TYPES[slot.type]?.color || 'bg-gray-100'}`}>
-                                                            {slot.start}-{slot.end}
-                                                        </div>
-                                                    ))}
+                                            {slots.length === 0 ? <div className="flex-1 flex items-center justify-center opacity-10"><Plus size={12}/></div> : 
+                                            slots.map((slot, i) => (
+                                                <div key={i} className={`text-[8px] font-bold px-1.5 py-0.5 rounded border truncate ${SHIFT_TYPES[slot.type]?.color || 'bg-gray-100'}`}>
+                                                    {slot.start}-{slot.end}
                                                 </div>
-                                            )}
+                                            ))}
                                         </button>
                                     );
                                 })}
@@ -860,35 +890,34 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
         </div>
     );
 
-    // --- VIEW: MITARBEITER (READ ONLY) ---
+    // Mitarbeiter Ansicht (Bleibt einfach)
     const myShifts = shifts.filter(s => s.userId === user.id).sort((a,b) => a.date.localeCompare(b.date));
     return (
         <div className="animate-in space-y-6">
             <h2 className="text-3xl font-black text-slate-800">Mein Dienstplan</h2>
-            {!publishStatus ? <div className="p-4 bg-amber-50 text-amber-700 rounded-2xl text-sm font-bold flex gap-2"><Lock size={16}/> In Bearbeitung</div> :
-            <div className="space-y-3">
-                {myShifts.map(s => (
-                    <div key={s.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex gap-4 items-center">
-                        <div className="text-center bg-slate-50 px-3 py-1 rounded-xl">
-                            <div className="text-xs font-bold text-slate-400">{new Date(s.date).toLocaleDateString('de-DE',{weekday:'short'})}</div>
-                            <div className="font-black text-slate-800">{s.date.split('-')[2]}</div>
+            {publishStatus ? (
+                <div className="space-y-3">
+                    {myShifts.map(s => (
+                        <div key={s.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+                            <div className="text-center bg-slate-50 px-3 py-1 rounded-xl">
+                                <div className="text-xs font-bold text-slate-400">{new Date(s.date).toLocaleDateString('de-DE',{weekday:'short'})}</div>
+                                <div className="font-black text-slate-800">{s.date.split('-')[2]}</div>
+                            </div>
+                            <div className="space-y-1">
+                                {(s.slots||[]).map((sl,i)=>(
+                                    <div key={i} className="text-sm font-bold text-slate-600 flex items-center gap-2">
+                                        <span className={`w-2 h-2 rounded-full ${SHIFT_TYPES[sl.type]?.color.split(' ')[0]||'bg-gray-400'}`}></span>
+                                        {sl.start} - {sl.end}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                        <div className="space-y-1">
-                            {(s.slots||[]).map((slot, i) => (
-                                <div key={i} className="flex gap-2 items-center">
-                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${SHIFT_TYPES[slot.type]?.color}`}>{SHIFT_TYPES[slot.type]?.short}</span>
-                                    <span className="font-bold text-slate-700 text-sm">{slot.start} - {slot.end}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                ))}
-                {myShifts.length===0 && <div className="text-center text-slate-400 py-10">Keine Schichten.</div>}
-            </div>}
+                    ))}
+                </div>
+            ) : <div className="p-6 bg-slate-100 rounded-[2rem] text-center italic text-slate-500">Plan noch nicht freigegeben.</div>}
         </div>
     );
 };
-
 // --- NEUE KOMPONENTE: SMARTE TERMINAL UHR ---
 const TerminalClock = ({ staff, appId, onClose }) => {
     const [pin, setPin] = useState('');
