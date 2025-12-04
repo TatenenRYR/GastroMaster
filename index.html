@@ -677,6 +677,7 @@ const ShiftPlanner = ({ staff, appId, showToast }) => {
 };
 
         // --- NEUE KOMPONENTE: SCHNELLE STEMPELUHR (TERMINAL) ---
+// --- NEUE KOMPONENTE: SMARTE TERMINAL UHR ---
 const TerminalClock = ({ staff, appId, onClose }) => {
     const [pin, setPin] = useState('');
     const [identifiedUser, setIdentifiedUser] = useState(null);
@@ -685,7 +686,7 @@ const TerminalClock = ({ staff, appId, onClose }) => {
     const [loading, setLoading] = useState(false);
     const [msg, setMsg] = useState(null);
 
-    // Hilfsfunktion: Zeitstring "12:00" in Minuten umwandeln
+    // Zeit-Hilfsfunktion
     const timeToMins = (t) => {
         if(!t) return 0;
         const [h, m] = t.split(':').map(Number);
@@ -702,8 +703,13 @@ const TerminalClock = ({ staff, appId, onClose }) => {
             const user = staff.find(s => String(s.pin) === newPin);
             
             if (user) {
-                // 1. Log Status prüfen
-                const qLog = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), where('userId', '==', user.id), where('dateStr', '==', getTodayStr()), limit(1));
+                // 1. Log für heute suchen (egal ob offen oder geschlossen)
+                const qLog = query(
+                    collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), 
+                    where('userId', '==', user.id), 
+                    where('dateStr', '==', getTodayStr()), 
+                    limit(1)
+                );
                 const snapLog = await getDocs(qLog);
                 
                 // 2. Dienstplan prüfen
@@ -729,35 +735,55 @@ const TerminalClock = ({ staff, appId, onClose }) => {
         const nowMins = timeToMins(nowStr);
 
         try {
+            // FALL 1: GANZ NEU STARTEN
             if (action === 'start') {
-                // Dienstplan Prüfung
                 if (todayShift && todayShift.start) {
                     const startMins = timeToMins(todayShift.start);
-                    // 10 Min Toleranz
                     if (nowMins < (startMins - 10)) {
-                        throw new Error(`Zu früh! Dein Dienst beginnt erst um ${todayShift.start} Uhr.`);
+                        throw new Error(`Zu früh! Dienst beginnt erst um ${todayShift.start} Uhr.`);
                     }
                 }
-
                 if(currentLog) throw new Error("Bereits eingestempelt!");
+                
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), { 
                     userId: identifiedUser.id, userName: identifiedUser.name, dateStr: getTodayStr(), 
                     start: nowStr, end: null, status: 'active', breaks: [], createdAt: serverTimestamp() 
                 });
-                setMsg({ text: `Hallo ${identifiedUser.name}!`, sub: "Eingestempelt", color: "bg-emerald-500" });
+                setMsg({ text: `Hallo ${identifiedUser.name}!`, sub: "Schicht gestartet", color: "bg-emerald-500" });
             }
+            
+            // FALL 2: NACH FEIERABEND WIEDERKOMMEN (SMART RESUME)
+            else if (action === 'resume_after_stop') {
+                // Wir berechnen die Lücke als Pause
+                const oldEnd = currentLog.end;
+                const newBreak = { start: oldEnd, end: nowStr };
+                const updatedBreaks = [...(currentLog.breaks || []), newBreak];
+
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { 
+                    end: null, // "Entfernt" den Feierabend
+                    status: 'active', 
+                    breaks: updatedBreaks 
+                });
+                setMsg({ text: "Willkommen zurück!", sub: "Zeit dazwischen als Pause gebucht", color: "bg-indigo-500" });
+            }
+
+            // FALL 3: NORMALE PAUSE STARTEN
             else if (action === 'pause_start') {
                  const breaks = currentLog.breaks || [];
                  breaks.push({ start: nowStr, end: null });
                  await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { status: 'break', breaks });
-                 setMsg({ text: "Pause", sub: "Erhol dich gut", color: "bg-amber-500" });
+                 setMsg({ text: "Schöne Pause", sub: "Erhol dich gut", color: "bg-amber-500" });
             }
+
+            // FALL 4: NORMALE PAUSE BEENDEN
             else if (action === 'pause_end') {
                  const breaks = currentLog.breaks || [];
                  if(breaks.length > 0) breaks[breaks.length-1].end = nowStr;
                  await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { status: 'active', breaks });
                  setMsg({ text: "Weiter geht's", sub: "Power on", color: "bg-indigo-500" });
             }
+
+            // FALL 5: FEIERABEND
             else if (action === 'stop') {
                  await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { end: nowStr, status: 'closed' });
                  setMsg({ text: "Feierabend", sub: "Gut gemacht", color: "bg-slate-800" });
@@ -770,7 +796,9 @@ const TerminalClock = ({ staff, appId, onClose }) => {
         }
     };
 
-    if (msg) return <div className={`fixed inset-0 z-[200] ${msg.color} flex flex-col items-center justify-center text-white animate-in`}><h2 className="text-4xl font-black">{msg.text}</h2><p>{msg.sub}</p></div>;
+    // --- RENDER LOGIK ---
+
+    if (msg) return <div className={`fixed inset-0 z-[200] ${msg.color} flex flex-col items-center justify-center text-white animate-in`}><h2 className="text-4xl font-black">{msg.text}</h2><p className="text-xl font-bold opacity-80">{msg.sub}</p></div>;
     
     if (!identifiedUser) return (
         <div className="fixed inset-0 z-[200] bg-slate-900 flex flex-col items-center justify-center p-6 animate-in">
@@ -784,28 +812,58 @@ const TerminalClock = ({ staff, appId, onClose }) => {
         </div>
     );
 
-    const isWorking = currentLog && !currentLog.end;
+    // Status ermitteln
+    const isClosed = currentLog && currentLog.status === 'closed';
+    const isWorking = currentLog && !isClosed;
     const isPause = isWorking && currentLog.status === 'break';
     
     return (
         <div className="fixed inset-0 z-[200] bg-white flex flex-col p-6 animate-in">
             <button onClick={()=>setIdentifiedUser(null)} className="absolute top-6 right-6 bg-slate-100 p-3 rounded-full"><X/></button>
             <div className="flex-1 flex flex-col justify-center items-center text-center">
+                <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center text-4xl mb-4 shadow-inner">
+                    {isClosed ? '🏠' : isPause ? '☕' : '🚀'}
+                </div>
                 <h2 className="text-3xl font-black text-slate-900">Hallo, {identifiedUser.name}</h2>
-                {todayShift && <div className="text-sm font-bold text-slate-400 mt-2 bg-slate-50 px-3 py-1 rounded-lg">Plan: {todayShift.start} - {todayShift.end}</div>}
+                
+                {/* Status Text */}
+                {isClosed && <div className="text-red-500 font-bold mt-2 bg-red-50 px-4 py-2 rounded-xl">Bereits ausgecheckt: {currentLog.end}</div>}
+                {isWorking && <div className="text-emerald-500 font-bold mt-2 bg-emerald-50 px-4 py-2 rounded-xl">Startzeit: {currentLog.start}</div>}
+                {todayShift && <div className="text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest">Plan: {todayShift.start} - {todayShift.end}</div>}
+
                 <div className="mt-8 space-y-4 w-full max-w-sm">
-                    {!isWorking ? <button onClick={()=>handleAction('start')} className="w-full py-6 bg-emerald-500 text-white rounded-2xl font-black text-xl shadow-xl">SCHICHT STARTEN</button> :
-                    <>
-                        {isPause ? <button onClick={()=>handleAction('pause_end')} className="w-full py-6 bg-indigo-500 text-white rounded-2xl font-black text-xl shadow-xl">PAUSE BEENDEN</button> : 
-                        <button onClick={()=>handleAction('pause_start')} className="w-full py-6 bg-amber-400 text-white rounded-2xl font-black text-xl shadow-xl">PAUSE MACHEN</button>}
-                        <button onClick={()=>handleAction('stop')} className="w-full py-6 bg-slate-800 text-white rounded-2xl font-black text-xl shadow-xl">FEIERABEND</button>
-                    </>}
+                    {/* BUTTONS JE NACH STATUS */}
+                    
+                    {!currentLog && (
+                        <button onClick={()=>handleAction('start')} className="w-full py-6 bg-emerald-500 text-white rounded-2xl font-black text-xl shadow-xl active:scale-95 transition-transform">SCHICHT STARTEN</button>
+                    )}
+
+                    {isClosed && (
+                        <div className="space-y-4">
+                            <div className="bg-indigo-50 p-4 rounded-2xl text-indigo-800 text-sm font-medium">
+                                Du hast dich schon ausgestempelt. Möchtest du weitermachen? Die Zeit dazwischen wird als Pause gewertet.
+                            </div>
+                            <button onClick={()=>handleAction('resume_after_stop')} className="w-full py-6 bg-indigo-600 text-white rounded-2xl font-black text-xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-2">
+                                <RefreshCcw/> DIENST FORTSETZEN
+                            </button>
+                        </div>
+                    )}
+
+                    {isWorking && (
+                        <>
+                            {isPause ? (
+                                <button onClick={()=>handleAction('pause_end')} className="w-full py-6 bg-indigo-500 text-white rounded-2xl font-black text-xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-2"><PlayCircle/> PAUSE BEENDEN</button>
+                            ) : (
+                                <button onClick={()=>handleAction('pause_start')} className="w-full py-6 bg-amber-400 text-white rounded-2xl font-black text-xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-2"><Coffee/> PAUSE MACHEN</button>
+                            )}
+                            <button onClick={()=>handleAction('stop')} className="w-full py-6 bg-slate-800 text-white rounded-2xl font-black text-xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-2"><StopCircle/> FEIERABEND</button>
+                        </>
+                    )}
                 </div>
             </div>
         </div>
     );
 };
-
 // --- APP CONTROLLER ---
         function App() {
             const [user, setUser] = useState(null);
