@@ -103,7 +103,7 @@
 
         // Available Icons for Customization
         const ICON_MAP = {
-            Clock: <Clock/>, ClipboardList: <ClipboardList/>, Sparkles: <Sparkles/>, Snowflake: <Snowflake/>, 
+            Clock: <Clock/>, Calendar: <Calendar/>, ClipboardList: <ClipboardList/>, Sparkles: <Sparkles/>, Snowflake: <Snowflake/>, 
             Droplet: <Droplet/>, Truck: <Truck/>, Menu: <Menu/>, Settings: <Settings/>, Utensils: <Utensils/>,
             Coffee: <Coffee/>, ChefHat: <ChefHat/>, Box: <Box/>, Layers: <Layers/>, AlertTriangle: <AlertTriangle/>
         };
@@ -123,7 +123,8 @@
             cooling: { enabled: true, name: "Kühlung", icon: "Snowflake" },
             oil: { enabled: true, name: "Fett & Öl", icon: "Droplet" },
             inventory: { enabled: true, name: "Einkauf", icon: "Truck" },
-            waste: { enabled: false, name: "Schwund", icon: "Trash2" }
+            waste: { enabled: false, name: "Schwund", icon: "Trash2" },
+            shiftplan: { enabled: true, name: "Dienstplan", icon: "Calendar" }
         };
 
         const DICTIONARY = {
@@ -600,17 +601,97 @@ const DistrictDashboard = ({ districtId, onLogout, showToast }) => {
         </div>
     );
 };
+// --- NEUES MODUL: DIENSTPLAN ---
+const ShiftPlanner = ({ staff, appId, showToast }) => {
+    const [shifts, setShifts] = useState({});
+    const [selectedDay, setSelectedDay] = useState(getWeekdayShort()); // Mo, Di, ...
+    const days = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
+    // Laden der Schichten
+    useEffect(() => {
+        const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'shifts'));
+        return onSnapshot(q, s => {
+            const data = {};
+            s.docs.forEach(d => data[d.id] = d.data());
+            setShifts(data);
+        });
+    }, [appId]);
+
+    const updateShift = async (userId, type, val) => {
+        // ID Format: USERID_TAG (z.B. user123_Mo)
+        const docId = `${userId}_${selectedDay}`;
+        const current = shifts[docId] || {};
+        
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shifts', docId), {
+            ...current,
+            userId,
+            day: selectedDay,
+            [type]: val, // 'start' oder 'end'
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+    };
+
+    return (
+        <div className="animate-in space-y-6">
+            <div className="flex justify-between items-center">
+                <div><h2 className="text-3xl font-black text-inherit">Dienstplan</h2><p className="opacity-60 text-sm font-medium">Wer arbeitet wann?</p></div>
+            </div>
+
+            {/* Tage Wähler */}
+            <div className="flex bg-white p-2 rounded-2xl border border-slate-100 shadow-sm overflow-x-auto">
+                {days.map(d => (
+                    <button key={d} onClick={()=>setSelectedDay(d)} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${selectedDay===d?'bg-slate-900 text-white shadow-lg':'text-slate-400 hover:bg-slate-50'}`}>
+                        {d}
+                    </button>
+                ))}
+            </div>
+
+            {/* Liste der Mitarbeiter */}
+            <div className="space-y-3">
+                {staff.map(s => {
+                    const shift = shifts[`${s.id}_${selectedDay}`] || {start:'', end:''};
+                    return (
+                        <div key={s.id} className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between">
+                            <div className="flex items-center gap-3 w-1/3">
+                                <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 font-bold">{s.name.charAt(0)}</div>
+                                <div className="font-bold text-slate-700 truncate">{s.name}</div>
+                            </div>
+                            
+                            <div className="flex items-center gap-2 flex-1 justify-end">
+                                <div className="bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+                                    <span className="text-[10px] text-slate-400 font-bold block uppercase">Start</span>
+                                    <input type="time" value={shift.start} onChange={e=>updateShift(s.id, 'start', e.target.value)} className="bg-transparent font-bold text-slate-800 outline-none w-20"/>
+                                </div>
+                                <div className="text-slate-300 font-bold">-</div>
+                                <div className="bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+                                    <span className="text-[10px] text-slate-400 font-bold block uppercase">Ende</span>
+                                    <input type="time" value={shift.end} onChange={e=>updateShift(s.id, 'end', e.target.value)} className="bg-transparent font-bold text-slate-800 outline-none w-20"/>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
 
         // --- NEUE KOMPONENTE: SCHNELLE STEMPELUHR (TERMINAL) ---
 const TerminalClock = ({ staff, appId, onClose }) => {
     const [pin, setPin] = useState('');
     const [identifiedUser, setIdentifiedUser] = useState(null);
     const [currentLog, setCurrentLog] = useState(null);
+    const [todayShift, setTodayShift] = useState(null); // NEU: Geplanter Dienst
     const [loading, setLoading] = useState(false);
-    const [msg, setMsg] = useState(null); // Feedback Nachricht
+    const [msg, setMsg] = useState(null);
 
-    // PIN Eingabe Logik
+    // Hilfsfunktion: Zeitstring "12:00" in Minuten umwandeln
+    const timeToMins = (t) => {
+        if(!t) return 0;
+        const [h, m] = t.split(':').map(Number);
+        return h * 60 + m;
+    };
+
     const handleNum = async (n) => {
         if(loading || msg) return;
         const newPin = pin + n;
@@ -618,30 +699,126 @@ const TerminalClock = ({ staff, appId, onClose }) => {
 
         if (newPin.length === 4) {
             setLoading(true);
-            // 1. User suchen
             const user = staff.find(s => String(s.pin) === newPin);
             
             if (user) {
-                // 2. Status checken (Ist er schon eingestempelt?)
-                const q = query(
-                    collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'),
-                    where('userId', '==', user.id),
-                    where('dateStr', '==', getTodayStr()),
-                    limit(1) // Wir nehmen nur den heutigen Eintrag
-                );
-                const snap = await getDocs(q);
-                const log = !snap.empty ? { id: snap.docs[0].id, ...snap.docs[0].data() } : null;
+                // 1. Log Status prüfen
+                const qLog = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), where('userId', '==', user.id), where('dateStr', '==', getTodayStr()), limit(1));
+                const snapLog = await getDocs(qLog);
+                
+                // 2. Dienstplan prüfen (NEU)
+                const dayShort = getWeekdayShort(); // z.B. "Mo"
+                const docId = `${user.id}_${dayShort}`;
+                const snapShift = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shifts', docId));
                 
                 setIdentifiedUser(user);
-                setCurrentLog(log);
-                setPin(''); // Pin reset für Sicherheit
-            } else {
+                setCurrentLog(!snapLog.empty ? { id: snapLog.docs[0].id, ...snapLog.docs[0].data() } : null);
+                setTodayShift(snapShift.exists() ? snapShift.data() : null);
                 setPin('');
-                alert("PIN unbekannt!");
+            } else {
+                setPin(''); alert("PIN falsch!");
             }
             setLoading(false);
         }
     };
+
+    const handleAction = async (action) => {
+        setLoading(true);
+        const nowObj = new Date();
+        const nowStr = nowObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        const nowMins = timeToMins(nowStr);
+
+        try {
+            if (action === 'start') {
+                // --- INTELLIGENTE PRÜFUNG ---
+                if (todayShift && todayShift.start) {
+                    const startMins = timeToMins(todayShift.start);
+                    // Toleranz: Man darf 10 Minuten vor Schichtbeginn stempeln
+                    if (nowMins < (startMins - 10)) {
+                        throw new Error(`Zu früh! Dein Dienst beginnt erst um ${todayShift.start} Uhr.`);
+                    }
+                }
+                // -----------------------------
+
+                if(currentLog) throw new Error("Bereits eingestempelt!");
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), { 
+                    userId: identifiedUser.id, userName: identifiedUser.name, dateStr: getTodayStr(), 
+                    start: nowStr, end: null, status: 'active', breaks: [], createdAt: serverTimestamp() 
+                });
+                setMsg({ text: `Hallo ${identifiedUser.name}!`, sub: todayShift ? `Schichtstart: ${todayShift.start}` : "Frohes Schaffen", color: "bg-emerald-500" });
+            }
+            // ... (Pause und Stop Logik bleibt gleich wie vorher) ...
+            else if (action === 'pause_start') {
+                 // ... Code für Pause Start ...
+                 const breaks = currentLog.breaks || [];
+                 breaks.push({ start: nowStr, end: null });
+                 await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { status: 'break', breaks });
+                 setMsg({ text: "Pause", sub: "Erhol dich gut", color: "bg-amber-500" });
+            }
+            else if (action === 'pause_end') {
+                 // ... Code für Pause Ende ...
+                 const breaks = currentLog.breaks || [];
+                 if(breaks.length > 0) breaks[breaks.length-1].end = nowStr;
+                 await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { status: 'active', breaks });
+                 setMsg({ text: "Weiter geht's", sub: "Power on", color: "bg-indigo-500" });
+            }
+            else if (action === 'stop') {
+                 // ... Code für Stop ...
+                 await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { end: nowStr, status: 'closed' });
+                 setMsg({ text: "Feierabend", sub: "Gut gemacht", color: "bg-slate-800" });
+            }
+
+            setTimeout(() => { onClose(); }, 2500);
+        } catch (e) {
+            alert(e.message); // Zeigt "Zu früh!" an
+            setLoading(false);
+        }
+    };
+
+    // ... (Render-Teil bleibt größtenteils gleich, nutzen Sie den Code von vorhin) ...
+    // Nur bei "ANSICHT 2" können Sie jetzt die geplante Zeit anzeigen:
+    /*
+        {todayShift && todayShift.start && (
+             <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-2">
+                 Geplanter Start: {todayShift.start} Uhr
+             </div>
+        )}
+    */
+    
+    // (Rest der TerminalClock Komponente von der vorherigen Antwort hier einfügen/behalten)
+    // Um Platz zu sparen, kopiere ich hier nicht den ganzen Render-Block nochmal, 
+    // er ist identisch zur vorherigen Version, außer dass Sie oben die Logik eingefügt haben.
+    
+    // Kurzform für den Render-Teil, damit es funktioniert:
+    if (msg) return <div className={`fixed inset-0 z-[200] ${msg.color} flex flex-col items-center justify-center text-white animate-in`}><h2 className="text-4xl font-black">{msg.text}</h2><p>{msg.sub}</p></div>;
+    if (!identifiedUser) return (
+        <div className="fixed inset-0 z-[200] bg-slate-900 flex flex-col items-center justify-center p-6 animate-in">
+             <button onClick={onClose} className="absolute top-6 right-6 text-white p-4"><X/></button>
+             <h2 className="text-3xl font-black text-white mb-8">PIN EINGABE</h2>
+             <div className="grid grid-cols-3 gap-4 w-full max-w-xs">{[1,2,3,4,5,6,7,8,9,0].map(n=><button key={n} onClick={()=>handleNum(n)} className="h-20 rounded-full bg-slate-800 text-white text-2xl font-bold">{n}</button>)}</div>
+        </div>
+    );
+    // User erkannt Ansicht:
+    const isWorking = currentLog && !currentLog.end;
+    const isPause = isWorking && currentLog.status === 'break';
+    return (
+        <div className="fixed inset-0 z-[200] bg-white flex flex-col p-6 animate-in">
+            <button onClick={()=>setIdentifiedUser(null)} className="absolute top-6 right-6 bg-slate-100 p-3 rounded-full"><X/></button>
+            <div className="flex-1 flex flex-col justify-center items-center text-center">
+                <h2 className="text-3xl font-black text-slate-900">Hallo, {identifiedUser.name}</h2>
+                {todayShift && <div className="text-sm font-bold text-slate-400 mt-2 bg-slate-50 px-3 py-1 rounded-lg">Plan: {todayShift.start} - {todayShift.end}</div>}
+                <div className="mt-8 space-y-4 w-full max-w-sm">
+                    {!isWorking ? <button onClick={()=>handleAction('start')} className="w-full py-6 bg-emerald-500 text-white rounded-2xl font-black text-xl shadow-xl">SCHICHT STARTEN</button> :
+                    <>
+                        {isPause ? <button onClick={()=>handleAction('pause_end')} className="w-full py-6 bg-indigo-500 text-white rounded-2xl font-black text-xl shadow-xl">PAUSE BEENDEN</button> : 
+                        <button onClick={()=>handleAction('pause_start')} className="w-full py-6 bg-amber-400 text-white rounded-2xl font-black text-xl shadow-xl">PAUSE MACHEN</button>}
+                        <button onClick={()=>handleAction('stop')} className="w-full py-6 bg-slate-800 text-white rounded-2xl font-black text-xl shadow-xl">FEIERABEND</button>
+                    </>}
+                </div>
+            </div>
+        </div>
+    );
+};
 
     // Stempel-Aktion ausführen
     const handleAction = async (action) => {
@@ -913,11 +1090,17 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
                     onSnapshot(query(pub('logs_signatures'), where('dateStr', '==', today)), s => { const sigs = {}; s.docs.forEach(d => sigs[d.data().module] = d.data()); setStatus(p => ({...p, signatures: sigs})); }),
                     
                     // --- NEU HINZUGEFÜGT: Wer arbeitet gerade? (Für den Login Screen) ---
-                    onSnapshot(query(pub('logs_time'), where('dateStr', '==', today), where('end', '==', null)), s => {
-                        // Wir speichern eine Liste der User-IDs, die gerade arbeiten
-                        const activeIds = s.docs.map(d => d.data().userId);
-                        setStatus(p => ({...p, activeWorkers: activeIds}));
-                    })
+                    // In function App(), innerhalb von useEffect -> unsubsLive:
+
+onSnapshot(query(pub('logs_time'), where('dateStr', '==', today), where('end', '==', null)), s => {
+    // Wir speichern jetzt ein Objekt: { "user123": "active", "user456": "break" }
+    const workerStatus = {};
+    s.docs.forEach(d => {
+        const log = d.data();
+        workerStatus[log.userId] = log.status || 'active';
+    });
+    setStatus(p => ({...p, workerStatus: workerStatus})); // Speichern als Object
+})
                 ];
                 let timeUnsub = null;
                 if(appUser) {
@@ -990,7 +1173,8 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
                 company={data.company} 
                 yesterdayOil={status.yesterdayOil} 
                 fryers={data.fryers} 
-                onLogin={handleUserLogin} 
+                onLogin={handleUserLogin}
+                workerStatus={status.workerStatus || {}}
                 onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} 
                 onSeed={()=>seedDB()} 
                 showToast={showToast} 
@@ -1034,6 +1218,13 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
                             {view === 'oil' && hasAccess('kitchen') && <Oil {...common} />}
                             {view === 'inventory' && <Inventory {...common} />}
                             {view === 'waste' && <WasteManager {...common} />}
+                            {view === 'shiftplan' && (
+        <ShiftPlanner 
+            staff={data.staff} 
+            appId={appId} 
+            showToast={showToast} 
+        />
+    )}
                             {view === 'admin' && (appUser.role === 'admin' || ['kitchen_lead','service_lead'].includes(appUser.role)) && <Admin {...common} debugMode={debugMode} setView={setView} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} deleteBranch={deleteBranchLocal} currentUser={appUser} lang={lang} />}
                             {view === 'history' && appUser?.role === 'admin' && <SmartHistory {...common} setView={setView} />}
                       </main>
@@ -1097,7 +1288,11 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
             );
         };
 
-        const LoginScreen = ({ staff, restaurantId, company, onLogoutSystem, yesterdayOil, fryers, onSeed, onLogin, showToast, lang, onMasterRecovery, tempMasterPw, themeColor, activeWorkers = [] }) => {
+        const LoginScreen = ({ 
+            staff, restaurantId, company, onLogoutSystem, yesterdayOil, fryers, 
+            onSeed, onLogin, showToast, lang, onMasterRecovery, tempMasterPw, 
+            themeColor, workerStatus = {} // <--- WICHTIG: Das neue Status-Objekt
+        }) => {
             const [selectedUser, setSelectedUser] = useState(null); 
             const [showPin, setShowPin] = useState(false); 
             const [recoveryMode, setRecoveryMode] = useState(false);
@@ -1107,22 +1302,57 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
             const showOilWarning = (fryers||[]).length > 0;
             const t = DICTIONARY[lang] || DICTIONARY.de;
             
-            const handleUserClick = (u) => { const pin = String(u.pin || ''); if(pin.length > 0) { setSelectedUser({...u, pin}); setShowPin(true); setRecoveryMode(false); } else { onLogin(u); } };
-            const onPinSuccess = (inputPin) => { setShowPin(false); if(recoveryMode) onMasterRecovery(inputPin); else onLogin(selectedUser); };
-            const getRoleName = (r) => { if(r==='admin') return 'Filialleitung'; if(r==='kitchen_lead') return 'Küchenleitung'; if(r==='service_lead') return 'Serviceleitung'; return 'Mitarbeiter'; };
+            const handleUserClick = (u) => { 
+                const pin = String(u.pin || ''); 
+                if(pin.length > 0) { 
+                    setSelectedUser({...u, pin}); 
+                    setShowPin(true); 
+                    setRecoveryMode(false); 
+                } else { 
+                    onLogin(u); 
+                } 
+            };
+            
+            const onPinSuccess = (inputPin) => { 
+                setShowPin(false); 
+                if(recoveryMode) onMasterRecovery(inputPin); 
+                else onLogin(selectedUser); 
+            };
+            
+            const getRoleName = (r) => { 
+                if(r==='admin') return 'Filialleitung'; 
+                if(r==='kitchen_lead') return 'Küchenleitung'; 
+                if(r==='service_lead') return 'Serviceleitung'; 
+                return 'Mitarbeiter'; 
+            };
 
             return (
                 <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden text-slate-800">
+                    {/* Hintergrund Effekt */}
                     <div className="absolute top-[-20%] right-[-20%] w-[80%] h-[80%] rounded-full blur-[150px] opacity-20 animate-pulse" style={{backgroundColor: themeColor}}></div>
                     
+                    {/* MODALS */}
                     {showTerminal && <TerminalClock staff={staff} appId={restaurantId} onClose={()=>setShowTerminal(false)} />}
-                    {showPin && (<PinPad title={recoveryMode ? "Master-Schlüssel" : `${t.pin} für ${selectedUser.name}`} targetPin={recoveryMode ? null : selectedUser.pin} onClose={()=>setShowPin(false)} onSuccess={onPinSuccess} />)}
                     
+                    {showPin && (
+                        <PinPad 
+                            title={recoveryMode ? "Master-Schlüssel" : `${t.pin} für ${selectedUser.name}`} 
+                            targetPin={recoveryMode ? null : selectedUser.pin} 
+                            onClose={()=>setShowPin(false)} 
+                            onSuccess={onPinSuccess} 
+                        />
+                    )}
+                    
+                    {/* MAIN CONTENT */}
                     <div className="z-10 w-full max-w-sm mx-auto space-y-6 animate-in">
+                        
+                        {/* HEADER */}
                         <div className="flex justify-between items-start">
                             <div>
                                 <AppLogo company={company} large design={company?.design}/>
-                                <p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.3em] flex items-center gap-1 mt-2"><Store size={10}/> {restaurantId}</p>
+                                <p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.3em] flex items-center gap-1 mt-2">
+                                    <Store size={10}/> {restaurantId}
+                                </p>
                             </div>
                             <div className="flex gap-2">
                                 <button onClick={()=>{setRecoveryMode(true); setShowPin(true);}} className="text-amber-500 hover:text-amber-400 transition-colors bg-white/5 p-2 rounded-full"><Key size={20}/></button>
@@ -1130,62 +1360,99 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
                             </div>
                         </div>
 
-                        {/* TERMINAL BUTTON */}
-                        <button onClick={()=>setShowTerminal(true)} className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-6 rounded-[2rem] shadow-2xl shadow-indigo-900/50 flex items-center justify-between group active:scale-95 transition-transform border border-white/10">
+                        {/* TERMINAL BUTTON (GROSS) */}
+                        <button onClick={()=>setShowTerminal(true)} className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-6 rounded-[2rem] shadow-2xl shadow-indigo-900/50 flex items-center justify-between group active:scale-95 transition-transform border border-white/10 hover:border-white/30">
                             <div className="text-left">
-                                <div className="font-black text-xl mb-1">STEMPELUHR</div>
-                                <div className="text-indigo-200 text-xs font-bold uppercase tracking-widest">Terminal Modus</div>
+                                <div className="font-black text-xl mb-1 flex items-center gap-2"><Clock size={24}/> STEMPELUHR</div>
+                                <div className="text-indigo-200 text-xs font-bold uppercase tracking-widest">Zum Ein-/Ausstempeln</div>
                             </div>
-                            <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                                <Clock size={24} className="text-white"/>
+                            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center group-hover:rotate-90 transition-transform">
+                                <ChevronRight size={24} className="text-white"/>
                             </div>
                         </button>
 
-                        <div className="border-t border-white/10 my-4"></div>
+                        <div className="border-t border-white/10 my-2"></div>
 
-                        {showOilWarning && (<div className={`p-4 rounded-2xl backdrop-blur-sm shadow-xl border ${oilLogs.length === 0 ? 'bg-red-500/20 border-red-500/30 text-red-200' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}><div className="text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1"><AlertTriangle size={10}/> {t.yesterday}</div>{oilLogs.length === 0 ? (<div className="text-sm font-bold flex items-center gap-2"><X size={16}/> {t.missing}</div>) : (<div className="space-y-1">{oilLogs.map((l,i) => { const fname = (fryers||[]).find(f=>f.id===l.deviceId)?.name || 'Fritteuse'; return <div key={i} className="text-xs flex justify-between"><span>{fname}</span><span className="font-bold">OK ({l.tpm}%)</span></div> })}</div>)}</div>)}
+                        {/* OIL WARNING (Fritteusen Check) */}
+                        {showOilWarning && (
+                            <div className={`p-4 rounded-2xl backdrop-blur-sm shadow-xl border ${oilLogs.length === 0 ? 'bg-red-500/20 border-red-500/30 text-red-200' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                                <div className="text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1"><AlertTriangle size={10}/> {t.yesterday}</div>
+                                {oilLogs.length === 0 ? (
+                                    <div className="text-sm font-bold flex items-center gap-2"><X size={16}/> {t.missing}</div>
+                                ) : (
+                                    <div className="space-y-1">
+                                        {oilLogs.map((l,i) => { 
+                                            const fname = (fryers||[]).find(f=>f.id===l.deviceId)?.name || 'Fritteuse'; 
+                                            return <div key={i} className="text-xs flex justify-between"><span>{fname}</span><span className="font-bold">OK ({l.tpm}%)</span></div> 
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         
+                        {/* MITARBEITER LISTE */}
                         <div className="space-y-3">
-                            <div className="text-slate-500 text-xs font-bold uppercase ml-2">{t.login}</div>
+                            <div className="text-slate-500 text-xs font-bold uppercase ml-2 tracking-widest">{t.login}</div>
                             {(staff||[]).map(s => {
-                                // PRÜFUNG: Ist dieser User gerade aktiv?
-                                const isWorking = activeWorkers.includes(s.id);
-                                
+                                // STATUS PRÜFUNG
+                                const status = workerStatus[s.id]; // 'active' | 'break' | undefined
+                                const isActive = status === 'active';
+                                const isBreak = status === 'break';
+
                                 return (
-                                    <button type="button" key={s.id} onClick={() => handleUserClick(s)} className="w-full bg-white/5 hover:bg-white/10 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm relative overflow-hidden">
-                                        
-                                        {/* Status Indikator an der linken Seite (optional) */}
-                                        {isWorking && <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 shadow-[0_0_10px_#10b981]"></div>}
+                                    <button 
+                                        type="button" 
+                                        key={s.id} 
+                                        onClick={() => handleUserClick(s)} 
+                                        className="w-full bg-white/5 hover:bg-white/10 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm relative overflow-hidden"
+                                    >
+                                        {/* Linker Rand Indikator */}
+                                        {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 shadow-[0_0_15px_#10b981]"></div>}
+                                        {isBreak && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 shadow-[0_0_15px_#f59e0b]"></div>}
 
                                         <div className="p-2.5 rounded-xl bg-white/10 relative">
                                             <User size={20} className="text-white group-hover:text-white"/>
-                                            {/* Kleiner grüner Punkt auf dem Avatar */}
-                                            {isWorking && <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-800"></div>}
+                                            {/* Avatar Dot */}
+                                            {isActive && <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-800"></div>}
+                                            {isBreak && <div className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full border-2 border-slate-800"></div>}
                                         </div>
                                         
                                         <div className="flex-1 text-left">
                                             <div className="font-bold text-lg flex items-center gap-2">
                                                 {s.name}
-                                                {/* HIER IST DAS UHREN-ICON */}
-                                                {isWorking && (
-                                                    <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 border border-emerald-500/30 animate-pulse">
+                                                {/* STATUS BADGES */}
+                                                {isActive && (
+                                                    <span className="bg-emerald-500/20 text-emerald-400 text-[9px] px-2 py-0.5 rounded-lg flex items-center gap-1 border border-emerald-500/30 animate-pulse font-bold tracking-wider">
                                                         <Clock size={10} /> IM DIENST
+                                                    </span>
+                                                )}
+                                                {isBreak && (
+                                                    <span className="bg-amber-500/20 text-amber-400 text-[9px] px-2 py-0.5 rounded-lg flex items-center gap-1 border border-amber-500/30 font-bold tracking-wider">
+                                                        <Coffee size={10} /> PAUSE
                                                     </span>
                                                 )}
                                             </div>
                                             <div className="text-[11px] opacity-60 uppercase font-medium">{getRoleName(s.role)}</div>
                                         </div>
-                                        {s.pin && String(s.pin).length>0 ? <Lock size={16} className="opacity-50"/> : <Unlock size={16} className="opacity-30 text-red-400"/>}
+                                        
+                                        {/* Schloss Icon */}
+                                        {s.pin && String(s.pin).length>0 ? <Lock size={16} className="opacity-30 group-hover:opacity-100 transition-opacity"/> : <Unlock size={16} className="opacity-30 text-red-400"/>}
                                     </button>
                                 );
                             })}
                         </div>
-                        {(staff||[]).length===0 && <div className="text-center pt-8"><p className="text-slate-500 text-sm mb-4">Erster Start?</p><button onClick={onSeed} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg">Datenbank Initialisieren</button></div>}
+
+                        {/* INITIAL SEED BUTTON */}
+                        {(staff||[]).length===0 && (
+                            <div className="text-center pt-8">
+                                <p className="text-slate-500 text-sm mb-4">Erster Start?</p>
+                                <button onClick={onSeed} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg">Datenbank Initialisieren</button>
+                            </div>
+                        )}
                     </div>
                 </div>
             );
         };
-
         // --- DASHBOARD & MODULES ---
         const TeamBoard = ({ messages, user, appId, showToast }) => {
             const [newMsg, setNewMsg] = useState('');
