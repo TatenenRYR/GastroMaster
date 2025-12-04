@@ -696,35 +696,40 @@ const DistrictDashboard = ({ districtId, onLogout, showToast }) => {
             isAutoCorrected: finalBreakMins > breakMins // Markierung, falls das System eingegriffen hat
         };
     };
-                                    
-// --- PROFI SHIFT PLANNER V4 (Split View & Smart Radar) ---
+    
+    // --- INTELLIGENTER DIENSTPLANER V5 (Full Config) ---
 const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
     const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); 
     const [shifts, setShifts] = useState([]);
     const [timeLogs, setTimeLogs] = useState([]); 
     const [publishStatus, setPublishStatus] = useState(false);
     const [editor, setEditor] = useState(null);
+    const [settings, setSettings] = useState(null); // NEU: Settings laden
 
     const isAdmin = ['admin', 'kitchen_lead', 'service_lead'].includes(user.role);
 
-    // DATEN LADEN
     useEffect(() => {
+        // 1. Settings laden (für Öffnungszeiten)
+        getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global')).then(s => {
+            if(s.exists()) setSettings(s.data());
+        });
+
+        // 2. Schichten
         const qShifts = query(collection(db, 'artifacts', appId, 'public', 'data', 'shifts'), where('monthStr', '==', month));
         const unsubShifts = onSnapshot(qShifts, s => setShifts(s.docs.map(d => ({id:d.id, ...d.data()}))));
         
-        // Logs für Soll/Ist Vergleich
+        // 3. Logs
         const startM = month + "-01";
         const endM = month + "-31";
         const qLogs = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), where('dateStr', '>=', startM), where('dateStr', '<=', endM));
         const unsubLogs = onSnapshot(qLogs, s => setTimeLogs(s.docs.map(d => d.data())));
 
-        getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shift_publish', month)).then(s => {
-            setPublishStatus(s.exists() && s.data().published);
-        });
+        getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shift_publish', month)).then(s => setPublishStatus(s.exists() && s.data().published));
+        
         return () => { unsubShifts(); unsubLogs(); };
     }, [appId, month]);
 
-    // --- RECHEN-LOGIK (Stunden) ---
+    // Rechen-Logik
     const calcDuration = (start, end) => {
         if(!start || !end) return 0;
         const [h1, m1] = start.split(':').map(Number);
@@ -734,38 +739,19 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
         return diff / 60;
     };
 
-    // --- RADAR LOGIK (Schicht-Check) ---
-    const checkDailyStatus = (dateStr, dept) => {
-        // Wir filtern Schichten für diesen Tag UND diese Abteilung
-        const dayShifts = shifts.filter(s => {
-            const employee = staff.find(st => st.id === s.userId);
-            // Ist es der richtige Tag? UND gehört der Mitarbeiter zur Abteilung?
-            return s.date === dateStr && employee && (employee.departments||[]).includes(dept);
-        });
-
-        // Wir prüfen, ob die Schicht-Typen vorhanden sind
-        // Logik: Wir schauen in die Slots aller Mitarbeiter an diesem Tag
-        let hasEarly = false;
-        let hasDay = false;
-        let hasLate = false;
-
-        dayShifts.forEach(s => {
-            (s.slots || []).forEach(slot => {
-                if(slot.type === 'early') hasEarly = true;
-                if(slot.type === 'day') hasDay = true;
-                if(slot.type === 'late') hasLate = true;
-            });
-        });
-
-        return { hasEarly, hasDay, hasLate };
+    // --- CHECK: ÖFFNUNGSZEITEN ---
+    const checkBusinessHours = (dateStr) => {
+        if(!settings?.businessHours) return { open: "00:00", close: "23:59" };
+        const day = new Date(dateStr).getDay();
+        const isWeekend = (day === 5 || day === 6 || day === 0);
+        return isWeekend ? settings.businessHours.weekend : settings.businessHours.weekday;
     };
 
-    // --- EDITOR FUNKTIONEN ---
+    // Editor & Speichern (wie zuvor, gekürzt)
     const openEditor = (userId, dateStr, userName) => {
         const existing = shifts.find(s => s.userId === userId && s.date === dateStr);
         setEditor({ userId, dateStr, name: userName, slots: existing?.slots || [] });
     };
-
     const saveEditor = async () => {
         if(!editor) return;
         const id = `${editor.userId}_${editor.dateStr}`;
@@ -775,40 +761,23 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
         }, { merge: true });
         setEditor(null);
     };
-
     const addSlotToEditor = (typeKey) => {
-        // Automatische Zeiten holen (inkl. Wochenende-Check)
-        const times = getShiftTimes(typeKey, editor.dateStr);
-        setEditor(prev => ({
-            ...prev,
-            slots: [...prev.slots, { type: typeKey, start: times.start, end: times.end }]
-        }));
+        // Standardzeiten basierend auf Config
+        const tmpl = SHIFT_TEMPLATES[typeKey] || { start: "10:00", end: "18:00" };
+        setEditor(prev => ({ ...prev, slots: [...prev.slots, { type: typeKey, start: tmpl.start, end: tmpl.end }] }));
     };
-
-    const updateSlot = (index, field, value) => {
-        setEditor(prev => {
-            const newSlots = [...prev.slots];
-            newSlots[index] = { ...newSlots[index], [field]: value };
-            
-            // Wenn Typ geändert wird, Zeiten aktualisieren (außer bei Custom)
-            if (field === 'type' && SHIFT_TEMPLATES[value] && value !== 'custom') {
-                const times = getShiftTimes(value, prev.dateStr);
-                newSlots[index].start = times.start;
-                newSlots[index].end = times.end;
-            }
-            return { ...prev, slots: newSlots };
-        });
-    };
-
+    const updateSlot = (i, f, v) => setEditor(p => { 
+        const n = [...p.slots]; n[i] = {...n[i], [f]: v}; return {...p, slots: n};
+    });
     const removeSlot = (i) => setEditor(p => ({...p, slots: p.slots.filter((_,x)=>x!==i)}));
     const togglePublish = async () => {
         const n = !publishStatus;
-        if(n && !confirm("Dienstplan veröffentlichen?")) return;
+        if(n && !confirm("Veröffentlichen?")) return;
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shift_publish', month), { published: n });
         setPublishStatus(n);
     };
 
-    // KALENDER DATEN
+    // Kalender
     const daysInMonth = new Date(month.split('-')[0], month.split('-')[1], 0).getDate();
     const daysArray = Array.from({length: daysInMonth}, (_, i) => {
         const d = i + 1;
@@ -817,57 +786,38 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
         return { d, dateStr, weekDay: dateObj.toLocaleDateString('de-DE', {weekday:'short'}), isWeekend: [0,5,6].includes(dateObj.getDay()) };
     });
 
-    // DEPARTMENT RENDERER (Wiederverwendbare Komponente für Küche/Service)
+    // DEPARTMENT RENDERER
     const DepartmentSection = ({ title, deptKey, color }) => {
-        // Filter: Nur Mitarbeiter dieser Abteilung
         const deptStaff = staff.filter(s => (s.departments || []).includes(deptKey));
         if(deptStaff.length === 0) return null;
 
         return (
             <div className="mb-8">
-                {/* ABTEILUNG ÜBERSCHRIFT & RADAR */}
                 <div className={`p-4 rounded-t-[2rem] border-b-2 flex items-center justify-between ${color === 'orange' ? 'bg-orange-50 border-orange-200' : 'bg-purple-50 border-purple-200'}`}>
                     <h3 className={`font-black text-xl uppercase tracking-widest ${color === 'orange' ? 'text-orange-900' : 'text-purple-900'}`}>{title}</h3>
-                    <div className="text-[10px] font-bold opacity-60">Besetzungs-Radar</div>
                 </div>
 
-                {/* DAS NEUE RADAR (3-Blöcke pro Tag) */}
-                <div className="bg-white border-x border-slate-100 overflow-x-auto custom-scrollbar flex p-2 gap-2">
-                    {daysArray.map(({d, weekDay, dateStr, isWeekend}) => {
-                        const status = checkDailyStatus(dateStr, deptKey);
-                        return (
-                            <div key={dateStr} className={`flex-shrink-0 w-24 flex flex-col gap-1 ${isWeekend ? 'opacity-100' : 'opacity-80'}`}>
-                                <div className="text-[9px] text-center font-bold text-slate-400 mb-1">{weekDay} {d}.</div>
-                                <div className="flex h-2 rounded-full overflow-hidden bg-slate-100 gap-[1px]">
-                                    <div className={`flex-1 ${status.hasEarly ? 'bg-amber-400' : 'bg-red-200'}`} title="Früh"></div>
-                                    <div className={`flex-1 ${status.hasDay ? 'bg-sky-400' : 'bg-red-200'}`} title="Tag"></div>
-                                    <div className={`flex-1 ${status.hasLate ? 'bg-indigo-400' : 'bg-red-200'}`} title="Spät"></div>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-
-                {/* MITARBEITER LISTEN */}
                 <div className="space-y-4 bg-white border-x border-b border-slate-100 p-4 rounded-b-[2rem]">
                     {deptStaff.map(s => {
-                        // Kalkulation pro Mitarbeiter
                         let plannedSum = 0;
-                        shifts.filter(sh => sh.userId === s.id).forEach(sh => {
-                            (sh.slots||[]).forEach(slot => plannedSum += calcDuration(slot.start, slot.end));
-                        });
-                        // Ist-Zeit
-                        let workedSum = 0;
-                        timeLogs.filter(l => l.userId === s.id).forEach(l => {
-                            if(l.end) workedSum += calcDuration(l.start, l.end);
-                        });
+                        shifts.filter(sh => sh.userId === s.id).forEach(sh => (sh.slots||[]).forEach(slot => plannedSum += calcDuration(slot.start, slot.end)));
+                        
+                        // VERTRAGSPRÜFUNG
+                        const contract = parseInt(s.contractHours) || 0; // Standard 0 wenn nicht gesetzt
+                        const isOver = contract > 0 && plannedSum > contract;
+                        const isUnder = contract > 0 && plannedSum < (contract * 0.9); // 10% Toleranz
 
                         return (
                             <div key={s.id} className="border-b border-slate-50 last:border-0 pb-4 last:pb-0">
                                 <div className="flex justify-between items-center mb-2 px-1">
                                     <div className="font-bold text-slate-700">{s.name}</div>
-                                    <div className="text-[10px] font-mono font-bold bg-slate-100 px-2 py-1 rounded">
-                                        Plan: {plannedSum.toFixed(1)}h / Ist: <span className={workedSum > plannedSum ? 'text-amber-500' : 'text-slate-500'}>{workedSum.toFixed(1)}h</span>
+                                    <div className="text-[10px] font-mono font-bold bg-slate-100 px-2 py-1 rounded flex items-center gap-2">
+                                        <span>Plan: {plannedSum.toFixed(1)}h</span>
+                                        {contract > 0 && (
+                                            <span className={isOver ? 'text-red-500' : isUnder ? 'text-amber-500' : 'text-emerald-500'}>
+                                                / {contract}h (Vertrag)
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
 
@@ -876,12 +826,19 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
                                         const shiftData = shifts.find(x => x.userId === s.id && x.date === dateStr);
                                         const slots = shiftData?.slots || [];
                                         
+                                        // PRÜFUNG: ÖFFNUNGSZEITEN
+                                        const biz = checkBusinessHours(dateStr);
+                                        // Check ob irgend ein Slot ausserhalb der Öffnungszeiten liegt
+                                        const isOutside = slots.some(sl => sl.start < biz.open || sl.end > biz.close);
+
                                         return (
                                             <button 
                                                 key={dateStr} 
                                                 onClick={() => openEditor(s.id, dateStr, s.name)}
                                                 className={`flex-shrink-0 w-24 h-14 rounded-lg border text-left p-1 transition-all relative ${isWeekend ? 'bg-slate-50' : 'bg-white'} ${slots.length > 0 ? 'border-indigo-200 bg-indigo-50/10' : 'border-slate-100'}`}
                                             >
+                                                {isOutside && <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-white" title="Außerhalb Öffnungszeiten!"></div>}
+                                                
                                                 {slots.length === 0 ? <div className="w-full h-full flex items-center justify-center opacity-10"><Plus size={10}/></div> : 
                                                 <div className="flex flex-col justify-center h-full gap-0.5">
                                                     {slots.map((sl, i) => (
@@ -902,7 +859,6 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
         );
     };
 
-    // --- VIEW: ADMIN HAUPTANSICHT ---
     if (isAdmin) return (
         <div className="animate-in space-y-6">
             {/* EDITOR POPUP */}
@@ -911,8 +867,14 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
                     <div className="bg-white w-full max-w-md rounded-[2rem] p-6 shadow-2xl relative max-h-[80vh] overflow-y-auto">
                         <button onClick={()=>setEditor(null)} className="absolute top-4 right-4 p-2 bg-slate-100 rounded-full"><X/></button>
                         <h3 className="font-black text-xl mb-1">{editor.name}</h3>
-                        <p className="text-xs font-bold text-slate-400 uppercase mb-6">{new Date(editor.dateStr).toLocaleDateString('de-DE', {weekday:'long', day:'numeric', month:'long'})}</p>
+                        <div className="text-xs font-bold text-slate-400 uppercase mb-4">{new Date(editor.dateStr).toLocaleDateString('de-DE', {weekday:'long', day:'numeric', month:'long'})}</div>
                         
+                        {/* Öffnungszeiten Info im Editor */}
+                        {(() => {
+                            const biz = checkBusinessHours(editor.dateStr);
+                            return <div className="bg-slate-50 p-2 rounded-lg text-[10px] text-center mb-4 text-slate-500">Geöffnet: {biz.open} - {biz.close} Uhr</div>
+                        })()}
+
                         <div className="space-y-4">
                             {/* Schnellwahl Buttons */}
                             <div className="grid grid-cols-4 gap-2 mb-4">
@@ -926,8 +888,6 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
                             {editor.slots.map((slot, idx) => (
                                 <div key={idx} className="bg-slate-50 p-4 rounded-2xl border border-slate-200 relative">
                                     <button onClick={()=>removeSlot(idx)} className="absolute -top-2 -right-2 bg-red-500 text-white p-1.5 rounded-full shadow-md"><Trash2 size={12}/></button>
-                                    
-                                    <div className="text-[10px] font-bold uppercase text-slate-400 mb-2">Zeiten anpassen</div>
                                     <div className="flex gap-2 items-center">
                                         <input type="time" value={slot.start} onChange={e=>updateSlot(idx,'start',e.target.value)} className="flex-1 p-3 rounded-xl border text-center font-bold text-slate-700 outline-none focus:border-indigo-500"/>
                                         <span className="font-bold text-slate-300">-</span>
@@ -935,10 +895,7 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
                                     </div>
                                 </div>
                             ))}
-                            
-                            {editor.slots.length === 0 && <div className="text-center text-slate-400 py-4 italic text-sm">Keine Schicht eingetragen.</div>}
                         </div>
-
                         <button onClick={saveEditor} className="w-full mt-6 py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg shadow-xl active:scale-95 transition-transform">Speichern</button>
                     </div>
                 </div>
@@ -962,32 +919,31 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
         </div>
     );
 
-    // --- VIEW: MITARBEITER (Mein Plan) ---
-    // (Hier nehmen wir den Code vom letzten Mal, der war gut. Nur kurz angepasst auf neue templates)
+    // Mitarbeiter View (identisch wie zuvor)
     const myShifts = shifts.filter(s => s.userId === user.id).sort((a,b) => a.date.localeCompare(b.date));
     return (
         <div className="animate-in space-y-6">
-            <h2 className="text-3xl font-black text-slate-800">Mein Plan</h2>
-            {!publishStatus ? <div className="p-6 bg-slate-100 rounded-[2rem] text-center italic text-slate-500">Noch nicht veröffentlicht.</div> :
-            <div className="space-y-3">
-                {myShifts.map(s => (
-                    <div key={s.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
-                        <div className="text-center bg-slate-50 px-3 py-1 rounded-xl">
-                            <div className="text-xs font-bold text-slate-400">{new Date(s.date).toLocaleDateString('de-DE',{weekday:'short'})}</div>
-                            <div className="font-black text-slate-800">{s.date.split('-')[2]}</div>
+            <h2 className="text-3xl font-black text-slate-800">Mein Dienstplan</h2>
+            {publishStatus ? (
+                <div className="space-y-3">
+                    {myShifts.map(s => (
+                        <div key={s.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+                            <div className="text-center bg-slate-50 px-3 py-1 rounded-xl">
+                                <div className="text-xs font-bold text-slate-400">{new Date(s.date).toLocaleDateString('de-DE',{weekday:'short'})}</div>
+                                <div className="font-black text-slate-800">{s.date.split('-')[2]}</div>
+                            </div>
+                            <div className="space-y-1">
+                                {(s.slots||[]).map((sl,i)=>(
+                                    <div key={i} className="text-sm font-bold text-slate-600 flex items-center gap-2">
+                                        <span className={`w-2 h-2 rounded-full ${SHIFT_TEMPLATES[sl.type]?.color.split(' ')[0]||'bg-gray-400'}`}></span>
+                                        {sl.start} - {sl.end}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                        <div className="space-y-1">
-                            {(s.slots||[]).map((sl,i)=>(
-                                <div key={i} className="text-sm font-bold text-slate-600 flex items-center gap-2">
-                                    <span className={`text-[9px] px-2 rounded ${SHIFT_TEMPLATES[sl.type]?.color}`}>{SHIFT_TEMPLATES[sl.type]?.short}</span>
-                                    {sl.start} - {sl.end}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                ))}
-                {myShifts.length===0 && <div className="text-center text-slate-400 py-10">Keine Schichten.</div>}
-            </div>}
+                    ))}
+                </div>
+            ) : <div className="p-6 bg-slate-100 rounded-[2rem] text-center italic text-slate-500">Plan noch nicht freigegeben.</div>}
         </div>
     );
 };
@@ -2149,91 +2105,121 @@ onSnapshot(query(pub('logs_time'), where('dateStr', '==', today), where('end', '
         const ColorPicker = ({ label, val, set }) => ( <div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">{label}</span><div className="flex gap-3 items-center"><input type="color" value={val || '#000000'} onChange={e=>set(e.target.value)} className="h-12 w-12 rounded-xl border-none cursor-pointer" /><div className="flex-1 bg-slate-50 p-3 rounded-xl text-slate-500 text-sm border border-slate-200 uppercase font-mono">{val}</div></div></div> );
 
         const CompanyEditor = ({ data, appId, showToast }) => { const [f, setF] = useState(data||{}); const save = async () => { await setDoc(doc(db,'artifacts',appId,'public','data','company','info'), f); showToast("Firmendaten gespeichert"); }; return <div className="space-y-4 animate-in"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Betriebsname</span><Input value={f.name||''} onChange={e=>setF({...f,name:e.target.value})} /></div><Button onClick={save}>Speichern</Button></div> };
-        const SettingsEditor = ({ data, appId, showToast, btnStyle, deleteBranch, lang }) => { 
-            const [key, setKey] = useState(data.masterKey||''); 
-            const [linkCode, setLinkCode] = useState(data.linkCode || '');
-            
-            // Delete Logic vars
-            const [delInput, setDelInput] = useState('');
-            const [math, setMath] = useState({ q: '', a: 0 });
-            const [showDelete, setShowDelete] = useState(false);
-            const t = DICTIONARY[lang] || DICTIONARY.de;
+        // --- EINSTELLUNGEN MIT ÖFFNUNGSZEITEN ---
+const SettingsEditor = ({ data, appId, showToast, btnStyle, deleteBranch, lang }) => { 
+    const [key, setKey] = useState(data.masterKey||''); 
+    const [linkCode, setLinkCode] = useState(data.linkCode || '');
+    
+    // NEU: Öffnungszeiten State
+    const [bizHours, setBizHours] = useState(data.businessHours || {
+        weekday: { open: "10:00", close: "22:00" },
+        weekend: { open: "10:00", close: "23:00" }
+    });
 
-            useEffect(() => {
-                const a = Math.floor(Math.random() * 10) + 1;
-                const b = Math.floor(Math.random() * 10) + 1;
-                setMath({ q: `${a} + ${b}`, a: a + b });
-            }, [showDelete]);
+    // Delete Logic
+    const [delInput, setDelInput] = useState('');
+    const [math, setMath] = useState({ q: '', a: 0 });
+    const [showDelete, setShowDelete] = useState(false);
+    const t = DICTIONARY[lang] || DICTIONARY.de;
 
-            const save = async () => { await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { masterKey: key }, {merge:true}); showToast(t.save + " OK"); }; 
-            
-            // NEUE FUNKTION: Code generieren
-            const generateLink = async () => {
-                const code = "LINK-" + Math.floor(1000 + Math.random() * 9000);
-                await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { 
-                    linkCode: code,
-                    restaurantName: data.restaurantName || appId 
-                }, {merge:true});
-                setLinkCode(code);
-            };
+    useEffect(() => {
+        const a = Math.floor(Math.random() * 10) + 1;
+        const b = Math.floor(Math.random() * 10) + 1;
+        setMath({ q: `${a} + ${b}`, a: a + b });
+    }, [showDelete]);
 
-            const handleDelete = () => {
-                if(parseInt(delInput) === math.a) { deleteBranch(); } 
-                else { showToast("Falsches Ergebnis / Wrong Result", "error"); }
-            };
+    const save = async () => { 
+        await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { 
+            masterKey: key,
+            businessHours: bizHours // Speichern der Zeiten
+        }, {merge:true}); 
+        showToast(t.save + " OK"); 
+    }; 
+    
+    const generateLink = async () => {
+        const code = "LINK-" + Math.floor(1000 + Math.random() * 9000);
+        await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { 
+            linkCode: code, restaurantName: data.restaurantName || appId 
+        }, {merge:true});
+        setLinkCode(code);
+    };
 
-            return (
-                <div className="space-y-8 animate-in">
-                    <div className="space-y-4">
-                        <h3 className="font-bold text-lg">{t.settings}</h3>
-                        <div className="space-y-2">
-                            <span className="text-xs font-bold uppercase text-slate-400">Master Key (Recovery)</span>
-                            <Input value={key} onChange={e=>setKey(e.target.value)} className="font-mono tracking-widest text-center" />
+    const updateHours = (type, field, val) => {
+        setBizHours(p => ({...p, [type]: { ...p[type], [field]: val }}));
+    };
+
+    const handleDelete = () => {
+        if(parseInt(delInput) === math.a) { deleteBranch(); } 
+        else { showToast("Falsches Ergebnis / Wrong Result", "error"); }
+    };
+
+    return (
+        <div className="space-y-8 animate-in">
+            {/* 1. ÖFFNUNGSZEITEN (NEU) */}
+            <div className="space-y-4">
+                <h3 className="font-bold text-lg flex items-center gap-2"><Clock size={20}/> Öffnungszeiten (für Dienstplan)</h3>
+                
+                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+                    <div>
+                        <div className="text-xs font-bold uppercase text-slate-400 mb-2">Mo - Do (Wochentags)</div>
+                        <div className="flex gap-2 items-center">
+                            <input type="time" value={bizHours.weekday.open} onChange={e=>updateHours('weekday','open',e.target.value)} className="bg-slate-50 p-3 rounded-xl font-bold text-slate-700 outline-none flex-1"/>
+                            <span className="font-bold text-slate-300">-</span>
+                            <input type="time" value={bizHours.weekday.close} onChange={e=>updateHours('weekday','close',e.target.value)} className="bg-slate-50 p-3 rounded-xl font-bold text-slate-700 outline-none flex-1"/>
                         </div>
-                        <Button onClick={save} style={btnStyle}>{t.save}</Button>
                     </div>
-
-                    {/* NEUER BEREICH: Bezirksleitung */}
-                    <div className="bg-indigo-50 p-5 rounded-[2rem] border border-indigo-100 space-y-4">
-                        <h4 className="font-bold text-indigo-900 flex items-center gap-2"><UserCog size={20}/> Bezirksleitung Verknüpfung</h4>
-                        <p className="text-xs text-indigo-700">Generieren Sie einen Code, um diese Filiale mit einem Bezirksleiter-Konto zu verbinden.</p>
-                        
-                        {linkCode ? (
-                            <div className="bg-white p-4 rounded-xl text-center border-2 border-dashed border-indigo-200">
-                                <div className="text-xs font-bold uppercase text-slate-400 mb-1">Ihr Verknüpfungs-Code</div>
-                                <div className="text-3xl font-black text-indigo-600 tracking-widest font-mono select-all">{linkCode}</div>
-                                <p className="text-[10px] text-slate-400 mt-2">Geben Sie diesen Code Ihrem Bezirksleiter.</p>
-                            </div>
-                        ) : (
-                            <Button onClick={generateLink} className="bg-indigo-600 text-white shadow-indigo-200">Code generieren</Button>
-                        )}
-                    </div>
-
-                    <div className="border-t border-slate-200 pt-6">
-                        <div className="bg-red-50 rounded-2xl p-4 border border-red-100 space-y-4">
-                            <h4 className="text-red-800 font-bold flex items-center gap-2"><AlertTriangle size={18}/> {t.danger}</h4>
-                            {!showDelete ? (
-                                <button onClick={()=>setShowDelete(true)} className="w-full py-3 bg-white border border-red-200 text-red-600 font-bold rounded-xl hover:bg-red-100 transition-colors">
-                                    {t.delete_branch}
-                                </button>
-                            ) : (
-                                <div className="space-y-3 animate-in">
-                                    <p className="text-xs text-red-600 font-medium">Berechnung lösen zum Bestätigen:</p>
-                                    <div className="flex gap-2 items-center">
-                                        <span className="font-black text-xl text-slate-700 min-w-[60px]">{math.q} = ?</span>
-                                        <input type="number" value={delInput} onChange={e=>setDelInput(e.target.value)} className="w-full p-2 rounded-xl border border-red-200 outline-none" placeholder="Ergebnis"/>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={()=>setShowDelete(false)} className="flex-1 py-2 bg-slate-200 text-slate-600 font-bold rounded-xl">{t.cancel}</button>
-                                        <button onClick={handleDelete} className="flex-1 py-2 bg-red-600 text-white font-bold rounded-xl shadow-lg shadow-red-200">LÖSCHEN</button>
-                                    </div>
-                                </div>
-                            )}
+                    <div>
+                        <div className="text-xs font-bold uppercase text-slate-400 mb-2">Fr - So (Wochenende)</div>
+                        <div className="flex gap-2 items-center">
+                            <input type="time" value={bizHours.weekend.open} onChange={e=>updateHours('weekend','open',e.target.value)} className="bg-slate-50 p-3 rounded-xl font-bold text-slate-700 outline-none flex-1"/>
+                            <span className="font-bold text-slate-300">-</span>
+                            <input type="time" value={bizHours.weekend.close} onChange={e=>updateHours('weekend','close',e.target.value)} className="bg-slate-50 p-3 rounded-xl font-bold text-slate-700 outline-none flex-1"/>
                         </div>
                     </div>
                 </div>
-            ); 
-        };
+            </div>
+
+            {/* 2. MASTER KEY */}
+            <div className="space-y-2">
+                <h3 className="font-bold text-lg">{t.settings}</h3>
+                <span className="text-xs font-bold uppercase text-slate-400">Master Key (Recovery)</span>
+                <Input value={key} onChange={e=>setKey(e.target.value)} className="font-mono tracking-widest text-center" />
+            </div>
+
+            {/* 3. BEZIRKSLEITUNG */}
+            <div className="bg-indigo-50 p-5 rounded-[2rem] border border-indigo-100 space-y-4">
+                <h4 className="font-bold text-indigo-900 flex items-center gap-2"><UserCog size={20}/> Bezirksleitung Verknüpfung</h4>
+                {linkCode ? (
+                    <div className="bg-white p-4 rounded-xl text-center border-2 border-dashed border-indigo-200">
+                        <div className="text-3xl font-black text-indigo-600 tracking-widest font-mono select-all">{linkCode}</div>
+                    </div>
+                ) : (
+                    <Button onClick={generateLink} className="bg-indigo-600 text-white shadow-indigo-200">Code generieren</Button>
+                )}
+            </div>
+
+            <Button onClick={save} style={btnStyle}>{t.save}</Button>
+
+            {/* 4. DANGER ZONE */}
+            <div className="border-t border-slate-200 pt-6">
+                <div className="bg-red-50 rounded-2xl p-4 border border-red-100">
+                    <h4 className="text-red-800 font-bold flex items-center gap-2 mb-4"><AlertTriangle size={18}/> {t.danger}</h4>
+                    {!showDelete ? (
+                        <button onClick={()=>setShowDelete(true)} className="w-full py-3 bg-white border border-red-200 text-red-600 font-bold rounded-xl hover:bg-red-100 transition-colors">{t.delete_branch}</button>
+                    ) : (
+                        <div className="space-y-3 animate-in">
+                            <div className="flex gap-2 items-center">
+                                <span className="font-black text-xl text-slate-700 min-w-[60px]">{math.q} = ?</span>
+                                <input type="number" value={delInput} onChange={e=>setDelInput(e.target.value)} className="w-full p-2 rounded-xl border border-red-200 outline-none" placeholder="Ergebnis"/>
+                            </div>
+                            <button onClick={handleDelete} className="w-full py-2 bg-red-600 text-white font-bold rounded-xl shadow-lg shadow-red-200">LÖSCHEN</button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    ); 
+};
         // --- DETAILED AUDIT LOG ---
         const AuditLog = ({ appId }) => { 
             const [logs, setLogs] = useState([]); 
@@ -2258,10 +2244,144 @@ onSnapshot(query(pub('logs_time'), where('dateStr', '==', today), where('end', '
         };
         
         const Editor = ({ type, data, close, appId, showToast, btnStyle }) => { 
-            const [form, setForm] = useState({...data}); const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); 
-            const save = async () => { const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':type==='prep'?'prep_tasks':'staff'; const payload = { ...form }; if(type==='tasks'||type==='prep') payload.schedule = sched; delete payload.id; delete payload.isNew; const ref = collection(db,'artifacts',appId,'public','data',col); if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()}); else await updateDoc(doc(ref, data.id), payload); showToast("Gespeichert"); close(); }; 
-            const toggleDept = (d) => { const cur = form.departments || []; setForm({...form, departments: cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]}); };
-            return (<div className="space-y-6 animate-in"><div className="flex justify-between items-center mb-2"><h3 className="font-black text-xl text-slate-800">{data.isNew?'Neu':'Bearbeiten'}</h3><button onClick={close} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bezeichnung</span><Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." /></div>{type==='prep' && (<div className="space-y-4"><div className="grid grid-cols-2 gap-3"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Kategorie</span><Select value={form.category||'prep'} onChange={e=>setForm({...form,category:e.target.value})}><option value="prep">Vorbereitung (Mise en Place)</option><option value="stock">Lager/Auffüllen</option></Select></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Zuständigkeit</span><Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}><option value="kitchen">Küche</option><option value="service">Service</option></Select></div></div><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Ziel / Menge</span><Input value={form.target||''} onChange={e=>setForm({...form,target:e.target.value})} placeholder="z.B. 2 Behälter, Voll machen..." /></div><div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Zeitplan (Tage)</span><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>)}</div></div></div>)}{type==='staff' && (<div className="space-y-4"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Abteilungen</span><div className="flex gap-3"><button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('kitchen')?'border-orange-500 bg-orange-50 text-orange-600':'border-slate-100 bg-white text-slate-400'}`}>Küche</button><button onClick={()=>toggleDept('service')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('service')?'border-purple-500 bg-purple-50 text-purple-600':'border-slate-100 bg-white text-slate-400'}`}>Service</button></div></div><div className="flex gap-3"><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Rolle</span><Select value={form.role||'user'} onChange={e=>setForm({...form,role:e.target.value})}><option value="user">Mitarbeiter</option><option value="kitchen_lead">Küchenleitung</option><option value="service_lead">Serviceleitung</option><option value="admin">Filialleitung</option></Select></div><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">PIN (Optional)</span><Input value={form.pin||''} onChange={e=>setForm({...form,pin:e.target.value})} className="text-center font-mono tracking-widest" maxLength={4}/></div></div></div>)}{type==='tasks' && (<div className="space-y-4"><div className="flex gap-3"><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bereich</span><Input value={form.area||''} onChange={e=>setForm({...form,area:e.target.value})} placeholder="z.B. Bar"/></div><div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Dept</span><Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}><option value="kitchen">Küche</option><option value="service">Service</option><option value="all">Alle</option></Select></div></div><div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Wochentage</span><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>)}</div></div></div>)}<Button onClick={save} className="mt-6 shadow-xl shadow-slate-900/10" style={btnStyle}>Speichern</Button></div>); 
+            const [form, setForm] = useState({...data}); 
+            const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); 
+            
+            const save = async () => { 
+                const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':type==='prep'?'prep_tasks':'staff'; 
+                const payload = { ...form }; 
+                if(type==='tasks'||type==='prep') payload.schedule = sched; 
+                delete payload.id; 
+                delete payload.isNew; 
+                
+                const ref = collection(db,'artifacts',appId,'public','data',col); 
+                if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()}); 
+                else await updateDoc(doc(ref, data.id), payload); 
+                
+                showToast("Gespeichert"); 
+                close(); 
+            }; 
+            
+            const toggleDept = (d) => { 
+                const cur = form.departments || []; 
+                setForm({...form, departments: cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]}); 
+            };
+
+            return (
+                <div className="space-y-6 animate-in">
+                    <div className="flex justify-between items-center mb-2">
+                        <h3 className="font-black text-xl text-slate-800">{data.isNew?'Neu':'Bearbeiten'}</h3>
+                        <button onClick={close} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button>
+                    </div>
+                    
+                    <div className="space-y-2">
+                        <span className="text-xs font-bold uppercase text-slate-400 ml-1">Bezeichnung / Name</span>
+                        <Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." />
+                    </div>
+
+                    {type==='prep' && (
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Kategorie</span>
+                                    <Select value={form.category||'prep'} onChange={e=>setForm({...form,category:e.target.value})}>
+                                        <option value="prep">Vorbereitung (Mise en Place)</option>
+                                        <option value="stock">Lager/Auffüllen</option>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Zuständigkeit</span>
+                                    <Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}>
+                                        <option value="kitchen">Küche</option>
+                                        <option value="service">Service</option>
+                                    </Select>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Ziel / Menge</span>
+                                <Input value={form.target||''} onChange={e=>setForm({...form,target:e.target.value})} placeholder="z.B. 2 Behälter, Voll machen..." />
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Zeitplan (Tage)</span>
+                                <div className="flex justify-between">
+                                    {['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>
+                                        <button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {type==='staff' && (
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Abteilungen</span>
+                                <div className="flex gap-3">
+                                    <button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('kitchen')?'border-orange-500 bg-orange-50 text-orange-600':'border-slate-100 bg-white text-slate-400'}`}>Küche</button>
+                                    <button onClick={()=>toggleDept('service')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('service')?'border-purple-500 bg-purple-50 text-purple-600':'border-slate-100 bg-white text-slate-400'}`}>Service</button>
+                                </div>
+                            </div>
+
+                            {/* NEU: VERTRAGSDATEN */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Vertrag (Std/Monat)</span>
+                                    <Input type="number" value={form.contractHours || ''} onChange={e=>setForm({...form, contractHours: e.target.value})} placeholder="z.B. 160" />
+                                </div>
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Stundenlohn (€)</span>
+                                    <Input type="number" value={form.hourlyRate || ''} onChange={e=>setForm({...form, hourlyRate: e.target.value})} placeholder="z.B. 12.50" />
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3">
+                                <div className="flex-1 space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Rolle</span>
+                                    <Select value={form.role||'user'} onChange={e=>setForm({...form,role:e.target.value})}>
+                                        <option value="user">Mitarbeiter</option>
+                                        <option value="kitchen_lead">Küchenleitung</option>
+                                        <option value="service_lead">Serviceleitung</option>
+                                        <option value="admin">Filialleitung</option>
+                                    </Select>
+                                </div>
+                                <div className="flex-1 space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">PIN (Optional)</span>
+                                    <Input value={form.pin||''} onChange={e=>setForm({...form,pin:e.target.value})} className="text-center font-mono tracking-widest" maxLength={4}/>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {type==='tasks' && (
+                        <div className="space-y-4">
+                            <div className="flex gap-3">
+                                <div className="flex-1 space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Bereich</span>
+                                    <Input value={form.area||''} onChange={e=>setForm({...form,area:e.target.value})} placeholder="z.B. Bar"/>
+                                </div>
+                                <div className="flex-1 space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Dept</span>
+                                    <Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}>
+                                        <option value="kitchen">Küche</option>
+                                        <option value="service">Service</option>
+                                        <option value="all">Alle</option>
+                                    </Select>
+                                </div>
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Wochentage</span>
+                                <div className="flex justify-between">
+                                    {['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>
+                                        <button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    <Button onClick={save} className="mt-6 shadow-xl shadow-slate-900/10" style={btnStyle}>Speichern</Button>
+                </div>
+            ); 
         };
 
         // --- RESTORED HEAD ADMIN PANEL ---
