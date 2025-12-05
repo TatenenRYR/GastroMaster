@@ -1542,74 +1542,55 @@ const TerminalClock = ({ staff, appId, onClose }) => {
         </div>
     );
 };
-// --- KASSEN-MANAGER V5 (Final: Berechtigungen Service vs. Leitung) ---
 
-// 1. Unterschriften-Pad
+   // --- KASSEN-MANAGER V6 (Mit Reset, Settings-Link & Auto-Clear) ---
+
+// 1. Unterschriften-Pad (Unverändert, muss aber dabei bleiben)
 const SignaturePad = ({ onSave, onCancel }) => {
     const canvasRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
-
     const start = (e) => {
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        const rect = canvas.getBoundingClientRect();
-        const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-        const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+        const ctx = canvasRef.current.getContext('2d');
+        const rect = canvasRef.current.getBoundingClientRect();
+        const x = (e.touches?e.touches[0].clientX:e.clientX)-rect.left;
+        const y = (e.touches?e.touches[0].clientY:e.clientY)-rect.top;
         ctx.beginPath(); ctx.moveTo(x, y); setIsDrawing(true);
     };
     const draw = (e) => {
-        if (!isDrawing) return;
-        e.preventDefault();
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        const rect = canvas.getBoundingClientRect();
-        const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-        const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+        if (!isDrawing) return; e.preventDefault();
+        const ctx = canvasRef.current.getContext('2d');
+        const rect = canvasRef.current.getBoundingClientRect();
+        const x = (e.touches?e.touches[0].clientX:e.clientX)-rect.left;
+        const y = (e.touches?e.touches[0].clientY:e.clientY)-rect.top;
         ctx.lineTo(x, y); ctx.stroke();
     };
     const stop = () => setIsDrawing(false);
-    const clear = () => { const c = canvasRef.current; c.getContext('2d').clearRect(0, 0, c.width, c.height); };
-    const save = () => onSave(canvasRef.current.toDataURL());
-
+    const clear = () => { const c=canvasRef.current; c.getContext('2d').clearRect(0,0,c.width,c.height); };
     return (
         <div className="fixed inset-0 z-[200] bg-slate-900/90 flex flex-col items-center justify-center p-4 animate-in">
             <div className="bg-white rounded-[2rem] p-6 w-full max-w-md shadow-2xl text-center">
                 <h3 className="font-bold text-lg mb-4">Unterschrift</h3>
-                <div className="border-2 border-slate-200 rounded-xl overflow-hidden mb-4 bg-slate-50 touch-none">
-                    <canvas ref={canvasRef} width={350} height={200} className="w-full h-48 cursor-crosshair" onMouseDown={start} onMouseMove={draw} onMouseUp={stop} onMouseLeave={stop} onTouchStart={start} onTouchMove={draw} onTouchEnd={stop}/>
-                </div>
+                <div className="border-2 border-slate-200 rounded-xl overflow-hidden mb-4 bg-slate-50 touch-none"><canvas ref={canvasRef} width={350} height={200} className="w-full h-48 cursor-crosshair" onMouseDown={start} onMouseMove={draw} onMouseUp={stop} onMouseLeave={stop} onTouchStart={start} onTouchMove={draw} onTouchEnd={stop}/></div>
                 <div className="flex gap-2"><button onClick={clear} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl">Neu</button><button onClick={onCancel} className="flex-1 py-3 border border-red-200 text-red-500 font-bold rounded-xl">Abbruch</button></div>
-                <button onClick={save} className="w-full mt-2 py-4 bg-slate-900 text-white font-bold rounded-xl shadow-xl">Bestätigen</button>
+                <button onClick={()=>onSave(canvasRef.current.toDataURL())} className="w-full mt-2 py-4 bg-slate-900 text-white font-bold rounded-xl shadow-xl">Bestätigen</button>
             </div>
         </div>
     );
 };
 
 // 2. Hauptkomponente
-const CashManager = ({ user, appId, showToast, setView }) => {
-    const [targetFloat, setTargetFloat] = useState(500);
+const CashManager = ({ user, appId, showToast, setView, data }) => {
+    // Lade Ziel-Wechselgeld aus globalen Settings oder Fallback 500
+    const globalFloat = parseFloat(data.settings?.modules?.cash?.targetFloat) || 500;
+    
+    const [targetFloat, setTargetFloat] = useState(globalFloat);
     const [mode, setMode] = useState('evening'); 
     const [tab, setTab] = useState('count');
     const [logs, setLogs] = useState([]);
     const [showSigPad, setShowSigPad] = useState(false);
     
-    // Definitionen
-    const DENOM_LOOSE = [
-        { val: 500, label: '500 €', type: 'note' }, { val: 200, label: '200 €', type: 'note' },
-        { val: 100, label: '100 €', type: 'note' }, { val: 50, label: '50 €', type: 'note' },
-        { val: 20, label: '20 €', type: 'note' }, { val: 10, label: '10 €', type: 'note' },
-        { val: 5, label: '5 €', type: 'note' }, { val: 2, label: '2 €', type: 'coin' },
-        { val: 1, label: '1 €', type: 'coin' }, { val: 0.50, label: '50 ct', type: 'coin' },
-        { val: 0.20, label: '20 ct', type: 'coin' }, { val: 0.10, label: '10 ct', type: 'coin' },
-        { val: 0.05, label: '5 ct', type: 'coin' }, { val: 0.02, label: '2 ct', type: 'coin' },
-        { val: 0.01, label: '1 ct', type: 'coin' },
-    ];
-    const DENOM_ROLLS = [
-        { val: 50, label: '2 € Rolle (50€)' }, { val: 25, label: '1 € Rolle (25€)' },
-        { val: 20, label: '50 ct Rolle (20€)' }, { val: 10, label: '20 ct Rolle (10€)' },
-        { val: 5, label: '10 ct Rolle (5€)' }, { val: 2.5, label: '5 ct Rolle (2,50€)' },
-        { val: 1, label: '2 ct Rolle (1€)' }, { val: 0.5, label: '1 ct Rolle (0,50€)' },
-    ];
+    const DENOM_LOOSE = [{v:500,l:'500 €',t:'n'},{v:200,l:'200 €',t:'n'},{v:100,l:'100 €',t:'n'},{v:50,l:'50 €',t:'n'},{v:20,l:'20 €',t:'n'},{v:10,l:'10 €',t:'n'},{v:5,l:'5 €',t:'n'},{v:2,l:'2 €',t:'c'},{v:1,l:'1 €',t:'c'},{v:0.5,l:'50 ct',t:'c'},{v:0.2,l:'20 ct',t:'c'},{v:0.1,l:'10 ct',t:'c'},{v:0.05,l:'5 ct',t:'c'},{v:0.02,l:'2 ct',t:'c'},{v:0.01,l:'1 ct',t:'c'}];
+    const DENOM_ROLLS = [{v:50,l:'2 € Rolle'},{v:25,l:'1 € Rolle'},{v:20,l:'50 ct Rolle'},{v:10,l:'20 ct Rolle'},{v:5,l:'10 ct Rolle'},{v:2.5,l:'5 ct Rolle'},{v:1,l:'2 ct Rolle'},{v:0.5,l:'1 ct Rolle'}];
 
     const [counts, setCounts] = useState({});      
     const [rollCounts, setRollCounts] = useState({}); 
@@ -1617,146 +1598,123 @@ const CashManager = ({ user, appId, showToast, setView }) => {
 
     const todayStr = getTodayStr();
     const [todaysMorningLog, setTodaysMorningLog] = useState(null);
+    const [todaysEveningLog, setTodaysEveningLog] = useState(null);
 
-    // --- BERECHTIGUNGEN ---
-    // Zugriff: Chefs ODER Service-Mitarbeiter
     const hasAccess = ['admin', 'service_lead'].includes(user.role) || (user.departments || []).includes('service');
-    
-    // Download: NUR Chefs (Filialleitung & Serviceleitung)
-    const canDownload = ['admin', 'service_lead'].includes(user.role);
-
-    // Helper für sichere Werte
-    const getSafeTotal = (log) => {
-        if (!log) return 0;
-        return log.sum_total || log.cash_total || 0;
-    };
+    const canManage = ['admin', 'service_lead'].includes(user.role); // Darf resetten & downloaden
 
     useEffect(() => {
         const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs_cash'), orderBy('createdAt', 'desc'), limit(60));
         const unsub = onSnapshot(q, (s) => {
-            const data = s.docs.map(d => ({id: d.id, ...d.data()}));
-            setLogs(data);
-            const morning = data.find(l => l.dateStr === todayStr && l.type === 'morning');
-            setTodaysMorningLog(morning || null);
-        });
-        
-        getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cash')).then(s => {
-            if(s.exists() && s.data().targetFloat) setTargetFloat(s.data().targetFloat);
+            const d = s.docs.map(doc => ({id: doc.id, ...doc.data()}));
+            setLogs(d);
+            setTodaysMorningLog(d.find(l => l.dateStr === todayStr && l.type === 'morning') || null);
+            setTodaysEveningLog(d.find(l => l.dateStr === todayStr && l.type === 'evening') || null);
         });
         return () => unsub();
     }, [appId, todayStr]);
 
-    // UI Logik für Read-Only Anzeige
+    // Auto-Fill für Read-Only View
     useEffect(() => {
         if(mode === 'morning' && todaysMorningLog) {
-            setCounts(todaysMorningLog.counts_loose || {});
-            setRollCounts(todaysMorningLog.counts_rolls || {});
-            setExtras({ ec: '', vouchers: '', comment: todaysMorningLog.comment || '' });
-        } else if(mode === 'morning' && !todaysMorningLog) {
-             setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
+            setCounts(todaysMorningLog.counts_loose || {}); setRollCounts(todaysMorningLog.counts_rolls || {}); setExtras({ ec: '', vouchers: '', comment: todaysMorningLog.comment || '' });
+        } else if (mode === 'evening' && todaysEveningLog) {
+            setCounts(todaysEveningLog.counts_loose || {}); setRollCounts(todaysEveningLog.counts_rolls || {}); setExtras({ ec: todaysEveningLog.ec_total||'', vouchers: todaysEveningLog.vouchers||'', comment: todaysEveningLog.comment || '' });
+        } else {
+            // Reset wenn nichts da ist (Wichtig für neuen Tag!)
+            setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
         }
-        if(mode === 'evening') {
-             setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
-        }
-    }, [mode, todaysMorningLog]);
+    }, [mode, todaysMorningLog, todaysEveningLog]);
 
-    const groupedHistory = useMemo(() => {
-        const groups = {};
-        logs.forEach(log => {
-            if(!groups[log.dateStr]) groups[log.dateStr] = { date: log.dateStr, morning: null, evening: null };
-            if(log.type === 'morning') groups[log.dateStr].morning = log;
-            if(log.type === 'evening') groups[log.dateStr].evening = log;
-        });
-        return Object.values(groups).sort((a,b) => b.date.localeCompare(a.date));
-    }, [logs]);
-
-    // Summen berechnen
-    const calcSum = (map, denoms) => denoms.reduce((acc, d) => acc + ((map[d.val]||0) * d.val), 0);
+    const calcSum = (map, denoms) => denoms.reduce((acc, d) => acc + ((map[d.v]||0) * d.v), 0);
     const sumLoose = calcSum(counts, DENOM_LOOSE);
     const sumRolls = calcSum(rollCounts, DENOM_ROLLS);
     const totalCash = sumLoose + sumRolls;
     const safeDrop = Math.max(0, totalCash - targetFloat);
 
-    const handleCount = (val, qty) => setCounts(p => ({...p, [val]: parseFloat(qty)||0}));
-    const handleRolls = (val, qty) => setRollCounts(p => ({...p, [val]: parseFloat(qty)||0}));
+    const handleCount = (v, q) => setCounts(p => ({...p, [v]: parseFloat(q)||0}));
+    const handleRolls = (v, q) => setRollCounts(p => ({...p, [v]: parseFloat(q)||0}));
+
+    // NOTFALL RESET (Nur für Chefs)
+    const resetToday = async () => {
+        if(!confirm(`ACHTUNG: Soll der Bericht für ${mode === 'morning' ? 'MORGENS' : 'ABENDS'} wirklich gelöscht werden?`)) return;
+        const logToDelete = mode === 'morning' ? todaysMorningLog : todaysEveningLog;
+        if(logToDelete) {
+            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_cash', logToDelete.id));
+            showToast("Bericht gelöscht. Bitte neu zählen.");
+            setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
+        }
+    };
 
     const initiateSave = () => {
-        if(sumLoose === 0 && mode === 'morning' && !todaysMorningLog) return showToast("Bitte Werte eingeben", "error");
-        if(mode === 'morning' && todaysMorningLog) return showToast("Bereits unterschrieben!", "error");
+        if(sumLoose === 0) return showToast("Keine Werte eingetragen.", "error");
         setShowSigPad(true);
     };
 
-    const finalizeSave = async (signatureDataUrl) => {
+    const finalizeSave = async (sig) => {
         setShowSigPad(false);
         try {
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_cash'), {
-                type: mode,
-                user: user.name, userId: user.id, role: user.role,
-                dateStr: getTodayStr(), createdAt: serverTimestamp(),
-                counts_loose: counts, counts_rolls: rollCounts,
-                sum_loose: sumLoose, sum_rolls: sumRolls, sum_total: totalCash,
-                ec_total: parseFloat(extras.ec) || 0,
-                vouchers: parseFloat(extras.vouchers) || 0,
-                target_float: targetFloat,
-                safe_drop: mode === 'evening' ? safeDrop : 0,
-                comment: extras.comment,
-                signature: signatureDataUrl
+                type: mode, user: user.name, userId: user.id, role: user.role, dateStr: getTodayStr(), createdAt: serverTimestamp(),
+                counts_loose: counts, counts_rolls: rollCounts, sum_loose: sumLoose, sum_rolls: sumRolls, sum_total: totalCash,
+                ec_total: parseFloat(extras.ec) || 0, vouchers: parseFloat(extras.vouchers) || 0, target_float: targetFloat,
+                safe_drop: mode === 'evening' ? safeDrop : 0, comment: extras.comment, signature: sig
             });
-            showToast("Gespeichert!", "success");
-            setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
+            showToast("Erfolgreich gespeichert!", "success");
+            
+            // UI Reset nach Speichern
+            if (mode === 'evening') {
+                // Wenn Abendabschluss fertig, leeren wir alles visuell
+                setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
+            }
             setTab('history');
-        } catch(e) { console.error(e); showToast("Fehler beim Speichern", "error"); }
+        } catch(e) { console.error(e); showToast("Fehler", "error"); }
     };
 
-    const downloadDailyReport = (dayData) => {
-        if (!window.jspdf) return alert("PDF Modul lädt noch...");
+    const downloadPDF = (dayData) => {
+        if (!window.jspdf) return alert("PDF lädt...");
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        const m = dayData.morning || {};
-        const e = dayData.evening || {};
+        const m = dayData.morning || {}; const e = dayData.evening || {};
         
         doc.setFontSize(20); doc.text(`Tageskassenbericht`, 105, 20, null, null, 'center');
         doc.setFontSize(12); doc.text(`Datum: ${new Date(dayData.date).toLocaleDateString('de-DE')}`, 105, 28, null, null, 'center');
-        doc.line(14, 32, 196, 32);
-
-        let y = 40;
+        
         const rows = [];
         [...DENOM_LOOSE, ...DENOM_ROLLS].forEach(d => {
-            const mQty = (m.counts_loose?.[d.val] || m.counts_rolls?.[d.val] || 0);
-            const eQty = (e.counts_loose?.[d.val] || e.counts_rolls?.[d.val] || 0);
-            if(mQty > 0 || eQty > 0) rows.push([ d.label, mQty > 0 ? `${mQty}x` : '-', eQty > 0 ? `${eQty}x` : '-' ]);
+            const mq = (m.counts_loose?.[d.v]||m.counts_rolls?.[d.v]||0);
+            const eq = (e.counts_loose?.[d.v]||e.counts_rolls?.[d.v]||0);
+            if(mq>0 || eq>0) rows.push([d.l, mq>0?`${mq}x`:'-', eq>0?`${eq}x`:'-']);
         });
 
         doc.autoTable({
-            startY: y, head: [['Position', 'Morgens', 'Abends']],
-            body: [
-                ...rows, ['', '', ''],
-                ['SUMME BAR', getSafeTotal(m).toFixed(2)+' €', getSafeTotal(e).toFixed(2)+' €'],
+            startY: 40, head: [['Pos', 'Morgens', 'Abends']],
+            body: [...rows, ['','',''], 
+                ['SUMME BAR', (m.sum_total||0).toFixed(2)+' €', (e.sum_total||0).toFixed(2)+' €'],
                 ['Soll-Bestand', '-', (e.target_float||0).toFixed(2)+' €'],
                 ['UMSCHLAG', '-', (e.safe_drop||0).toFixed(2)+' €'],
-                ['EC / Gutscheine', '-', ((e.ec_total||0) + (e.vouchers||0)).toFixed(2)+' €'],
-                ['Kommentar', m.comment || '', e.comment || '']
+                ['EC/Gutschein', '-', ((e.ec_total||0)+(e.vouchers||0)).toFixed(2)+' €'],
+                ['Notiz', m.comment||'', e.comment||'']
             ],
-            theme: 'grid', headStyles: { fillColor: [40, 40, 40] }, columnStyles: { 0: { fontStyle: 'bold' } }
+            theme: 'grid', headStyles: {fillColor:[40,40,40]}
         });
 
-        y = doc.lastAutoTable.finalY + 20;
-        if (m.signature) { doc.text(`Morgens: ${m.user}`, 30, y); try{ doc.addImage(m.signature, 'PNG', 30, y + 5, 40, 20); }catch(e){} }
-        if (e.signature) { doc.text(`Abends: ${e.user}`, 120, y); try{ doc.addImage(e.signature, 'PNG', 120, y + 5, 40, 20); }catch(e){} }
+        let y = doc.lastAutoTable.finalY + 20;
+        if (m.signature) { doc.text(`Morgens: ${m.user}`, 30, y); try{doc.addImage(m.signature,'PNG',30,y+5,40,20);}catch(x){} }
+        if (e.signature) { doc.text(`Abends: ${e.user}`, 120, y); try{doc.addImage(e.signature,'PNG',120,y+5,40,20);}catch(x){} }
         
-        const hash = Math.random().toString(36).substring(7);
-        doc.save(`Kasse_${dayData.date}_${hash}.pdf`);
-        showToast("PDF gespeichert", "success");
+        doc.save(`Kasse_${dayData.date}_${Math.random().toString(36).substr(2,5)}.pdf`);
     };
 
     if(!hasAccess) return <div className="p-10 text-center text-slate-400">Kein Zugriff.</div>;
-    const isMorningLocked = mode === 'morning' && todaysMorningLog !== null;
+    
+    const isLocked = (mode === 'morning' && todaysMorningLog) || (mode === 'evening' && todaysEveningLog);
 
     return (
         <div className="animate-in space-y-6 pb-20">
             {showSigPad && <SignaturePad onSave={finalizeSave} onCancel={()=>setShowSigPad(false)} />}
             <div className="flex justify-between items-center">
-                <div><h2 className="text-3xl font-black text-slate-800">Kasse</h2><p className="opacity-60 text-sm font-medium">Tagesabschluss</p></div>
+                <div><h2 className="text-3xl font-black text-slate-800">Kasse</h2><p className="opacity-60 text-sm font-medium">Wechselgeld: {targetFloat} €</p></div>
                 <div className="flex gap-2">
                     <button onClick={()=>setTab('count')} className={`p-3 rounded-2xl ${tab==='count'?'bg-slate-900 text-white shadow-lg':'bg-white border'}`}><Calculator size={24}/></button>
                     <button onClick={()=>setTab('history')} className={`p-3 rounded-2xl ${tab==='history'?'bg-slate-900 text-white shadow-lg':'bg-white border'}`}><History size={24}/></button>
@@ -1766,85 +1724,76 @@ const CashManager = ({ user, appId, showToast, setView }) => {
             {tab === 'count' && (
                 <div className="space-y-6">
                     <div className="bg-slate-100 p-1 rounded-2xl flex font-bold text-sm">
-                        <button onClick={()=>setMode('morning')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='morning'?'bg-white shadow text-slate-800':'text-slate-400'} ${isMorningLocked ? 'opacity-60' : ''}`}>☀️ Morgens {isMorningLocked && ' (Fertig)'}</button>
-                        <button onClick={()=>setMode('evening')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='evening'?'bg-white shadow text-slate-800':'text-slate-400'}`}>🌙 Abends</button>
+                        <button onClick={()=>setMode('morning')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='morning'?'bg-white shadow text-slate-800':'text-slate-400'}`}>☀️ Morgens {todaysMorningLog && '✓'}</button>
+                        <button onClick={()=>setMode('evening')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='evening'?'bg-white shadow text-slate-800':'text-slate-400'}`}>🌙 Abends {todaysEveningLog && '✓'}</button>
                     </div>
+
                     <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 relative">
-                        {isMorningLocked && <div className="absolute inset-0 bg-white/50 z-10 flex items-center justify-center"><div className="bg-emerald-500 text-white px-6 py-3 rounded-2xl font-bold shadow-xl transform -rotate-6">Bereits Unterschrieben!</div></div>}
-                        <h3 className="font-black text-lg mb-4 flex items-center gap-2"><Coins size={20} className="text-amber-500"/> Kasse (Lose)</h3>
+                        {/* Reset Button für Admins, falls gelockt */}
+                        {isLocked && canManage && (
+                            <button onClick={resetToday} className="absolute top-4 right-4 bg-red-50 text-red-500 p-2 rounded-xl hover:bg-red-100 z-20" title="Eintrag löschen / Reset"><Trash2 size={20}/></button>
+                        )}
+                        {isLocked && <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center pointer-events-none"><div className="bg-emerald-500 text-white px-6 py-3 rounded-2xl font-bold shadow-xl -rotate-6">Erledigt & Unterschrieben</div></div>}
+
+                        <h3 className="font-black text-lg mb-4 flex items-center gap-2"><Coins size={20} className="text-amber-500"/> Lose Münzen/Scheine</h3>
                         <div className="grid grid-cols-2 gap-3 mb-6">
                             {DENOM_LOOSE.map(d => (
-                                <div key={d.val} className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
-                                    <div className={`w-12 text-[10px] font-bold uppercase text-right ${d.type==='note'?'text-slate-400':'text-amber-600'}`}>{d.label}</div>
-                                    <input type="number" inputMode="numeric" placeholder="0" value={counts[d.val] || ''} onChange={e=>handleCount(d.val, e.target.value)} disabled={isMorningLocked} className="w-full bg-white p-2 rounded-lg font-bold text-center outline-none border focus:border-indigo-500"/>
-                                    <div className="w-14 text-right text-xs font-mono text-slate-400">{((counts[d.val]||0) * d.val).toFixed(2)}</div>
+                                <div key={d.v} className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                                    <div className={`w-12 text-[10px] font-bold uppercase text-right ${d.t==='n'?'text-slate-400':'text-amber-600'}`}>{d.l}</div>
+                                    <input type="number" inputMode="numeric" placeholder="0" value={counts[d.v] || ''} onChange={e=>handleCount(d.v, e.target.value)} disabled={isLocked} className="w-full bg-white p-2 rounded-lg font-bold text-center outline-none border focus:border-indigo-500"/>
                                 </div>
                             ))}
                         </div>
-                        <div className="bg-amber-50 p-3 rounded-xl text-amber-900 font-bold text-right mb-6 text-sm">Summe Lade: {sumLoose.toFixed(2)} €</div>
 
-                        <h3 className="font-black text-lg mb-4 flex items-center gap-2"><Database size={20} className="text-indigo-500"/> Rollengeld (Safe)</h3>
+                        <h3 className="font-black text-lg mb-4 flex items-center gap-2"><Database size={20} className="text-indigo-500"/> Rollengeld</h3>
                         <div className="grid grid-cols-2 gap-3 mb-6">
                             {DENOM_ROLLS.map(d => (
-                                <div key={d.val} className="flex items-center gap-2 bg-indigo-50/50 p-2 rounded-xl border border-indigo-100">
-                                    <div className="w-20 text-[9px] font-bold uppercase text-right text-indigo-400 leading-tight">{d.label}</div>
-                                    <input type="number" inputMode="numeric" placeholder="0" value={rollCounts[d.val] || ''} onChange={e=>handleRolls(d.val, e.target.value)} disabled={isMorningLocked} className="w-full bg-white p-2 rounded-lg font-bold text-center outline-none border focus:border-indigo-500"/>
-                                    <div className="w-14 text-right text-xs font-mono text-indigo-400">{((rollCounts[d.val]||0) * d.val).toFixed(2)}</div>
+                                <div key={d.v} className="flex items-center gap-2 bg-indigo-50/50 p-2 rounded-xl border border-indigo-100">
+                                    <div className="w-20 text-[9px] font-bold uppercase text-right text-indigo-400">{d.l}</div>
+                                    <input type="number" inputMode="numeric" placeholder="0" value={rollCounts[d.v] || ''} onChange={e=>handleRolls(d.v, e.target.value)} disabled={isLocked} className="w-full bg-white p-2 rounded-lg font-bold text-center outline-none border focus:border-indigo-500"/>
                                 </div>
                             ))}
                         </div>
-                        <div className="bg-indigo-50 p-3 rounded-xl text-indigo-900 font-bold text-right mb-6 text-sm">Summe Rollen: {sumRolls.toFixed(2)} €</div>
 
                         {mode === 'evening' && (
                             <div className="animate-in space-y-4 mb-6 pt-4 border-t border-slate-100">
                                 <h3 className="font-black text-lg flex items-center gap-2"><Wallet size={20} className="text-blue-500"/> Abrechnung</h3>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div><label className="text-[10px] uppercase font-bold text-slate-400 ml-1">EC-Summe</label><Input type="number" value={extras.ec} onChange={e=>setExtras({...extras, ec:e.target.value})} placeholder="0.00"/></div>
-                                    <div><label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Gutscheine</label><Input type="number" value={extras.vouchers} onChange={e=>setExtras({...extras, vouchers:e.target.value})} placeholder="0.00"/></div>
+                                    <div><label className="text-[10px] uppercase font-bold text-slate-400">EC-Summe</label><Input type="number" value={extras.ec} onChange={e=>setExtras({...extras, ec:e.target.value})} disabled={isLocked} placeholder="0.00"/></div>
+                                    <div><label className="text-[10px] uppercase font-bold text-slate-400">Gutscheine</label><Input type="number" value={extras.vouchers} onChange={e=>setExtras({...extras, vouchers:e.target.value})} disabled={isLocked} placeholder="0.00"/></div>
                                 </div>
                             </div>
                         )}
-                        <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Kommentar</label>
-                        <input value={extras.comment} onChange={e=>setExtras({...extras, comment:e.target.value})} disabled={isMorningLocked} className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 mb-6" placeholder="Notiz..."/>
+                        <input value={extras.comment} onChange={e=>setExtras({...extras, comment:e.target.value})} disabled={isLocked} className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 mb-6" placeholder="Kommentar..."/>
+                        
                         <div className={`p-5 rounded-2xl border-2 mb-4 text-center ${mode==='evening' && safeDrop>0 ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100'}`}>
                              <div className="text-xs text-slate-400 font-bold uppercase mb-1">Gesamtbestand</div>
                              <div className="text-3xl font-black text-slate-800 mb-2">{totalCash.toFixed(2)} €</div>
-                             {mode === 'evening' && <div className="bg-white p-3 rounded-xl border border-indigo-100 shadow-sm mt-2"><div className="text-xs text-indigo-400 font-bold uppercase">In den Umschlag</div><div className="text-2xl font-black text-indigo-600">{safeDrop.toFixed(2)} €</div><div className="text-[10px] text-slate-400 mt-1">In Kasse verbleibend: {(totalCash - safeDrop).toFixed(2)} €</div></div>}
+                             {mode === 'evening' && <div className="bg-white p-3 rounded-xl border border-indigo-100 shadow-sm mt-2"><div className="text-xs text-indigo-400 font-bold uppercase">In den Umschlag</div><div className="text-2xl font-black text-indigo-600">{safeDrop.toFixed(2)} €</div></div>}
                         </div>
-                        {!isMorningLocked && <Button onClick={initiateSave} className="bg-slate-900 shadow-xl">{mode === 'morning' ? 'Morgenzählung bestätigen' : 'Kassenabschluss & Unterschrift'}</Button>}
+                        {!isLocked && <Button onClick={initiateSave} className="bg-slate-900 shadow-xl">Speichern & Unterschreiben</Button>}
                     </div>
                 </div>
             )}
-
             {tab === 'history' && (
                 <div className="space-y-4">
-                    {groupedHistory.map(group => {
-                        const m = group.morning; const e = group.evening;
-                        return (
-                            <div key={group.date} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm">
-                                <div className="flex justify-between items-center mb-4">
-                                    <div className="font-black text-lg text-slate-800">{new Date(group.date).toLocaleDateString('de-DE')}</div>
-                                    {canDownload && (e || m) && <button onClick={()=>downloadDailyReport(group)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-lg shadow-indigo-200 flex items-center gap-2"><FileText size={16}/> PDF</button>}
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className={`p-3 rounded-xl ${m ? 'bg-emerald-50 border border-emerald-100' : 'bg-slate-50 border border-slate-100 border-dashed'}`}>
-                                        <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">☀️ Morgens</div>
-                                        {m ? <div><div className="font-bold text-emerald-700">{getSafeTotal(m).toFixed(2)} €</div><div className="text-[10px] text-emerald-600">{m.user}</div></div> : <div className="text-xs text-slate-400 italic">Offen</div>}
-                                    </div>
-                                    <div className={`p-3 rounded-xl ${e ? 'bg-indigo-50 border border-indigo-100' : 'bg-slate-50 border border-slate-100 border-dashed'}`}>
-                                        <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">🌙 Abends</div>
-                                        {e ? <div><div className="font-bold text-indigo-700">{getSafeTotal(e).toFixed(2)} €</div><div className="text-[10px] text-indigo-600">Drop: {e.safe_drop.toFixed(2)} €</div></div> : <div className="text-xs text-slate-400 italic">Offen</div>}
-                                    </div>
-                                </div>
+                    {groupedHistory.map(g => (
+                        <div key={g.date} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm">
+                            <div className="flex justify-between items-center mb-4">
+                                <div className="font-black text-lg text-slate-800">{new Date(g.date).toLocaleDateString('de-DE')}</div>
+                                {canManage && (g.evening||g.morning) && <button onClick={()=>downloadPDF(g)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg"><FileText size={16}/> PDF</button>}
                             </div>
-                        );
-                    })}
+                            <div className="grid grid-cols-2 gap-4 text-center">
+                                <div className={`p-3 rounded-xl ${g.morning ? 'bg-emerald-50 border border-emerald-100' : 'bg-slate-50 border-dashed'}`}><div className="text-[10px] font-bold uppercase text-slate-400">Morgens</div>{g.morning ? <div className="font-bold text-emerald-700">{(g.morning.sum_total||0).toFixed(2)} €</div> : '-'}</div>
+                                <div className={`p-3 rounded-xl ${g.evening ? 'bg-indigo-50 border border-indigo-100' : 'bg-slate-50 border-dashed'}`}><div className="text-[10px] font-bold uppercase text-slate-400">Abends</div>{g.evening ? <div className="font-bold text-indigo-700">{(g.evening.sum_total||0).toFixed(2)} €</div> : '-'}</div>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             )}
         </div>
     );
-};
-      
+};   
 // --- APP CONTROLLER ---
         function App() {
             // --- STATE DEFINITIONS ---
@@ -2960,116 +2909,111 @@ const Editor = ({ type, data, close, appId, showToast, btnStyle }) => {
         const ColorPicker = ({ label, val, set }) => ( <div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">{label}</span><div className="flex gap-3 items-center"><input type="color" value={val || '#000000'} onChange={e=>set(e.target.value)} className="h-12 w-12 rounded-xl border-none cursor-pointer" /><div className="flex-1 bg-slate-50 p-3 rounded-xl text-slate-500 text-sm border border-slate-200 uppercase font-mono">{val}</div></div></div> );
 
         const CompanyEditor = ({ data, appId, showToast }) => { const [f, setF] = useState(data||{}); const save = async () => { await setDoc(doc(db,'artifacts',appId,'public','data','company','info'), f); showToast("Firmendaten gespeichert"); }; return <div className="space-y-4 animate-in"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Betriebsname</span><Input value={f.name||''} onChange={e=>setF({...f,name:e.target.value})} /></div><Button onClick={save}>Speichern</Button></div> };
-        // --- EINSTELLUNGEN MIT ÖFFNUNGSZEITEN ---
+
+// --- SETTINGS EDITOR (Erweitert für Modul-Einstellungen) ---
 const SettingsEditor = ({ data, appId, showToast, btnStyle, deleteBranch, lang }) => { 
     const [key, setKey] = useState(data.masterKey||''); 
     const [linkCode, setLinkCode] = useState(data.linkCode || '');
+    const [bizHours, setBizHours] = useState(data.businessHours || { weekday: { open: "10:00", close: "22:00" }, weekend: { open: "10:00", close: "23:00" } });
     
-    // NEU: Öffnungszeiten State
-    const [bizHours, setBizHours] = useState(data.businessHours || {
-        weekday: { open: "10:00", close: "22:00" },
-        weekend: { open: "10:00", close: "23:00" }
-    });
+    // NEU: Modul-spezifische Settings
+    const [modSettings, setModSettings] = useState(data.modules || {});
 
-    // Delete Logic
     const [delInput, setDelInput] = useState('');
     const [math, setMath] = useState({ q: '', a: 0 });
     const [showDelete, setShowDelete] = useState(false);
     const t = DICTIONARY[lang] || DICTIONARY.de;
 
-    useEffect(() => {
-        const a = Math.floor(Math.random() * 10) + 1;
-        const b = Math.floor(Math.random() * 10) + 1;
-        setMath({ q: `${a} + ${b}`, a: a + b });
-    }, [showDelete]);
+    useEffect(() => { const a = Math.floor(Math.random()*10)+1; const b = Math.floor(Math.random()*10)+1; setMath({ q: `${a} + ${b}`, a: a + b }); }, [showDelete]);
 
     const save = async () => { 
         await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { 
-            masterKey: key,
-            businessHours: bizHours // Speichern der Zeiten
+            masterKey: key, businessHours: bizHours, modules: modSettings 
         }, {merge:true}); 
         showToast(t.save + " OK"); 
     }; 
     
     const generateLink = async () => {
         const code = "LINK-" + Math.floor(1000 + Math.random() * 9000);
-        await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { 
-            linkCode: code, restaurantName: data.restaurantName || appId 
-        }, {merge:true});
+        await setDoc(doc(db,'artifacts',appId,'public','data','settings','global'), { linkCode: code, restaurantName: data.restaurantName || appId }, {merge:true});
         setLinkCode(code);
     };
 
-    const updateHours = (type, field, val) => {
-        setBizHours(p => ({...p, [type]: { ...p[type], [field]: val }}));
-    };
-
-    const handleDelete = () => {
-        if(parseInt(delInput) === math.a) { deleteBranch(); } 
-        else { showToast("Falsches Ergebnis / Wrong Result", "error"); }
-    };
+    const updateHours = (type, field, val) => setBizHours(p => ({...p, [type]: { ...p[type], [field]: val }}));
+    const handleDelete = () => { if(parseInt(delInput) === math.a) deleteBranch(); else showToast("Falsch", "error"); };
+    
+    // Helper für Modul-Settings Update
+    const updateModSet = (mod, field, val) => setModSettings(p => ({...p, [mod]: { ...p[mod], [field]: val }}));
 
     return (
         <div className="space-y-8 animate-in">
-            {/* 1. ÖFFNUNGSZEITEN (NEU) */}
-            <div className="space-y-4">
-                <h3 className="font-bold text-lg flex items-center gap-2"><Clock size={20}/> Öffnungszeiten (für Dienstplan)</h3>
+            {/* 1. Modul Konfiguration */}
+            <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
+                <h3 className="font-bold text-lg flex items-center gap-2"><Settings size={20}/> Modul Einstellungen</h3>
                 
-                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-                    <div>
-                        <div className="text-xs font-bold uppercase text-slate-400 mb-2">Mo - Do (Wochentags)</div>
-                        <div className="flex gap-2 items-center">
-                            <input type="time" value={bizHours.weekday.open} onChange={e=>updateHours('weekday','open',e.target.value)} className="bg-slate-50 p-3 rounded-xl font-bold text-slate-700 outline-none flex-1"/>
-                            <span className="font-bold text-slate-300">-</span>
-                            <input type="time" value={bizHours.weekday.close} onChange={e=>updateHours('weekday','close',e.target.value)} className="bg-slate-50 p-3 rounded-xl font-bold text-slate-700 outline-none flex-1"/>
+                {/* Kasse */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <h4 className="font-bold text-sm uppercase text-slate-500 mb-2 flex items-center gap-2"><Euro size={14}/> Kasse</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-[10px] font-bold uppercase text-slate-400">Wechselgeld Soll (€)</label>
+                            <Input type="number" value={modSettings.cash?.targetFloat || 500} onChange={e=>updateModSet('cash', 'targetFloat', e.target.value)} placeholder="500" />
                         </div>
                     </div>
-                    <div>
-                        <div className="text-xs font-bold uppercase text-slate-400 mb-2">Fr - So (Wochenende)</div>
-                        <div className="flex gap-2 items-center">
-                            <input type="time" value={bizHours.weekend.open} onChange={e=>updateHours('weekend','open',e.target.value)} className="bg-slate-50 p-3 rounded-xl font-bold text-slate-700 outline-none flex-1"/>
-                            <span className="font-bold text-slate-300">-</span>
-                            <input type="time" value={bizHours.weekend.close} onChange={e=>updateHours('weekend','close',e.target.value)} className="bg-slate-50 p-3 rounded-xl font-bold text-slate-700 outline-none flex-1"/>
+                </div>
+
+                {/* Stempeluhr */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <h4 className="font-bold text-sm uppercase text-slate-500 mb-2 flex items-center gap-2"><Clock size={14}/> Stempeluhr Automatik</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-[10px] font-bold uppercase text-slate-400">Pause ab 6 Std (Min)</label>
+                            <Input type="number" value={modSettings.time?.break6 || 30} onChange={e=>updateModSet('time', 'break6', e.target.value)} placeholder="30" />
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-bold uppercase text-slate-400">Pause ab 9 Std (Min)</label>
+                            <Input type="number" value={modSettings.time?.break9 || 45} onChange={e=>updateModSet('time', 'break9', e.target.value)} placeholder="45" />
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* 2. MASTER KEY */}
+            {/* 2. Öffnungszeiten */}
+            <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
+                <h3 className="font-bold text-lg flex items-center gap-2"><Calendar size={20}/> Öffnungszeiten</h3>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <div className="text-xs font-bold uppercase text-slate-400 mb-1">Mo-Do Start</div>
+                        <input type="time" value={bizHours.weekday.open} onChange={e=>updateHours('weekday','open',e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none"/>
+                    </div>
+                    <div>
+                        <div className="text-xs font-bold uppercase text-slate-400 mb-1">Mo-Do Ende</div>
+                        <input type="time" value={bizHours.weekday.close} onChange={e=>updateHours('weekday','close',e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none"/>
+                    </div>
+                </div>
+            </div>
+
             <div className="space-y-2">
                 <h3 className="font-bold text-lg">{t.settings}</h3>
-                <span className="text-xs font-bold uppercase text-slate-400">Master Key (Recovery)</span>
+                <span className="text-xs font-bold uppercase text-slate-400">Master Key</span>
                 <Input value={key} onChange={e=>setKey(e.target.value)} className="font-mono tracking-widest text-center" />
             </div>
 
-            {/* 3. BEZIRKSLEITUNG */}
             <div className="bg-indigo-50 p-5 rounded-[2rem] border border-indigo-100 space-y-4">
-                <h4 className="font-bold text-indigo-900 flex items-center gap-2"><UserCog size={20}/> Bezirksleitung Verknüpfung</h4>
-                {linkCode ? (
-                    <div className="bg-white p-4 rounded-xl text-center border-2 border-dashed border-indigo-200">
-                        <div className="text-3xl font-black text-indigo-600 tracking-widest font-mono select-all">{linkCode}</div>
-                    </div>
-                ) : (
-                    <Button onClick={generateLink} className="bg-indigo-600 text-white shadow-indigo-200">Code generieren</Button>
-                )}
+                <h4 className="font-bold text-indigo-900 flex items-center gap-2"><UserCog size={20}/> Bezirksleitung</h4>
+                {linkCode ? <div className="bg-white p-4 rounded-xl text-center border-2 border-dashed border-indigo-200 font-mono text-2xl text-indigo-600 font-black">{linkCode}</div> : <Button onClick={generateLink} className="bg-indigo-600 text-white shadow-indigo-200">Code generieren</Button>}
             </div>
 
             <Button onClick={save} style={btnStyle}>{t.save}</Button>
 
-            {/* 4. DANGER ZONE */}
             <div className="border-t border-slate-200 pt-6">
                 <div className="bg-red-50 rounded-2xl p-4 border border-red-100">
                     <h4 className="text-red-800 font-bold flex items-center gap-2 mb-4"><AlertTriangle size={18}/> {t.danger}</h4>
-                    {!showDelete ? (
-                        <button onClick={()=>setShowDelete(true)} className="w-full py-3 bg-white border border-red-200 text-red-600 font-bold rounded-xl hover:bg-red-100 transition-colors">{t.delete_branch}</button>
-                    ) : (
-                        <div className="space-y-3 animate-in">
-                            <div className="flex gap-2 items-center">
-                                <span className="font-black text-xl text-slate-700 min-w-[60px]">{math.q} = ?</span>
-                                <input type="number" value={delInput} onChange={e=>setDelInput(e.target.value)} className="w-full p-2 rounded-xl border border-red-200 outline-none" placeholder="Ergebnis"/>
-                            </div>
-                            <button onClick={handleDelete} className="w-full py-2 bg-red-600 text-white font-bold rounded-xl shadow-lg shadow-red-200">LÖSCHEN</button>
-                        </div>
-                    )}
+                    {!showDelete ? <button onClick={()=>setShowDelete(true)} className="w-full py-3 bg-white border border-red-200 text-red-600 font-bold rounded-xl hover:bg-red-100 transition-colors">{t.delete_branch}</button> : 
+                    <div className="space-y-3 animate-in">
+                        <div className="flex gap-2 items-center"><span className="font-black text-xl text-slate-700 min-w-[60px]">{math.q} = ?</span><input type="number" value={delInput} onChange={e=>setDelInput(e.target.value)} className="w-full p-2 rounded-xl border border-red-200 outline-none" placeholder="Ergebnis"/></div>
+                        <button onClick={handleDelete} className="w-full py-2 bg-red-600 text-white font-bold rounded-xl shadow-lg shadow-red-200">LÖSCHEN</button>
+                    </div>}
                 </div>
             </div>
         </div>
