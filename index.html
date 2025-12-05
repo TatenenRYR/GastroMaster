@@ -1026,7 +1026,7 @@ const AbsenceManager = ({ user, appId, showToast, staff }) => {
         </div>
     );
 };
- // --- INTELLIGENTER DIENSTPLANER V7 (Wetter + Warnings) ---
+ // --- INTELLIGENTER DIENSTPLANER V7.1 (Bugfix + Wetter) ---
 const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
     // Standard States
     const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); 
@@ -1036,27 +1036,26 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
     const [editor, setEditor] = useState(null);
     const [settings, setSettings] = useState(null);
     
-    // NEU: Wetter State
+    // Wetter State
     const [weatherData, setWeatherData] = useState({});
 
     const isAdmin = ['admin', 'kitchen_lead', 'service_lead'].includes(user.role);
 
-    // Wetter laden (Open-Meteo API - Kostenlos & ohne Key)
+    // Wetter laden (Open-Meteo API)
     useEffect(() => {
         const fetchWeather = async () => {
-            // Berlin Koordinaten (Standard) - Könnte man in den Settings speichern
-            const lat = 52.52; 
+            const lat = 52.52; // Standard Berlin, könnte man aus Settings holen
             const lon = 13.41;
             
-            // Wir laden das Wetter für den gewählten Monat
-            // Hinweis: Historische Daten oder Forecast funktionieren nur begrenzt in die Zukunft/Vergangenheit bei kostenlosen APIs
-            // Wir nehmen hier eine einfache Forecast Logik für die nächsten 7-14 Tage
             try {
+                // Wir fragen das Wetter ab
                 const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weathercode,temperature_2m_max&timezone=Europe%2FBerlin`);
+                if(!res.ok) throw new Error("Wetter API Fehler");
+                
                 const data = await res.json();
                 
                 const wMap = {};
-                if(data.daily) {
+                if(data.daily && data.daily.time) {
                     data.daily.time.forEach((t, i) => {
                         wMap[t] = { 
                             code: data.daily.weathercode[i], 
@@ -1065,7 +1064,10 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
                     });
                 }
                 setWeatherData(wMap);
-            } catch(e) { console.error("Wetter Fehler", e); }
+            } catch(e) { 
+                console.log("Wetter konnte nicht geladen werden (Offline oder API Limit)", e);
+                setWeatherData({}); // Leeres Objekt bei Fehler, damit App nicht crasht
+            }
         };
         fetchWeather();
     }, [month]);
@@ -1086,32 +1088,30 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
         return () => { unsubShifts(); unsubAbs(); };
     }, [appId, month]);
 
-    // Wetter Icon Helper
+    // Wetter Icon Helper (Jetzt sicher)
     const getWeatherIcon = (code) => {
-        if(code === undefined) return null;
-        if(code <= 3) return <Sun size={14} className="text-amber-500"/>; // Klar/Leicht bewölkt
-        if(code <= 48) return <Cloud size={14} className="text-slate-400"/>; // Nebel
-        if(code <= 67) return <Droplet size={14} className="text-blue-400"/>; // Regen
-        if(code <= 86) return <Snowflake size={14} className="text-cyan-300"/>; // Schnee
-        return <AlertOctagon size={14} className="text-slate-300"/>; // Gewitter/Sonstiges
+        if(code === undefined || code === null) return null;
+        // WICHTIG: Sun, Cloud, Droplet, Snowflake müssen importiert sein!
+        if(code <= 3) return <Sun size={14} className="text-amber-500"/>; 
+        if(code <= 48) return <Cloud size={14} className="text-slate-400"/>; 
+        if(code <= 67) return <Droplet size={14} className="text-blue-400"/>; 
+        if(code <= 86) return <Snowflake size={14} className="text-cyan-300"/>; 
+        return <AlertOctagon size={14} className="text-slate-300"/>; 
     };
 
-    // Warnung: Fehlt ein Manager an diesem Tag?
+    // Warnung: Fehlt ein Manager?
     const checkStaffingIssues = (dateStr) => {
         const shiftsOnDay = shifts.filter(s => s.date === dateStr && s.slots.length > 0);
-        if (shiftsOnDay.length === 0) return null; // Ruhetag oder noch nicht geplant
+        if (shiftsOnDay.length === 0) return null; 
 
-        // Sammle alle User-IDs, die heute arbeiten
         const workingUserIds = shiftsOnDay.map(s => s.userId);
-        
-        // Prüfe, ob einer davon eine Lead-Rolle hat
         const hasLead = staff.some(s => workingUserIds.includes(s.id) && (s.role === 'admin' || s.role.includes('lead')));
         
-        if (!hasLead) return <div className="absolute -top-2 -right-1 bg-red-500 text-white rounded-full p-1 border-2 border-white" title="Kein Manager!"><AlertTriangle size={10}/></div>;
+        if (!hasLead) return <div className="absolute -top-2 -right-1 bg-red-500 text-white rounded-full p-1 border-2 border-white z-10" title="Kein Manager!"><AlertTriangle size={10}/></div>;
         return null;
     };
 
-    // Standard Funktionen (Editor, Save, etc.)
+    // Standard Funktionen
     const openEditor = (userId, dateStr, userName) => {
         const existing = shifts.find(s => s.userId === userId && s.date === dateStr);
         setEditor({ userId, dateStr, name: userName, slots: existing?.slots || [] });
@@ -1315,8 +1315,7 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
         </div>
     );
 };
-  
-// --- NEUE KOMPONENTE: SMARTE TERMINAL UHR (FIX: INDEX FEHLER BEHOBEN) ---
+        // --- NEUE KOMPONENTE: SMARTE TERMINAL UHR (FIX: INDEX FEHLER BEHOBEN) ---
 const TerminalClock = ({ staff, appId, onClose }) => {
     const [pin, setPin] = useState('');
     const [identifiedUser, setIdentifiedUser] = useState(null);
