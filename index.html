@@ -634,10 +634,11 @@ const DistrictLogin = ({ onLogin, onBack }) => {
         </div>
     );
 };
-       // --- KASSEN-MANAGER V2 (Mit Rollen-Zählung & Morgen-Logik) ---
+
+// --- KASSEN-MANAGER V2.1 (Crash-Fixed & Robust) ---
 const CashManager = ({ user, appId, showToast, setView }) => {
-    const [targetFloat, setTargetFloat] = useState(500); // Wechselgeld-Ziel
-    const [mode, setMode] = useState('evening'); // 'morning' oder 'evening'
+    const [targetFloat, setTargetFloat] = useState(500); 
+    const [mode, setMode] = useState('evening'); 
     const [tab, setTab] = useState('count');
     const [history, setHistory] = useState([]);
 
@@ -660,7 +661,7 @@ const CashManager = ({ user, appId, showToast, setView }) => {
         { val: 0.01, label: '1 ct', type: 'coin' },
     ];
 
-    // 2. Rollengeld (Werte für Standard-Rollen)
+    // 2. Rollengeld
     const DENOM_ROLLS = [
         { val: 50, label: '2 € Rolle (50€)' },
         { val: 25, label: '1 € Rolle (25€)' },
@@ -672,59 +673,39 @@ const CashManager = ({ user, appId, showToast, setView }) => {
         { val: 0.5, label: '1 ct Rolle (0,50€)' },
     ];
 
-    // States für Zählung
-    const [counts, setCounts] = useState({});      // Lose & Scheine
-    const [rollCounts, setRollCounts] = useState({}); // Rollen
-    
+    const [counts, setCounts] = useState({});      
+    const [rollCounts, setRollCounts] = useState({}); 
     const [extras, setExtras] = useState({ ec: '', vouchers: '', comment: '' });
 
-    // Rechte
     const hasAccess = ['admin', 'service_lead'].includes(user.role) || (user.departments || []).includes('service');
     const canDownload = ['admin', 'service_lead'].includes(user.role);
 
     useEffect(() => {
         const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs_cash'), orderBy('createdAt', 'desc'), limit(30));
         const unsub = onSnapshot(q, (s) => setHistory(s.docs.map(d => ({id: d.id, ...d.data()}))));
+        
         getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cash')).then(s => {
             if(s.exists() && s.data().targetFloat) setTargetFloat(s.data().targetFloat);
         });
         return () => unsub();
     }, [appId]);
 
-    // --- RECHENLOGIK ---
+    // --- RECHNEN ---
     const calcSum = (map, denoms) => denoms.reduce((acc, d) => acc + ((map[d.val]||0) * d.val), 0);
-
-    const sumLoose = calcSum(counts, DENOM_LOOSE); // Aktives Geld in Lade
-    const sumRolls = calcSum(rollCounts, DENOM_ROLLS); // Reserve im Tresor
-    
-    // Morgens: Nur loses Geld zählt zum "Soll-Bestand" der Lade? 
-    // Oder meintest du: Rollen werden gezählt, aber nicht mit dem Wechselgeld vermischt?
-    // Hier die Logik basierend auf deiner Anfrage:
-    // Morgens: Vergleich "Lade" (Loose) mit Soll. Rollen sind extra.
-    // Abends: Alles zusammen (Loose + Rollen) = Gesamtbestand.
-    
+    const sumLoose = calcSum(counts, DENOM_LOOSE);
+    const sumRolls = calcSum(rollCounts, DENOM_ROLLS);
     const totalCash = sumLoose + sumRolls;
-    
-    // Abwurf-Berechnung (Nur Abends relevant)
-    // Abends nehmen wir ALLES Geld, ziehen den Wechselgeld-Puffer ab = Umschlag
     const safeDrop = Math.max(0, totalCash - targetFloat);
     
-    const ecTotal = parseFloat(extras.ec) || 0;
-    const voucherTotal = parseFloat(extras.vouchers) || 0;
-
-    // --- HANDLER ---
     const handleCount = (val, qty) => setCounts(p => ({...p, [val]: parseFloat(qty)||0}));
     const handleRolls = (val, qty) => setRollCounts(p => ({...p, [val]: parseFloat(qty)||0}));
 
     const saveLog = async () => {
         if(sumLoose === 0) return showToast("Bitte Lade zählen", "error");
         
-        let confirmMsg = "";
-        if (mode === 'morning') {
-            confirmMsg = `Morgenzählung speichern?\n\nLade: ${sumLoose.toFixed(2)} €\nRollen: ${sumRolls.toFixed(2)} €\n\nGesamtbestand: ${totalCash.toFixed(2)} €`;
-        } else {
-            confirmMsg = `Abendabschluss speichern?\n\nGesamt Bar: ${totalCash.toFixed(2)} €\n(Davon Rollen: ${sumRolls.toFixed(2)} €)\n\n➔ In den Umschlag: ${safeDrop.toFixed(2)} €`;
-        }
+        let confirmMsg = mode === 'morning' 
+            ? `Morgenzählung speichern?\n\nLade: ${sumLoose.toFixed(2)} €`
+            : `Abendabschluss speichern?\n\nGesamt: ${totalCash.toFixed(2)} €\nUmschlag: ${safeDrop.toFixed(2)} €`;
 
         if(!confirm(confirmMsg)) return;
 
@@ -736,57 +717,42 @@ const CashManager = ({ user, appId, showToast, setView }) => {
                 role: user.role,
                 dateStr: getTodayStr(),
                 createdAt: serverTimestamp(),
-                
-                // Details speichern
                 counts_loose: counts,
                 counts_rolls: rollCounts,
-                
-                // Summen
                 sum_loose: sumLoose,
                 sum_rolls: sumRolls,
                 sum_total: totalCash,
-                
-                // Extras
-                ec_total: ecTotal,
-                vouchers: voucherTotal,
-                
-                // Abrechnung
+                ec_total: parseFloat(extras.ec) || 0,
+                vouchers: parseFloat(extras.vouchers) || 0,
                 target_float: targetFloat,
-                safe_drop: mode === 'evening' ? safeDrop : 0, // Morgens kein Abwurf
-                
+                safe_drop: mode === 'evening' ? safeDrop : 0,
                 comment: extras.comment,
                 signed: true
             });
-
             showToast("Gespeichert!", "success");
             setCounts({}); setRollCounts({});
             setExtras({ ec: '', vouchers: '', comment: '' });
             setTab('history');
-        } catch(e) { console.error(e); showToast("Fehler", "error"); }
+        } catch(e) { console.error(e); showToast("Fehler beim Speichern", "error"); }
     };
 
     const downloadPDF = (log) => {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        
         doc.setFontSize(18);
-        doc.text(`Kassenbericht: ${log.type === 'morning' ? 'Morgenzählung' : 'Abendabschluss'}`, 14, 20);
+        doc.text(`Kassenbericht: ${log.type === 'morning' ? 'Morgen' : 'Abend'}`, 14, 20);
         doc.setFontSize(10);
         doc.text(`${new Date(log.createdAt?.seconds * 1000).toLocaleString()} | ${log.user}`, 14, 30);
 
-        // Tabelle 1: Lade (Lose & Scheine)
         const rowsLoose = DENOM_LOOSE.map(d => {
             const qty = log.counts_loose ? (log.counts_loose[d.val] || 0) : 0;
             if(qty===0) return null;
             return [d.label, `${qty}x`, (qty * d.val).toFixed(2) + ' €'];
         }).filter(Boolean);
 
-        doc.text("1. Kassenlade (Wechselgeld)", 14, 40);
-        doc.autoTable({
-            startY: 45, head: [['Art', 'Anzahl', 'Summe']], body: rowsLoose, theme: 'striped', styles: { fontSize: 10 }
-        });
+        doc.text("1. Kassenlade", 14, 40);
+        doc.autoTable({ startY: 45, head: [['Art', 'Anzahl', 'Summe']], body: rowsLoose, theme: 'striped' });
 
-        // Tabelle 2: Rollen (Reserve)
         const rowsRolls = DENOM_ROLLS.map(d => {
             const qty = log.counts_rolls ? (log.counts_rolls[d.val] || 0) : 0;
             if(qty===0) return null;
@@ -794,36 +760,32 @@ const CashManager = ({ user, appId, showToast, setView }) => {
         }).filter(Boolean);
 
         if(rowsRolls.length > 0) {
-            doc.text("2. Rollengeld (Reserve)", 14, doc.lastAutoTable.finalY + 15);
-            doc.autoTable({
-                startY: doc.lastAutoTable.finalY + 20, head: [['Rolle', 'Anzahl', 'Summe']], body: rowsRolls, theme: 'striped', styles: { fontSize: 10 }
-            });
+            doc.text("2. Rollengeld", 14, doc.lastAutoTable.finalY + 15);
+            doc.autoTable({ startY: doc.lastAutoTable.finalY + 20, head: [['Rolle', 'Anzahl', 'Summe']], body: rowsRolls, theme: 'striped' });
         }
 
-        // Tabelle 3: Zusammenfassung
-        const finalY = doc.lastAutoTable.finalY + 20;
+        // Safe Value Accessor for Summary
+        const sLoose = (log.sum_loose || log.cash_total || 0).toFixed(2);
+        const sRolls = (log.sum_rolls || 0).toFixed(2);
+        const sTotal = (log.sum_total || log.cash_total || 0).toFixed(2);
+
         const summary = [
-            ['Summe Lade', log.sum_loose.toFixed(2) + ' €'],
-            ['Summe Rollen', log.sum_rolls.toFixed(2) + ' €'],
-            ['GESAMT BAR', log.sum_total.toFixed(2) + ' €'],
+            ['Summe Lade', sLoose + ' €'],
+            ['Summe Rollen', sRolls + ' €'],
+            ['GESAMT BAR', sTotal + ' €'],
         ];
         
         if(log.type === 'evening') {
             summary.push(['', '']);
-            summary.push(['Soll-Bestand', log.target_float.toFixed(2) + ' €']);
-            summary.push(['ABWURF (Umschlag)', log.safe_drop.toFixed(2) + ' €']);
+            summary.push(['ABWURF (Umschlag)', (log.safe_drop||0).toFixed(2) + ' €']);
             summary.push(['', '']);
-            summary.push(['EC-Zahlungen', log.ec_total.toFixed(2) + ' €']);
-            summary.push(['Gutscheine', log.vouchers.toFixed(2) + ' €']);
+            summary.push(['EC-Zahlungen', (log.ec_total||0).toFixed(2) + ' €']);
+            summary.push(['Gutscheine', (log.vouchers||0).toFixed(2) + ' €']);
         }
 
-        doc.text("Zusammenfassung", 14, finalY - 5);
-        doc.autoTable({
-            startY: finalY, body: summary, theme: 'grid', headStyles: { fillColor: [40, 40, 40] }, columnStyles: { 0: { fontStyle: 'bold' } }
-        });
-
-        doc.text(`Unterschrift: ${log.user}`, 14, doc.lastAutoTable.finalY + 20);
-        doc.save(`Kasse_${log.dateStr}_${log.type}.pdf`);
+        doc.text("Zusammenfassung", 14, doc.lastAutoTable.finalY + 15);
+        doc.autoTable({ startY: doc.lastAutoTable.finalY + 20, body: summary, theme: 'grid', headStyles: { fillColor: [40, 40, 40] } });
+        doc.save(`Kasse_${log.dateStr}.pdf`);
     };
 
     if(!hasAccess) return <div className="p-10 text-center text-slate-400">Kein Zugriff.</div>;
@@ -840,40 +802,34 @@ const CashManager = ({ user, appId, showToast, setView }) => {
 
             {tab === 'count' && (
                 <div className="space-y-6">
-                    {/* Modus Umschalter */}
                     <div className="bg-slate-100 p-1 rounded-2xl flex font-bold text-sm">
-                        <button onClick={()=>setMode('morning')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='morning'?'bg-white shadow text-slate-800':'text-slate-400'}`}>☀️ Morgens (Kontrolle)</button>
-                        <button onClick={()=>setMode('evening')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='evening'?'bg-white shadow text-slate-800':'text-slate-400'}`}>🌙 Abends (Abschluss)</button>
+                        <button onClick={()=>setMode('morning')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='morning'?'bg-white shadow text-slate-800':'text-slate-400'}`}>☀️ Morgens</button>
+                        <button onClick={()=>setMode('evening')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='evening'?'bg-white shadow text-slate-800':'text-slate-400'}`}>🌙 Abends</button>
                     </div>
 
                     <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
-                        {/* 1. Lose Münzen & Scheine */}
-                        <h3 className="font-black text-lg mb-4 flex items-center gap-2"><Coins size={20} className="text-amber-500"/> Kassenlade (Lose & Scheine)</h3>
+                        <h3 className="font-black text-lg mb-4 flex items-center gap-2"><Coins size={20} className="text-amber-500"/> Kassenlade (Lose)</h3>
                         <div className="grid grid-cols-2 gap-3 mb-6">
                             {DENOM_LOOSE.map(d => (
                                 <div key={d.val} className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
                                     <div className={`w-12 text-[10px] font-bold uppercase text-right ${d.type==='note'?'text-slate-400':'text-amber-600'}`}>{d.label}</div>
                                     <input type="number" inputMode="numeric" placeholder="0" value={counts[d.val] || ''} onChange={e=>handleCount(d.val, e.target.value)} className="w-full bg-white p-2 rounded-lg font-bold text-center outline-none border focus:border-indigo-500"/>
-                                    <div className="w-14 text-right text-xs font-mono text-slate-400">{((counts[d.val]||0) * d.val).toFixed(2)}</div>
                                 </div>
                             ))}
                         </div>
-                        <div className="bg-amber-50 p-3 rounded-xl text-amber-900 font-bold text-right mb-6 text-sm">Zwischensumme Lade: {sumLoose.toFixed(2)} €</div>
+                        <div className="bg-amber-50 p-3 rounded-xl text-amber-900 font-bold text-right mb-6 text-sm">Lade: {sumLoose.toFixed(2)} €</div>
 
-                        {/* 2. Rollengeld */}
-                        <h3 className="font-black text-lg mb-4 flex items-center gap-2"><Database size={20} className="text-indigo-500"/> Rollengeld (Reserve)</h3>
+                        <h3 className="font-black text-lg mb-4 flex items-center gap-2"><Database size={20} className="text-indigo-500"/> Rollengeld</h3>
                         <div className="grid grid-cols-2 gap-3 mb-6">
                             {DENOM_ROLLS.map(d => (
                                 <div key={d.val} className="flex items-center gap-2 bg-indigo-50/50 p-2 rounded-xl border border-indigo-100">
-                                    <div className="w-20 text-[9px] font-bold uppercase text-right text-indigo-400 leading-tight">{d.label}</div>
+                                    <div className="w-20 text-[9px] font-bold uppercase text-right text-indigo-400">{d.label}</div>
                                     <input type="number" inputMode="numeric" placeholder="0" value={rollCounts[d.val] || ''} onChange={e=>handleRolls(d.val, e.target.value)} className="w-full bg-white p-2 rounded-lg font-bold text-center outline-none border focus:border-indigo-500"/>
-                                    <div className="w-14 text-right text-xs font-mono text-indigo-400">{((rollCounts[d.val]||0) * d.val).toFixed(2)}</div>
                                 </div>
                             ))}
                         </div>
-                        <div className="bg-indigo-50 p-3 rounded-xl text-indigo-900 font-bold text-right mb-6 text-sm">Zwischensumme Rollen: {sumRolls.toFixed(2)} €</div>
+                        <div className="bg-indigo-50 p-3 rounded-xl text-indigo-900 font-bold text-right mb-6 text-sm">Rollen: {sumRolls.toFixed(2)} €</div>
 
-                        {/* 3. Abend-Extras (Nur wenn Abends) */}
                         {mode === 'evening' && (
                             <div className="animate-in space-y-4 mb-6 pt-4 border-t border-slate-100">
                                 <h3 className="font-black text-lg flex items-center gap-2"><Wallet size={20} className="text-blue-500"/> Abrechnung</h3>
@@ -884,34 +840,14 @@ const CashManager = ({ user, appId, showToast, setView }) => {
                             </div>
                         )}
 
-                        <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Kommentar</label>
-                        <input value={extras.comment} onChange={e=>setExtras({...extras, comment:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 mb-6" placeholder="Notiz..."/>
+                        <input value={extras.comment} onChange={e=>setExtras({...extras, comment:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 mb-6" placeholder="Kommentar..."/>
 
-                        {/* ERGEBNIS */}
                         <div className={`p-5 rounded-2xl border-2 mb-4 text-center ${mode==='evening' && safeDrop>0 ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100'}`}>
-                            {mode === 'morning' ? (
-                                <div>
-                                    <div className="text-xs font-bold text-slate-400 uppercase">Kontrolle</div>
-                                    <div className="text-xl font-black text-slate-800">Lade: {sumLoose.toFixed(2)} €</div>
-                                    <div className="text-sm text-slate-500"> + Rollen: {sumRolls.toFixed(2)} €</div>
-                                    <div className="mt-2 pt-2 border-t border-slate-200 font-bold text-emerald-600">Gesamtbestand: {totalCash.toFixed(2)} €</div>
-                                </div>
-                            ) : (
-                                <div>
-                                    <div className="text-xs font-bold text-slate-400 uppercase">Abendabschluss</div>
-                                    <div className="text-3xl font-black text-slate-800 mb-2">{totalCash.toFixed(2)} €</div>
-                                    <div className="text-xs font-bold text-slate-500 mb-2">(Davon Rollen: {sumRolls.toFixed(2)} €)</div>
-                                    
-                                    <div className="bg-white p-3 rounded-xl border border-indigo-100 shadow-sm mt-3">
-                                        <div className="text-xs text-indigo-400 font-bold uppercase mb-1">In den Umschlag</div>
-                                        <div className="text-2xl font-black text-indigo-600">{safeDrop.toFixed(2)} €</div>
-                                        <div className="text-[10px] text-slate-400 mt-1">Soll-Bestand Lade: {targetFloat.toFixed(2)} €</div>
-                                    </div>
-                                </div>
-                            )}
+                             <div className="text-xl font-black text-slate-800">Gesamt: {totalCash.toFixed(2)} €</div>
+                             {mode === 'evening' && <div className="text-xs text-indigo-600 font-bold mt-1">Abwurf: {safeDrop.toFixed(2)} €</div>}
                         </div>
 
-                        <Button onClick={saveLog} className="bg-slate-900 shadow-xl">{mode === 'morning' ? 'Morgenzählung bestätigen' : 'Kassenabschluss speichern'}</Button>
+                        <Button onClick={saveLog} className="bg-slate-900 shadow-xl">Speichern</Button>
                     </div>
                 </div>
             )}
@@ -925,15 +861,9 @@ const CashManager = ({ user, appId, showToast, setView }) => {
                                 {canDownload && <button onClick={()=>downloadPDF(log)} className="bg-slate-100 p-2 rounded-xl text-slate-600"><FileText size={18}/></button>}
                             </div>
                             <div className="flex justify-between items-end text-sm">
-                                <div>
-                                    <div className="text-xs text-slate-500">Gezählt von {log.user}</div>
-                                    <div className="font-bold mt-1">Lade: {log.sum_loose.toFixed(2)} €</div>
-                                </div>
-                                <div className="text-right">
-                                    <div className="text-[10px] uppercase font-bold text-slate-400">Gesamt</div>
-                                    <div className="font-black text-lg">{log.sum_total.toFixed(2)} €</div>
-                                    {log.safe_drop > 0 && <div className="text-xs text-indigo-600 font-bold">Drop: {log.safe_drop.toFixed(2)} €</div>}
-                                </div>
+                                <div className="text-xs text-slate-500">{log.user}</div>
+                                {/* FIX: Hier verwenden wir ( || 0), um Abstürze bei alten Daten zu verhindern */}
+                                <div className="font-black text-lg">{(log.sum_total || log.cash_total || 0).toFixed(2)} €</div>
                             </div>
                         </div>
                     ))}
@@ -942,7 +872,8 @@ const CashManager = ({ user, appId, showToast, setView }) => {
             )}
         </div>
     );
-};             
+};
+        
 const DistrictDashboard = ({ districtId, onLogout, showToast }) => {
     const [branches, setBranches] = useState([]);
     const [addId, setAddId] = useState('');
