@@ -699,13 +699,56 @@ const SignaturePad = ({ onSave, onCancel }) => {
     );
 };
 
+// --- KASSEN-MANAGER V4 (Fixiert, Absturzsicher & Prozess-gesteuert) ---
+
+// Helfer für Unterschriften
+const SignaturePad = ({ onSave, onCancel }) => {
+    const canvasRef = useRef(null);
+    const [isDrawing, setIsDrawing] = useState(false);
+
+    const start = (e) => {
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+        const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+        ctx.beginPath(); ctx.moveTo(x, y); setIsDrawing(true);
+    };
+    const draw = (e) => {
+        if (!isDrawing) return;
+        e.preventDefault();
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+        const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+        ctx.lineTo(x, y); ctx.stroke();
+    };
+    const stop = () => setIsDrawing(false);
+    const clear = () => { const c = canvasRef.current; c.getContext('2d').clearRect(0, 0, c.width, c.height); };
+    const save = () => onSave(canvasRef.current.toDataURL());
+
+    return (
+        <div className="fixed inset-0 z-[200] bg-slate-900/90 flex flex-col items-center justify-center p-4 animate-in">
+            <div className="bg-white rounded-[2rem] p-6 w-full max-w-md shadow-2xl text-center">
+                <h3 className="font-bold text-lg mb-4">Unterschrift</h3>
+                <div className="border-2 border-slate-200 rounded-xl overflow-hidden mb-4 bg-slate-50 touch-none">
+                    <canvas ref={canvasRef} width={350} height={200} className="w-full h-48 cursor-crosshair" onMouseDown={start} onMouseMove={draw} onMouseUp={stop} onMouseLeave={stop} onTouchStart={start} onTouchMove={draw} onTouchEnd={stop}/>
+                </div>
+                <div className="flex gap-2"><button onClick={clear} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl">Neu</button><button onClick={onCancel} className="flex-1 py-3 border border-red-200 text-red-500 font-bold rounded-xl">Abbruch</button></div>
+                <button onClick={save} className="w-full mt-2 py-4 bg-slate-900 text-white font-bold rounded-xl shadow-xl">Bestätigen</button>
+            </div>
+        </div>
+    );
+};
+
 const CashManager = ({ user, appId, showToast, setView }) => {
-    const [targetFloat, setTargetFloat] = useState(500); 
+    const [targetFloat, setTargetFloat] = useState(500);
     const [mode, setMode] = useState('evening'); 
     const [tab, setTab] = useState('count');
     const [logs, setLogs] = useState([]);
     const [showSigPad, setShowSigPad] = useState(false);
-
+    
     // Geld-Definitionen
     const DENOM_LOOSE = [
         { val: 500, label: '500 €', type: 'note' }, { val: 200, label: '200 €', type: 'note' },
@@ -717,7 +760,6 @@ const CashManager = ({ user, appId, showToast, setView }) => {
         { val: 0.05, label: '5 ct', type: 'coin' }, { val: 0.02, label: '2 ct', type: 'coin' },
         { val: 0.01, label: '1 ct', type: 'coin' },
     ];
-
     const DENOM_ROLLS = [
         { val: 50, label: '2 € Rolle (50€)' }, { val: 25, label: '1 € Rolle (25€)' },
         { val: 20, label: '50 ct Rolle (20€)' }, { val: 10, label: '20 ct Rolle (10€)' },
@@ -729,22 +771,44 @@ const CashManager = ({ user, appId, showToast, setView }) => {
     const [rollCounts, setRollCounts] = useState({}); 
     const [extras, setExtras] = useState({ ec: '', vouchers: '', comment: '' });
 
-    // ZUGRIFF: Jeder vom Service darf zählen!
+    // Heutige Daten laden (für Read-Only Check)
+    const todayStr = getTodayStr();
+    const [todaysMorningLog, setTodaysMorningLog] = useState(null);
+
     const hasAccess = ['admin', 'service_lead'].includes(user.role) || (user.departments || []).includes('service');
-    // DOWNLOAD: Nur Chefs
     const canDownload = ['admin', 'service_lead'].includes(user.role);
 
     useEffect(() => {
         const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs_cash'), orderBy('createdAt', 'desc'), limit(60));
-        const unsub = onSnapshot(q, (s) => setLogs(s.docs.map(d => ({id: d.id, ...d.data()}))));
+        const unsub = onSnapshot(q, (s) => {
+            const data = s.docs.map(d => ({id: d.id, ...d.data()}));
+            setLogs(data);
+            // Check ob heute morgen schon gezählt wurde
+            const morning = data.find(l => l.dateStr === todayStr && l.type === 'morning');
+            setTodaysMorningLog(morning || null);
+        });
         
         getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cash')).then(s => {
             if(s.exists() && s.data().targetFloat) setTargetFloat(s.data().targetFloat);
         });
         return () => unsub();
-    }, [appId]);
+    }, [appId, todayStr]);
 
-    // Gruppiere Logs nach Datum für die Historie
+    // WICHTIG: Wenn wir morgens auswählen, aber es gibt schon einen Log -> Laden & Sperren
+    useEffect(() => {
+        if(mode === 'morning' && todaysMorningLog) {
+            setCounts(todaysMorningLog.counts_loose || {});
+            setRollCounts(todaysMorningLog.counts_rolls || {});
+            setExtras({ ec: '', vouchers: '', comment: todaysMorningLog.comment || '' });
+        } else if(mode === 'morning' && !todaysMorningLog) {
+             setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
+        }
+        // Bei Evening leeren wir standardmäßig (oder laden Vorbefüllung, wenn gewünscht)
+        if(mode === 'evening') {
+             setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
+        }
+    }, [mode, todaysMorningLog]);
+
     const groupedHistory = useMemo(() => {
         const groups = {};
         logs.forEach(log => {
@@ -755,7 +819,6 @@ const CashManager = ({ user, appId, showToast, setView }) => {
         return Object.values(groups).sort((a,b) => b.date.localeCompare(a.date));
     }, [logs]);
 
-    // --- RECHNEN ---
     const calcSum = (map, denoms) => denoms.reduce((acc, d) => acc + ((map[d.val]||0) * d.val), 0);
     const sumLoose = calcSum(counts, DENOM_LOOSE);
     const sumRolls = calcSum(rollCounts, DENOM_ROLLS);
@@ -767,7 +830,10 @@ const CashManager = ({ user, appId, showToast, setView }) => {
 
     const initiateSave = () => {
         if(sumLoose === 0) return showToast("Bitte Werte eingeben", "error");
-        setShowSigPad(true); // Öffne Unterschriften-Pad
+        // Sperre: Wenn Morgens schon da ist, darf man Morgens nicht überschreiben (außer Admin löscht es vorher)
+        if(mode === 'morning' && todaysMorningLog) return showToast("Morgenzählung bereits abgeschlossen!", "error");
+        
+        setShowSigPad(true);
     };
 
     const finalizeSave = async (signatureDataUrl) => {
@@ -790,23 +856,21 @@ const CashManager = ({ user, appId, showToast, setView }) => {
                 target_float: targetFloat,
                 safe_drop: mode === 'evening' ? safeDrop : 0,
                 comment: extras.comment,
-                signature: signatureDataUrl // Das Bild speichern
+                signature: signatureDataUrl
             });
-            showToast("Gespeichert & Unterschrieben!", "success");
-            setCounts({}); setRollCounts({});
-            setExtras({ ec: '', vouchers: '', comment: '' });
+            showToast("Gespeichert!", "success");
+            // Reset nach Speichern
+            setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
             setTab('history');
-        } catch(e) { console.error(e); showToast("Fehler beim Speichern", "error"); }
+        } catch(e) { console.error(e); showToast("Fehler", "error"); }
     };
 
-    // --- PDF GENERATOR (KOMBINIERT) ---
     const downloadDailyReport = (dayData) => {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        const m = dayData.morning;
-        const e = dayData.evening;
+        const m = dayData.morning || {};
+        const e = dayData.evening || {};
         
-        // HEADER
         doc.setFontSize(20);
         doc.text(`Tageskassenbericht`, 105, 20, null, null, 'center');
         doc.setFontSize(12);
@@ -814,74 +878,48 @@ const CashManager = ({ user, appId, showToast, setView }) => {
         doc.line(14, 32, 196, 32);
 
         let y = 40;
-
-        // TABELLE GENERIEREN
         const rows = [];
-        // Wir kombinieren Stückelungen für eine schöne Übersicht
         [...DENOM_LOOSE, ...DENOM_ROLLS].forEach(d => {
-            const mQty = m?.counts_loose?.[d.val] || m?.counts_rolls?.[d.val] || 0;
-            const eQty = e?.counts_loose?.[d.val] || e?.counts_rolls?.[d.val] || 0;
-            
+            const mQty = (m.counts_loose?.[d.val] || m.counts_rolls?.[d.val] || 0);
+            const eQty = (e.counts_loose?.[d.val] || e.counts_rolls?.[d.val] || 0);
             if(mQty > 0 || eQty > 0) {
-                rows.push([
-                    d.label,
-                    m ? (mQty > 0 ? `${mQty}x` : '-') : '---',
-                    e ? (eQty > 0 ? `${eQty}x` : '-') : '---'
-                ]);
+                rows.push([ d.label, mQty > 0 ? `${mQty}x` : '-', eQty > 0 ? `${eQty}x` : '-' ]);
             }
         });
 
-        // ZUSAMMENFASSUNG TABELLE
         doc.autoTable({
             startY: y,
-            head: [['Position', 'Morgens (Kontrolle)', 'Abends (Abschluss)']],
+            head: [['Position', 'Morgens', 'Abends']],
             body: [
-                ['Kasse (Lose)', m ? m.sum_loose.toFixed(2)+' €' : '-', e ? e.sum_loose.toFixed(2)+' €' : '-'],
-                ['Rollen (Safe)', m ? m.sum_rolls.toFixed(2)+' €' : '-', e ? e.sum_rolls.toFixed(2)+' €' : '-'],
-                ['GESAMT BAR', m ? m.sum_total.toFixed(2)+' €' : '-', e ? e.sum_total.toFixed(2)+' €' : '-'],
-                ['', '', ''],
-                ['Soll-Bestand', '-', e ? e.target_float.toFixed(2)+' €' : '-'],
-                ['UMSCHLAG (Abwurf)', '-', e ? e.safe_drop.toFixed(2)+' €' : '-'],
-                ['', '', ''],
-                ['EC-Umsatz', '-', e ? e.ec_total.toFixed(2)+' €' : '-'],
-                ['Gutscheine', '-', e ? e.vouchers.toFixed(2)+' €' : '-'],
-                ['Kommentar', m?.comment || '', e?.comment || '']
+                ...rows, // Zähldetails
+                ['', '', ''], // Leerzeile
+                ['SUMME BAR', (m.sum_total||0).toFixed(2)+' €', (e.sum_total||0).toFixed(2)+' €'],
+                ['Soll-Bestand', '-', (e.target_float||0).toFixed(2)+' €'],
+                ['UMSCHLAG', '-', (e.safe_drop||0).toFixed(2)+' €'],
+                ['EC / Gutscheine', '-', ((e.ec_total||0) + (e.vouchers||0)).toFixed(2)+' €'],
+                ['Kommentar', m.comment || '', e.comment || '']
             ],
             theme: 'grid',
             headStyles: { fillColor: [40, 40, 40] },
-            styles: { fontSize: 11, cellPadding: 2 },
             columnStyles: { 0: { fontStyle: 'bold' } }
         });
 
-        // UNTERSCHRIFTEN BEREICH
         y = doc.lastAutoTable.finalY + 20;
-        
-        // Morgens Unterschrift
-        if (m) {
-            doc.setFontSize(10);
-            doc.text(`Gezählt Morgens: ${m.user}`, 30, y);
-            if (m.signature) {
-                doc.addImage(m.signature, 'PNG', 30, y + 2, 40, 20);
-            }
+        if (m.signature) {
+            doc.text(`Morgens: ${m.user}`, 30, y);
+            doc.addImage(m.signature, 'PNG', 30, y + 5, 40, 20);
         }
-
-        // Abends Unterschrift
-        if (e) {
-            doc.text(`Gezählt Abends: ${e.user}`, 120, y);
-            if (e.signature) {
-                doc.addImage(e.signature, 'PNG', 120, y + 2, 40, 20);
-            }
+        if (e.signature) {
+            doc.text(`Abends: ${e.user}`, 120, y);
+            doc.addImage(e.signature, 'PNG', 120, y + 5, 40, 20);
         }
-
-        // Linien
-        doc.setLineWidth(0.5);
-        doc.line(30, y + 25, 90, y + 25); // Links
-        doc.line(120, y + 25, 180, y + 25); // Rechts
-
         doc.save(`Kassenbericht_${dayData.date}.pdf`);
     };
 
     if(!hasAccess) return <div className="p-10 text-center text-slate-400">Kein Zugriff.</div>;
+    
+    // Prüfen ob gesperrt (für UI)
+    const isMorningLocked = mode === 'morning' && todaysMorningLog !== null;
 
     return (
         <div className="animate-in space-y-6 pb-20">
@@ -898,38 +936,39 @@ const CashManager = ({ user, appId, showToast, setView }) => {
             {tab === 'count' && (
                 <div className="space-y-6">
                     <div className="bg-slate-100 p-1 rounded-2xl flex font-bold text-sm">
-                        <button onClick={()=>setMode('morning')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='morning'?'bg-white shadow text-slate-800':'text-slate-400'}`}>☀️ Morgens (Kontrolle)</button>
-                        <button onClick={()=>setMode('evening')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='evening'?'bg-white shadow text-slate-800':'text-slate-400'}`}>🌙 Abends (Abschluss)</button>
+                        <button onClick={()=>setMode('morning')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='morning'?'bg-white shadow text-slate-800':'text-slate-400'} ${isMorningLocked ? 'opacity-60' : ''}`}>
+                            ☀️ Morgens {isMorningLocked && ' (Erledigt)'}
+                        </button>
+                        <button onClick={()=>setMode('evening')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='evening'?'bg-white shadow text-slate-800':'text-slate-400'}`}>🌙 Abends</button>
                     </div>
 
-                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
-                        {/* 1. ZÄHLBRETT (LOSE) */}
+                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 relative">
+                        {isMorningLocked && <div className="absolute inset-0 bg-white/50 z-10 flex items-center justify-center"><div className="bg-emerald-500 text-white px-6 py-3 rounded-2xl font-bold shadow-xl transform -rotate-6">Bereits Unterschrieben!</div></div>}
+
                         <h3 className="font-black text-lg mb-4 flex items-center gap-2"><Coins size={20} className="text-amber-500"/> Kasse (Lose)</h3>
                         <div className="grid grid-cols-2 gap-3 mb-6">
                             {DENOM_LOOSE.map(d => (
                                 <div key={d.val} className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
                                     <div className={`w-12 text-[10px] font-bold uppercase text-right ${d.type==='note'?'text-slate-400':'text-amber-600'}`}>{d.label}</div>
-                                    <input type="number" inputMode="numeric" placeholder="0" value={counts[d.val] || ''} onChange={e=>handleCount(d.val, e.target.value)} className="w-full bg-white p-2 rounded-lg font-bold text-center outline-none border focus:border-indigo-500"/>
+                                    <input type="number" inputMode="numeric" placeholder="0" value={counts[d.val] || ''} onChange={e=>handleCount(d.val, e.target.value)} disabled={isMorningLocked} className="w-full bg-white p-2 rounded-lg font-bold text-center outline-none border focus:border-indigo-500"/>
                                     <div className="w-14 text-right text-xs font-mono text-slate-400">{((counts[d.val]||0) * d.val).toFixed(2)}</div>
                                 </div>
                             ))}
                         </div>
                         <div className="bg-amber-50 p-3 rounded-xl text-amber-900 font-bold text-right mb-6 text-sm">Summe Lade: {sumLoose.toFixed(2)} €</div>
 
-                        {/* 2. ROLLENGELD */}
                         <h3 className="font-black text-lg mb-4 flex items-center gap-2"><Database size={20} className="text-indigo-500"/> Rollengeld (Safe)</h3>
                         <div className="grid grid-cols-2 gap-3 mb-6">
                             {DENOM_ROLLS.map(d => (
                                 <div key={d.val} className="flex items-center gap-2 bg-indigo-50/50 p-2 rounded-xl border border-indigo-100">
                                     <div className="w-20 text-[9px] font-bold uppercase text-right text-indigo-400 leading-tight">{d.label}</div>
-                                    <input type="number" inputMode="numeric" placeholder="0" value={rollCounts[d.val] || ''} onChange={e=>handleRolls(d.val, e.target.value)} className="w-full bg-white p-2 rounded-lg font-bold text-center outline-none border focus:border-indigo-500"/>
+                                    <input type="number" inputMode="numeric" placeholder="0" value={rollCounts[d.val] || ''} onChange={e=>handleRolls(d.val, e.target.value)} disabled={isMorningLocked} className="w-full bg-white p-2 rounded-lg font-bold text-center outline-none border focus:border-indigo-500"/>
                                     <div className="w-14 text-right text-xs font-mono text-indigo-400">{((rollCounts[d.val]||0) * d.val).toFixed(2)}</div>
                                 </div>
                             ))}
                         </div>
                         <div className="bg-indigo-50 p-3 rounded-xl text-indigo-900 font-bold text-right mb-6 text-sm">Summe Rollen: {sumRolls.toFixed(2)} €</div>
 
-                        {/* 3. ABEND EXTRAS */}
                         {mode === 'evening' && (
                             <div className="animate-in space-y-4 mb-6 pt-4 border-t border-slate-100">
                                 <h3 className="font-black text-lg flex items-center gap-2"><Wallet size={20} className="text-blue-500"/> Abrechnung</h3>
@@ -941,9 +980,8 @@ const CashManager = ({ user, appId, showToast, setView }) => {
                         )}
 
                         <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Kommentar</label>
-                        <input value={extras.comment} onChange={e=>setExtras({...extras, comment:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 mb-6" placeholder="Notiz..."/>
+                        <input value={extras.comment} onChange={e=>setExtras({...extras, comment:e.target.value})} disabled={isMorningLocked} className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 mb-6" placeholder="Notiz..."/>
 
-                        {/* ERGEBNIS KARTE */}
                         <div className={`p-5 rounded-2xl border-2 mb-4 text-center ${mode==='evening' && safeDrop>0 ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100'}`}>
                              <div className="text-xs text-slate-400 font-bold uppercase mb-1">Gesamtbestand</div>
                              <div className="text-3xl font-black text-slate-800 mb-2">{totalCash.toFixed(2)} €</div>
@@ -951,61 +989,42 @@ const CashManager = ({ user, appId, showToast, setView }) => {
                                  <div className="bg-white p-3 rounded-xl border border-indigo-100 shadow-sm mt-2">
                                     <div className="text-xs text-indigo-400 font-bold uppercase">In den Umschlag</div>
                                     <div className="text-2xl font-black text-indigo-600">{safeDrop.toFixed(2)} €</div>
-                                    <div className="text-[10px] text-slate-400 mt-1">In Kasse verbleibend: {(totalCash - safeDrop).toFixed(2)} €</div>
                                  </div>
                              )}
                         </div>
 
-                        <Button onClick={initiateSave} className="bg-slate-900 shadow-xl">{mode === 'morning' ? 'Morgenzählung bestätigen' : 'Kassenabschluss & Unterschrift'}</Button>
+                        {!isMorningLocked && (
+                            <Button onClick={initiateSave} className="bg-slate-900 shadow-xl">{mode === 'morning' ? 'Morgenzählung bestätigen' : 'Kassenabschluss & Unterschrift'}</Button>
+                        )}
                     </div>
                 </div>
             )}
 
             {tab === 'history' && (
                 <div className="space-y-4">
-                    <h3 className="font-bold text-slate-400 text-xs uppercase ml-2 tracking-widest">Tagesberichte</h3>
                     {groupedHistory.map(group => {
-                        const m = group.morning;
-                        const e = group.evening;
-                        const dateLabel = new Date(group.date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
-                        
+                        const m = group.morning; const e = group.evening;
                         return (
                             <div key={group.date} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm">
                                 <div className="flex justify-between items-center mb-4">
-                                    <div className="font-black text-lg text-slate-800">{dateLabel}</div>
-                                    {/* Download Button nur für Chefs */}
+                                    <div className="font-black text-lg text-slate-800">{new Date(group.date).toLocaleDateString('de-DE')}</div>
                                     {canDownload && (e || m) && (
-                                        <button onClick={()=>downloadDailyReport(group)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-lg shadow-indigo-200 flex items-center gap-2">
-                                            <FileText size={16}/> PDF
-                                        </button>
+                                        <button onClick={()=>downloadDailyReport(group)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-lg shadow-indigo-200 flex items-center gap-2"><FileText size={16}/> PDF</button>
                                     )}
                                 </div>
-
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className={`p-3 rounded-xl ${m ? 'bg-emerald-50 border border-emerald-100' : 'bg-slate-50 border border-slate-100 border-dashed'}`}>
                                         <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">☀️ Morgens</div>
-                                        {m ? (
-                                            <div>
-                                                <div className="font-bold text-emerald-700">{m.sum_total.toFixed(2)} €</div>
-                                                <div className="text-[10px] text-emerald-600">{m.user}</div>
-                                            </div>
-                                        ) : <div className="text-xs text-slate-400 italic">Offen</div>}
+                                        {m ? <div><div className="font-bold text-emerald-700">{m.sum_total.toFixed(2)} €</div><div className="text-[10px] text-emerald-600">{m.user}</div></div> : <div className="text-xs text-slate-400 italic">Offen</div>}
                                     </div>
-
                                     <div className={`p-3 rounded-xl ${e ? 'bg-indigo-50 border border-indigo-100' : 'bg-slate-50 border border-slate-100 border-dashed'}`}>
                                         <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">🌙 Abends</div>
-                                        {e ? (
-                                            <div>
-                                                <div className="font-bold text-indigo-700">{e.sum_total.toFixed(2)} €</div>
-                                                <div className="text-[10px] text-indigo-600">Drop: {e.safe_drop.toFixed(2)} €</div>
-                                            </div>
-                                        ) : <div className="text-xs text-slate-400 italic">Offen</div>}
+                                        {e ? <div><div className="font-bold text-indigo-700">{e.sum_total.toFixed(2)} €</div><div className="text-[10px] text-indigo-600">Drop: {e.safe_drop.toFixed(2)} €</div></div> : <div className="text-xs text-slate-400 italic">Offen</div>}
                                     </div>
                                 </div>
                             </div>
                         );
                     })}
-                    {groupedHistory.length === 0 && <div className="text-center py-10 text-slate-400">Keine Berichte.</div>}
                 </div>
             )}
         </div>
