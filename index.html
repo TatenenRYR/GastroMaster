@@ -865,7 +865,6 @@ const DistrictDashboard = ({ districtId, onLogout, showToast }) => {
         </div>
     );
 };*/
-        // --- URLAUBS-MANAGER ---
 // --- URLAUBS-MANAGER ---
 const AbsenceManager = ({ user, appId, showToast, staff }) => {
     const [tab, setTab] = useState('request'); // 'request', 'list'
@@ -1027,121 +1026,92 @@ const AbsenceManager = ({ user, appId, showToast, staff }) => {
         </div>
     );
 };
-   // --- INTELLIGENTER DIENSTPLANER V6 (Finance, PDF, Absence) ---
+ // --- INTELLIGENTER DIENSTPLANER V7 (Wetter + Warnings) ---
 const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
+    // Standard States
     const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); 
     const [shifts, setShifts] = useState([]);
-    const [timeLogs, setTimeLogs] = useState([]); 
-    const [absences, setAbsences] = useState([]); // NEU: Abwesenheiten
+    const [absences, setAbsences] = useState([]); 
     const [publishStatus, setPublishStatus] = useState(false);
     const [editor, setEditor] = useState(null);
     const [settings, setSettings] = useState(null);
+    
+    // NEU: Wetter State
+    const [weatherData, setWeatherData] = useState({});
 
     const isAdmin = ['admin', 'kitchen_lead', 'service_lead'].includes(user.role);
+
+    // Wetter laden (Open-Meteo API - Kostenlos & ohne Key)
+    useEffect(() => {
+        const fetchWeather = async () => {
+            // Berlin Koordinaten (Standard) - Könnte man in den Settings speichern
+            const lat = 52.52; 
+            const lon = 13.41;
+            
+            // Wir laden das Wetter für den gewählten Monat
+            // Hinweis: Historische Daten oder Forecast funktionieren nur begrenzt in die Zukunft/Vergangenheit bei kostenlosen APIs
+            // Wir nehmen hier eine einfache Forecast Logik für die nächsten 7-14 Tage
+            try {
+                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weathercode,temperature_2m_max&timezone=Europe%2FBerlin`);
+                const data = await res.json();
+                
+                const wMap = {};
+                if(data.daily) {
+                    data.daily.time.forEach((t, i) => {
+                        wMap[t] = { 
+                            code: data.daily.weathercode[i], 
+                            temp: data.daily.temperature_2m_max[i] 
+                        };
+                    });
+                }
+                setWeatherData(wMap);
+            } catch(e) { console.error("Wetter Fehler", e); }
+        };
+        fetchWeather();
+    }, [month]);
 
     useEffect(() => {
         getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global')).then(s => {
             if(s.exists()) setSettings(s.data());
         });
 
-        // Schichten
         const qShifts = query(collection(db, 'artifacts', appId, 'public', 'data', 'shifts'), where('monthStr', '==', month));
         const unsubShifts = onSnapshot(qShifts, s => setShifts(s.docs.map(d => ({id:d.id, ...d.data()}))));
         
-        // Logs
-        const startM = month + "-01";
-        const endM = month + "-31";
-        const qLogs = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), where('dateStr', '>=', startM), where('dateStr', '<=', endM));
-        const unsubLogs = onSnapshot(qLogs, s => setTimeLogs(s.docs.map(d => d.data())));
-
-        // Abwesenheiten (Genehmigte)
         const qAbs = query(collection(db, 'artifacts', appId, 'public', 'data', 'requests_absence'), where('status', '==', 'approved'));
         const unsubAbs = onSnapshot(qAbs, s => setAbsences(s.docs.map(d => d.data())));
 
         getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shift_publish', month)).then(s => setPublishStatus(s.exists() && s.data().published));
         
-        return () => { unsubShifts(); unsubLogs(); unsubAbs(); };
+        return () => { unsubShifts(); unsubAbs(); };
     }, [appId, month]);
 
-    const calcDuration = (start, end) => {
-        if(!start || !end) return 0;
-        const [h1, m1] = start.split(':').map(Number);
-        const [h2, m2] = end.split(':').map(Number);
-        let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
-        if(diff < 0) diff += 24 * 60;
-        return diff / 60;
+    // Wetter Icon Helper
+    const getWeatherIcon = (code) => {
+        if(code === undefined) return null;
+        if(code <= 3) return <Sun size={14} className="text-amber-500"/>; // Klar/Leicht bewölkt
+        if(code <= 48) return <Cloud size={14} className="text-slate-400"/>; // Nebel
+        if(code <= 67) return <Droplet size={14} className="text-blue-400"/>; // Regen
+        if(code <= 86) return <Snowflake size={14} className="text-cyan-300"/>; // Schnee
+        return <AlertOctagon size={14} className="text-slate-300"/>; // Gewitter/Sonstiges
     };
 
-    // --- FINANZ-KALKULATOR ---
-    const calculateFinance = () => {
-        let totalCost = 0;
-        let totalHours = 0;
+    // Warnung: Fehlt ein Manager an diesem Tag?
+    const checkStaffingIssues = (dateStr) => {
+        const shiftsOnDay = shifts.filter(s => s.date === dateStr && s.slots.length > 0);
+        if (shiftsOnDay.length === 0) return null; // Ruhetag oder noch nicht geplant
+
+        // Sammle alle User-IDs, die heute arbeiten
+        const workingUserIds = shiftsOnDay.map(s => s.userId);
         
-        shifts.forEach(shift => {
-            const employee = staff.find(s => s.id === shift.userId);
-            if(employee) {
-                let shiftHours = 0;
-                (shift.slots || []).forEach(slot => shiftHours += calcDuration(slot.start, slot.end));
-                
-                const rate = parseFloat(employee.hourlyRate || 0);
-                totalHours += shiftHours;
-                totalCost += (shiftHours * rate);
-            }
-        });
-        return { totalCost, totalHours };
+        // Prüfe, ob einer davon eine Lead-Rolle hat
+        const hasLead = staff.some(s => workingUserIds.includes(s.id) && (s.role === 'admin' || s.role.includes('lead')));
+        
+        if (!hasLead) return <div className="absolute -top-2 -right-1 bg-red-500 text-white rounded-full p-1 border-2 border-white" title="Kein Manager!"><AlertTriangle size={10}/></div>;
+        return null;
     };
 
-    // --- PDF EXPORT ---
-    const downloadPDF = () => {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF('l', 'mm', 'a4'); // Querformat
-        
-        doc.setFontSize(18);
-        doc.text(`Dienstplan: ${month}`, 14, 15);
-        
-        const daysInM = new Date(month.split('-')[0], month.split('-')[1], 0).getDate();
-        const head = ['Mitarbeiter', ...Array.from({length: daysInM}, (_, i) => (i+1).toString())];
-        
-        const body = staff.map(s => {
-            const row = [s.name];
-            for(let i=1; i<=daysInM; i++) {
-                const dateStr = `${month}-${i.toString().padStart(2,'0')}`;
-                // Check Absence
-                const isAbsent = absences.find(a => a.userId === s.id && dateStr >= a.start && dateStr <= a.end);
-                if(isAbsent) {
-                    row.push(isAbsent.type === 'sick' ? 'KRANK' : 'URLAUB');
-                } else {
-                    // Check Shift
-                    const shift = shifts.find(sh => sh.userId === s.id && sh.date === dateStr);
-                    if(shift && shift.slots && shift.slots.length > 0) {
-                        const times = shift.slots.map(sl => `${sl.start}-${sl.end}`).join('\n');
-                        row.push(times);
-                    } else {
-                        row.push('');
-                    }
-                }
-            }
-            return row;
-        });
-
-        doc.autoTable({
-            head: [head],
-            body: body,
-            startY: 25,
-            theme: 'grid',
-            styles: { fontSize: 6, cellPadding: 1 },
-            headStyles: { fillColor: [40, 40, 40] }
-        });
-        
-        doc.save(`Dienstplan_${month}.pdf`);
-    };
-
-    // --- HELPER: Ist Mitarbeiter an Tag X abwesend? ---
-    const getAbsence = (userId, dateStr) => {
-        return absences.find(a => a.userId === userId && dateStr >= a.start && dateStr <= a.end);
-    };
-
-    // (Editor Funktionen - gekürzt)
+    // Standard Funktionen (Editor, Save, etc.)
     const openEditor = (userId, dateStr, userName) => {
         const existing = shifts.find(s => s.userId === userId && s.date === dateStr);
         setEditor({ userId, dateStr, name: userName, slots: existing?.slots || [] });
@@ -1171,8 +1141,31 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shift_publish', month), { published: n });
         setPublishStatus(n);
     };
+    
+    // PDF Export
+    const downloadPDF = () => {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('l', 'mm', 'a4');
+        doc.setFontSize(18); doc.text(`Dienstplan: ${month}`, 14, 15);
+        const daysInM = new Date(month.split('-')[0], month.split('-')[1], 0).getDate();
+        const head = ['Mitarbeiter', ...Array.from({length: daysInM}, (_, i) => (i+1).toString())];
+        const body = staff.map(s => {
+            const row = [s.name];
+            for(let i=1; i<=daysInM; i++) {
+                const dateStr = `${month}-${i.toString().padStart(2,'0')}`;
+                const isAbsent = absences.find(a => a.userId === s.id && dateStr >= a.start && dateStr <= a.end);
+                if(isAbsent) row.push(isAbsent.type === 'sick' ? 'KRANK' : 'URLAUB');
+                else {
+                    const shift = shifts.find(sh => sh.userId === s.id && sh.date === dateStr);
+                    row.push(shift && shift.slots.length > 0 ? shift.slots.map(sl => `${sl.start}-${sl.end}`).join('\n') : '');
+                }
+            }
+            return row;
+        });
+        doc.autoTable({ head: [head], body: body, startY: 25, theme: 'grid', styles: { fontSize: 6, cellPadding: 1 }, headStyles: { fillColor: [40, 40, 40] } });
+        doc.save(`Dienstplan_${month}.pdf`);
+    };
 
-    // Kalender
     const daysInMonth = new Date(month.split('-')[0], month.split('-')[1], 0).getDate();
     const daysArray = Array.from({length: daysInMonth}, (_, i) => {
         const d = i + 1;
@@ -1181,13 +1174,13 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
         return { d, dateStr, weekDay: dateObj.toLocaleDateString('de-DE', {weekday:'short'}), isWeekend: [0,5,6].includes(dateObj.getDay()) };
     });
 
-    // --- VIEW: ADMIN ---
+    const getAbsence = (userId, dateStr) => absences.find(a => a.userId === userId && dateStr >= a.start && dateStr <= a.end);
+
+    // --- RENDER ADMIN ---
     if (isAdmin) {
-        const finance = calculateFinance();
-        
         return (
             <div className="animate-in space-y-6">
-                {/* EDITOR POPUP */}
+                {/* EDITOR MODAL */}
                 {editor && (
                     <div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4">
                         <div className="bg-white w-full max-w-md rounded-[2rem] p-6 shadow-2xl relative">
@@ -1216,15 +1209,10 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
                     </div>
                 )}
 
-                {/* HEADER MIT FINANZ-ÜBERSICHT */}
+                {/* HEADER */}
                 <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 sticky top-0 z-20">
-                    <div className="flex justify-between items-start mb-4">
-                        <div>
-                            <h2 className="text-xl font-black text-slate-800">Dienstplan</h2>
-                            <div className="text-[10px] font-bold text-slate-400 uppercase mt-1">
-                                Gesamt: {finance.totalHours.toFixed(0)} Std • {finance.totalCost.toFixed(0)} €
-                            </div>
-                        </div>
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-xl font-black text-slate-800">Dienstplan</h2>
                         <div className="flex gap-2">
                             <button onClick={downloadPDF} className="bg-slate-100 p-2 rounded-xl text-slate-600"><FileText/></button>
                             <button onClick={togglePublish} className={`px-4 py-2 rounded-xl font-bold text-xs text-white ${publishStatus?'bg-emerald-500':'bg-slate-900'}`}>{publishStatus?'Live':'Entwurf'}</button>
@@ -1233,30 +1221,47 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
                     <input type="month" value={month} onChange={e=>setMonth(e.target.value)} className="w-full bg-slate-50 p-3 rounded-xl font-bold text-slate-600 outline-none"/>
                 </div>
 
-                {/* MITARBEITER GRID */}
+                {/* MAIN GRID */}
                 <div className="space-y-6">
+                    {/* Header Row (Tage + Wetter) */}
+                    <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-2 flex overflow-hidden">
+                        <div className="w-32 flex-shrink-0 p-3 font-bold text-slate-400 flex items-center">Team</div>
+                        <div className="flex overflow-x-auto custom-scrollbar gap-2 flex-1">
+                            {daysArray.map(({d, dateStr, weekDay, isWeekend}) => {
+                                const w = weatherData[dateStr];
+                                const issues = checkStaffingIssues(dateStr);
+                                return (
+                                    <div key={dateStr} className={`relative flex-shrink-0 w-24 p-2 rounded-xl text-center border flex flex-col justify-between ${isWeekend?'bg-slate-50 border-slate-200':'bg-white border-slate-100'}`}>
+                                        {issues}
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase">{weekDay}</div>
+                                        <div className="font-black text-lg leading-none">{d}</div>
+                                        {/* Wetter Anzeige */}
+                                        <div className="h-6 flex items-center justify-center gap-1 mt-1 bg-slate-100/50 rounded-lg">
+                                            {w ? <>{getWeatherIcon(w.code)}<span className="text-[9px] font-bold text-slate-600">{Math.round(w.temp)}°</span></> : <span className="text-[8px] text-slate-300">-</span>}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Staff Rows */}
                     {staff.map(s => (
-                        <div key={s.id} className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
-                            <div className="bg-slate-50 p-3 border-b border-slate-100 flex justify-between items-center">
-                                <span className="font-black text-slate-700">{s.name}</span>
-                                <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-1 rounded border">{s.role}</span>
+                        <div key={s.id} className="bg-white rounded-[2rem] border border-slate-100 shadow-sm flex overflow-hidden relative">
+                            <div className="w-32 flex-shrink-0 bg-slate-50 p-3 border-r border-slate-100 flex flex-col justify-center z-10">
+                                <span className="font-black text-slate-700 truncate text-sm">{s.name}</span>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase">{s.role}</span>
                             </div>
-                            <div className="overflow-x-auto custom-scrollbar flex p-2 gap-2">
-                                {daysArray.map(({d, dateStr, weekDay, isWeekend}) => {
-                                    // 1. Check Urlaub
+                            <div className="flex overflow-x-auto custom-scrollbar gap-2 p-2 flex-1">
+                                {daysArray.map(({dateStr, isWeekend}) => {
                                     const absence = getAbsence(s.id, dateStr);
                                     if(absence) {
                                         return (
-                                            <div key={dateStr} className="flex-shrink-0 w-24 min-h-[70px] p-2 rounded-xl border border-slate-100 bg-slate-50/50 flex flex-col justify-center items-center opacity-50">
-                                                <div className="text-[9px] font-bold mb-1">{weekDay} {d}.</div>
-                                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                                                    {absence.type === 'sick' ? 'Krank' : 'Urlaub'}
-                                                </span>
+                                            <div key={dateStr} className="flex-shrink-0 w-24 min-h-[60px] rounded-xl border border-slate-100 bg-slate-50/50 flex flex-col justify-center items-center opacity-50">
+                                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">{absence.type === 'sick' ? 'Krank' : 'Urlaub'}</span>
                                             </div>
                                         );
                                     }
-
-                                    // 2. Normale Schicht
                                     const shiftData = shifts.find(x => x.userId === s.id && x.date === dateStr);
                                     const slots = shiftData?.slots || [];
                                     
@@ -1264,12 +1269,11 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
                                         <button 
                                             key={dateStr} 
                                             onClick={() => openEditor(s.id, dateStr, s.name)}
-                                            className={`flex-shrink-0 w-24 min-h-[70px] p-2 rounded-xl border flex flex-col gap-1 transition-all text-left ${isWeekend ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-100'} ${slots.length>0 ? 'ring-1 ring-indigo-100 bg-indigo-50/10' : ''}`}
+                                            className={`flex-shrink-0 w-24 min-h-[60px] p-1 rounded-xl border flex flex-col gap-1 transition-all text-left group hover:border-indigo-300 ${isWeekend ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-100'} ${slots.length>0 ? 'ring-1 ring-indigo-100 bg-indigo-50/10' : ''}`}
                                         >
-                                            <div className="text-[9px] font-bold text-slate-400 mb-1">{weekDay} {d}.</div>
-                                            {slots.length === 0 ? <div className="flex-1 flex items-center justify-center opacity-10"><Plus size={12}/></div> : 
+                                            {slots.length === 0 ? <div className="flex-1 flex items-center justify-center opacity-0 group-hover:opacity-20"><Plus size={16}/></div> : 
                                             slots.map((slot, i) => (
-                                                <div key={i} className={`text-[8px] font-bold px-1 rounded truncate ${SHIFT_TEMPLATES[slot.type]?.color || 'bg-gray-200'}`}>
+                                                <div key={i} className={`text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm truncate ${SHIFT_TEMPLATES[slot.type]?.color || 'bg-gray-200'}`}>
                                                     {slot.start}-{slot.end}
                                                 </div>
                                             ))}
@@ -1293,13 +1297,13 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
             <div className="space-y-3">
                 {myShifts.map(s => (
                     <div key={s.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
-                        <div className="text-center bg-slate-50 px-3 py-1 rounded-xl">
+                        <div className="text-center bg-slate-50 px-3 py-1 rounded-xl min-w-[60px]">
                             <div className="text-xs font-bold text-slate-400">{new Date(s.date).toLocaleDateString('de-DE',{weekday:'short'})}</div>
-                            <div className="font-black text-slate-800">{s.date.split('-')[2]}</div>
+                            <div className="font-black text-slate-800 text-lg">{s.date.split('-')[2]}</div>
                         </div>
-                        <div className="space-y-1">
+                        <div className="space-y-1 flex-1">
                             {(s.slots||[]).map((sl,i)=>(
-                                <div key={i} className="text-sm font-bold text-slate-600 flex items-center gap-2">
+                                <div key={i} className="text-sm font-bold text-slate-600 flex items-center gap-2 bg-slate-50 p-2 rounded-lg">
                                     <span className={`w-2 h-2 rounded-full ${SHIFT_TEMPLATES[sl.type]?.color.split(' ')[0]||'bg-gray-400'}`}></span>
                                     {sl.start} - {sl.end}
                                 </div>
@@ -1310,8 +1314,8 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
             </div>}
         </div>
     );
-}; 
-// --- NEUE KOMPONENTE: SMARTE TERMINAL UHR (FINAL) ---
+};
+  
 // --- NEUE KOMPONENTE: SMARTE TERMINAL UHR (FIX: INDEX FEHLER BEHOBEN) ---
 const TerminalClock = ({ staff, appId, onClose }) => {
     const [pin, setPin] = useState('');
