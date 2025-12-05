@@ -1026,34 +1026,26 @@ const AbsenceManager = ({ user, appId, showToast, staff }) => {
         </div>
     );
 };
- // --- INTELLIGENTER DIENSTPLANER V7.1 (Bugfix + Wetter) ---
+// --- INTELLIGENTER DIENSTPLANER V7.2 (Crash-Proof) ---
 const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
-    // Standard States
     const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); 
     const [shifts, setShifts] = useState([]);
     const [absences, setAbsences] = useState([]); 
     const [publishStatus, setPublishStatus] = useState(false);
     const [editor, setEditor] = useState(null);
     const [settings, setSettings] = useState(null);
-    
-    // Wetter State
     const [weatherData, setWeatherData] = useState({});
 
     const isAdmin = ['admin', 'kitchen_lead', 'service_lead'].includes(user.role);
 
-    // Wetter laden (Open-Meteo API)
+    // Wetter laden (Sicherer Fetch)
     useEffect(() => {
         const fetchWeather = async () => {
-            const lat = 52.52; // Standard Berlin, könnte man aus Settings holen
-            const lon = 13.41;
-            
+            const lat = 52.52; const lon = 13.41; // Standard: Berlin
             try {
-                // Wir fragen das Wetter ab
                 const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weathercode,temperature_2m_max&timezone=Europe%2FBerlin`);
-                if(!res.ok) throw new Error("Wetter API Fehler");
-                
+                if(!res.ok) return; // Still abbrechen bei Fehler
                 const data = await res.json();
-                
                 const wMap = {};
                 if(data.daily && data.daily.time) {
                     data.daily.time.forEach((t, i) => {
@@ -1065,18 +1057,13 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
                 }
                 setWeatherData(wMap);
             } catch(e) { 
-                console.log("Wetter konnte nicht geladen werden (Offline oder API Limit)", e);
-                setWeatherData({}); // Leeres Objekt bei Fehler, damit App nicht crasht
+                console.warn("Wetter nicht verfügbar", e);
             }
         };
         fetchWeather();
     }, [month]);
 
     useEffect(() => {
-        getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global')).then(s => {
-            if(s.exists()) setSettings(s.data());
-        });
-
         const qShifts = query(collection(db, 'artifacts', appId, 'public', 'data', 'shifts'), where('monthStr', '==', month));
         const unsubShifts = onSnapshot(qShifts, s => setShifts(s.docs.map(d => ({id:d.id, ...d.data()}))));
         
@@ -1088,26 +1075,34 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
         return () => { unsubShifts(); unsubAbs(); };
     }, [appId, month]);
 
-    // Wetter Icon Helper (Jetzt sicher)
+    // Wetter Icon Helper (Absturzsicher)
     const getWeatherIcon = (code) => {
         if(code === undefined || code === null) return null;
-        // WICHTIG: Sun, Cloud, Droplet, Snowflake müssen importiert sein!
-        if(code <= 3) return <Sun size={14} className="text-amber-500"/>; 
-        if(code <= 48) return <Cloud size={14} className="text-slate-400"/>; 
-        if(code <= 67) return <Droplet size={14} className="text-blue-400"/>; 
-        if(code <= 86) return <Snowflake size={14} className="text-cyan-300"/>; 
-        return <AlertOctagon size={14} className="text-slate-300"/>; 
+        try {
+            // Prüfung ob Icons existieren
+            if(!Sun || !Cloud || !Droplet || !Snowflake || !AlertOctagon) return null;
+            
+            if(code <= 3) return <Sun size={14} className="text-amber-500"/>; 
+            if(code <= 48) return <Cloud size={14} className="text-slate-400"/>; 
+            if(code <= 67) return <Droplet size={14} className="text-blue-400"/>; 
+            if(code <= 86) return <Snowflake size={14} className="text-cyan-300"/>; 
+            return <AlertOctagon size={14} className="text-slate-300"/>; 
+        } catch (e) { return null; }
     };
 
-    // Warnung: Fehlt ein Manager?
+    // Warnung: Fehlt ein Manager? (Absturzsicher)
     const checkStaffingIssues = (dateStr) => {
-        const shiftsOnDay = shifts.filter(s => s.date === dateStr && s.slots.length > 0);
-        if (shiftsOnDay.length === 0) return null; 
+        try {
+            const shiftsOnDay = shifts.filter(s => s.date === dateStr && s.slots && s.slots.length > 0);
+            if (shiftsOnDay.length === 0) return null; 
 
-        const workingUserIds = shiftsOnDay.map(s => s.userId);
-        const hasLead = staff.some(s => workingUserIds.includes(s.id) && (s.role === 'admin' || s.role.includes('lead')));
-        
-        if (!hasLead) return <div className="absolute -top-2 -right-1 bg-red-500 text-white rounded-full p-1 border-2 border-white z-10" title="Kein Manager!"><AlertTriangle size={10}/></div>;
+            const workingUserIds = shiftsOnDay.map(s => s.userId);
+            
+            // FIX: Sicherheitscheck (s.role || '') verhindert Absturz bei undefined
+            const hasLead = staff.some(s => workingUserIds.includes(s.id) && (s.role === 'admin' || (s.role || '').includes('lead')));
+            
+            if (!hasLead) return <div className="absolute -top-2 -right-1 bg-red-500 text-white rounded-full p-1 border-2 border-white z-10" title="Kein Manager!"><AlertTriangle size={10}/></div>;
+        } catch(e) { console.error("Staff Check Error", e); }
         return null;
     };
 
