@@ -496,8 +496,8 @@ const PinPad = ({ title, onClose, onSuccess, targetPin }) => {
                     {/* Team Nachrichten Board */}
                     <TeamBoard messages={data.messages || []} user={user} appId={appId} showToast={showToast} />
 
-                    {/* KASSEN BUTTON (Nur Admin/Service) */}
-                    {(user.role === 'admin' || user.role === 'service_lead') && (
+                     {/* KASSEN BUTTON (Sichtbar für Admin, Leitung UND Service-Mitarbeiter) */}
+                    {(['admin', 'service_lead'].includes(user.role) || (user.departments || []).includes('service')) && (
                         <button onClick={() => setView('cash')} className="w-full bg-slate-900 text-white p-5 rounded-[2rem] shadow-xl flex items-center justify-between group active:scale-95 transition-transform mb-4">
                             <div className="flex items-center gap-4">
                                 <div className="bg-white/20 p-3 rounded-2xl"><Euro size={24}/></div>
@@ -1542,8 +1542,7 @@ const TerminalClock = ({ staff, appId, onClose }) => {
         </div>
     );
 };
-
-     // --- KASSEN-MANAGER V5 (Final: Unique Downloads, Fixes & PDF) ---
+// --- KASSEN-MANAGER V5 (Final: Berechtigungen Service vs. Leitung) ---
 
 // 1. Unterschriften-Pad
 const SignaturePad = ({ onSave, onCancel }) => {
@@ -1586,7 +1585,7 @@ const SignaturePad = ({ onSave, onCancel }) => {
     );
 };
 
-// 2. Hauptkomponente CashManager
+// 2. Hauptkomponente
 const CashManager = ({ user, appId, showToast, setView }) => {
     const [targetFloat, setTargetFloat] = useState(500);
     const [mode, setMode] = useState('evening'); 
@@ -1594,6 +1593,7 @@ const CashManager = ({ user, appId, showToast, setView }) => {
     const [logs, setLogs] = useState([]);
     const [showSigPad, setShowSigPad] = useState(false);
     
+    // Definitionen
     const DENOM_LOOSE = [
         { val: 500, label: '500 €', type: 'note' }, { val: 200, label: '200 €', type: 'note' },
         { val: 100, label: '100 €', type: 'note' }, { val: 50, label: '50 €', type: 'note' },
@@ -1618,10 +1618,14 @@ const CashManager = ({ user, appId, showToast, setView }) => {
     const todayStr = getTodayStr();
     const [todaysMorningLog, setTodaysMorningLog] = useState(null);
 
+    // --- BERECHTIGUNGEN ---
+    // Zugriff: Chefs ODER Service-Mitarbeiter
     const hasAccess = ['admin', 'service_lead'].includes(user.role) || (user.departments || []).includes('service');
+    
+    // Download: NUR Chefs (Filialleitung & Serviceleitung)
     const canDownload = ['admin', 'service_lead'].includes(user.role);
 
-    // Hilfsfunktion um Abstürze zu vermeiden (Safe Access)
+    // Helper für sichere Werte
     const getSafeTotal = (log) => {
         if (!log) return 0;
         return log.sum_total || log.cash_total || 0;
@@ -1642,7 +1646,7 @@ const CashManager = ({ user, appId, showToast, setView }) => {
         return () => unsub();
     }, [appId, todayStr]);
 
-    // UI Logik: Morgens anzeigen (locked) oder leer
+    // UI Logik für Read-Only Anzeige
     useEffect(() => {
         if(mode === 'morning' && todaysMorningLog) {
             setCounts(todaysMorningLog.counts_loose || {});
@@ -1666,6 +1670,7 @@ const CashManager = ({ user, appId, showToast, setView }) => {
         return Object.values(groups).sort((a,b) => b.date.localeCompare(a.date));
     }, [logs]);
 
+    // Summen berechnen
     const calcSum = (map, denoms) => denoms.reduce((acc, d) => acc + ((map[d.val]||0) * d.val), 0);
     const sumLoose = calcSum(counts, DENOM_LOOSE);
     const sumRolls = calcSum(rollCounts, DENOM_ROLLS);
@@ -1700,15 +1705,11 @@ const CashManager = ({ user, appId, showToast, setView }) => {
             showToast("Gespeichert!", "success");
             setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
             setTab('history');
-        } catch(e) { console.error(e); showToast("Fehler beim Speichern: " + e.message, "error"); }
+        } catch(e) { console.error(e); showToast("Fehler beim Speichern", "error"); }
     };
 
     const downloadDailyReport = (dayData) => {
-        // Sicherheitscheck für jsPDF
-        if (!window.jspdf) {
-            alert("PDF Modul wird noch geladen. Bitte kurz warten und erneut versuchen.");
-            return;
-        }
+        if (!window.jspdf) return alert("PDF Modul lädt noch...");
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         const m = dayData.morning || {};
@@ -1740,14 +1741,12 @@ const CashManager = ({ user, appId, showToast, setView }) => {
         });
 
         y = doc.lastAutoTable.finalY + 20;
-        if (m.signature) { doc.text(`Morgens: ${m.user}`, 30, y); try { doc.addImage(m.signature, 'PNG', 30, y + 5, 40, 20); } catch(e){} }
-        if (e.signature) { doc.text(`Abends: ${e.user}`, 120, y); try { doc.addImage(e.signature, 'PNG', 120, y + 5, 40, 20); } catch(e){} }
+        if (m.signature) { doc.text(`Morgens: ${m.user}`, 30, y); try{ doc.addImage(m.signature, 'PNG', 30, y + 5, 40, 20); }catch(e){} }
+        if (e.signature) { doc.text(`Abends: ${e.user}`, 120, y); try{ doc.addImage(e.signature, 'PNG', 120, y + 5, 40, 20); }catch(e){} }
         
-        // HIER: Unique Hash generieren für immer neuen Download
         const hash = Math.random().toString(36).substring(7);
         doc.save(`Kasse_${dayData.date}_${hash}.pdf`);
-        
-        showToast("PDF erfolgreich im Download-Ordner gespeichert!", "success");
+        showToast("PDF gespeichert", "success");
     };
 
     if(!hasAccess) return <div className="p-10 text-center text-slate-400">Kein Zugriff.</div>;
@@ -1844,7 +1843,8 @@ const CashManager = ({ user, appId, showToast, setView }) => {
             )}
         </div>
     );
-};   
+};
+      
 // --- APP CONTROLLER ---
         function App() {
             // --- STATE DEFINITIONS ---
