@@ -1543,7 +1543,7 @@ const TerminalClock = ({ staff, appId, onClose }) => {
     );
 };
 
-        // --- KASSEN-MANAGER V4.1 (Crash-Fixed & Prozess-Optimiert) ---
+     // --- KASSEN-MANAGER V5 (Final: Unique Downloads, Fixes & PDF) ---
 
 // 1. Unterschriften-Pad
 const SignaturePad = ({ onSave, onCancel }) => {
@@ -1586,7 +1586,7 @@ const SignaturePad = ({ onSave, onCancel }) => {
     );
 };
 
-// 2. Hauptkomponente
+// 2. Hauptkomponente CashManager
 const CashManager = ({ user, appId, showToast, setView }) => {
     const [targetFloat, setTargetFloat] = useState(500);
     const [mode, setMode] = useState('evening'); 
@@ -1621,6 +1621,12 @@ const CashManager = ({ user, appId, showToast, setView }) => {
     const hasAccess = ['admin', 'service_lead'].includes(user.role) || (user.departments || []).includes('service');
     const canDownload = ['admin', 'service_lead'].includes(user.role);
 
+    // Hilfsfunktion um Abstürze zu vermeiden (Safe Access)
+    const getSafeTotal = (log) => {
+        if (!log) return 0;
+        return log.sum_total || log.cash_total || 0;
+    };
+
     useEffect(() => {
         const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs_cash'), orderBy('createdAt', 'desc'), limit(60));
         const unsub = onSnapshot(q, (s) => {
@@ -1636,29 +1642,19 @@ const CashManager = ({ user, appId, showToast, setView }) => {
         return () => unsub();
     }, [appId, todayStr]);
 
-    // LOGIK: Morgens anzeigen (locked) oder leer
+    // UI Logik: Morgens anzeigen (locked) oder leer
     useEffect(() => {
         if(mode === 'morning' && todaysMorningLog) {
-            // Wenn es schon einen Morgen-Log gibt: ANZEIGEN (aber UI ist disabled)
             setCounts(todaysMorningLog.counts_loose || {});
             setRollCounts(todaysMorningLog.counts_rolls || {});
             setExtras({ ec: '', vouchers: '', comment: todaysMorningLog.comment || '' });
         } else if(mode === 'morning' && !todaysMorningLog) {
-             // Wenn noch nichts da ist: LEER
              setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
         }
         if(mode === 'evening') {
-             // Abends immer leer starten (man zählt ja neu)
              setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
         }
     }, [mode, todaysMorningLog]);
-
-    // Helper: Sicheren Wert holen (verhindert Crash bei alten Daten)
-    const getSafeTotal = (log) => {
-        if (!log) return 0;
-        // Versuche neue Struktur, dann alte Struktur, sonst 0
-        return log.sum_total || log.cash_total || 0;
-    };
 
     const groupedHistory = useMemo(() => {
         const groups = {};
@@ -1702,13 +1698,17 @@ const CashManager = ({ user, appId, showToast, setView }) => {
                 signature: signatureDataUrl
             });
             showToast("Gespeichert!", "success");
-            // HIER: Clear nach Abschluss
             setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
             setTab('history');
         } catch(e) { console.error(e); showToast("Fehler beim Speichern: " + e.message, "error"); }
     };
 
     const downloadDailyReport = (dayData) => {
+        // Sicherheitscheck für jsPDF
+        if (!window.jspdf) {
+            alert("PDF Modul wird noch geladen. Bitte kurz warten und erneut versuchen.");
+            return;
+        }
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         const m = dayData.morning || {};
@@ -1740,9 +1740,14 @@ const CashManager = ({ user, appId, showToast, setView }) => {
         });
 
         y = doc.lastAutoTable.finalY + 20;
-        if (m.signature) { doc.text(`Morgens: ${m.user}`, 30, y); doc.addImage(m.signature, 'PNG', 30, y + 5, 40, 20); }
-        if (e.signature) { doc.text(`Abends: ${e.user}`, 120, y); doc.addImage(e.signature, 'PNG', 120, y + 5, 40, 20); }
-        doc.save(`Kasse_${dayData.date}.pdf`);
+        if (m.signature) { doc.text(`Morgens: ${m.user}`, 30, y); try { doc.addImage(m.signature, 'PNG', 30, y + 5, 40, 20); } catch(e){} }
+        if (e.signature) { doc.text(`Abends: ${e.user}`, 120, y); try { doc.addImage(e.signature, 'PNG', 120, y + 5, 40, 20); } catch(e){} }
+        
+        // HIER: Unique Hash generieren für immer neuen Download
+        const hash = Math.random().toString(36).substring(7);
+        doc.save(`Kasse_${dayData.date}_${hash}.pdf`);
+        
+        showToast("PDF erfolgreich im Download-Ordner gespeichert!", "success");
     };
 
     if(!hasAccess) return <div className="p-10 text-center text-slate-400">Kein Zugriff.</div>;
@@ -1762,7 +1767,7 @@ const CashManager = ({ user, appId, showToast, setView }) => {
             {tab === 'count' && (
                 <div className="space-y-6">
                     <div className="bg-slate-100 p-1 rounded-2xl flex font-bold text-sm">
-                        <button onClick={()=>setMode('morning')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='morning'?'bg-white shadow text-slate-800':'text-slate-400'} ${isMorningLocked ? 'opacity-60' : ''}`}>☀️ Morgens {isMorningLocked && ' (Erledigt)'}</button>
+                        <button onClick={()=>setMode('morning')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='morning'?'bg-white shadow text-slate-800':'text-slate-400'} ${isMorningLocked ? 'opacity-60' : ''}`}>☀️ Morgens {isMorningLocked && ' (Fertig)'}</button>
                         <button onClick={()=>setMode('evening')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='evening'?'bg-white shadow text-slate-800':'text-slate-400'}`}>🌙 Abends</button>
                     </div>
                     <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 relative">
@@ -1820,9 +1825,7 @@ const CashManager = ({ user, appId, showToast, setView }) => {
                             <div key={group.date} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm">
                                 <div className="flex justify-between items-center mb-4">
                                     <div className="font-black text-lg text-slate-800">{new Date(group.date).toLocaleDateString('de-DE')}</div>
-                                    {canDownload && (e || m) && (
-                                        <button onClick={()=>downloadDailyReport(group)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-lg shadow-indigo-200 flex items-center gap-2"><FileText size={16}/> PDF</button>
-                                    )}
+                                    {canDownload && (e || m) && <button onClick={()=>downloadDailyReport(group)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-lg shadow-indigo-200 flex items-center gap-2"><FileText size={16}/> PDF</button>}
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className={`p-3 rounded-xl ${m ? 'bg-emerald-50 border border-emerald-100' : 'bg-slate-50 border border-slate-100 border-dashed'}`}>
@@ -1841,9 +1844,7 @@ const CashManager = ({ user, appId, showToast, setView }) => {
             )}
         </div>
     );
-};
-
-        
+};   
 // --- APP CONTROLLER ---
         function App() {
             // --- STATE DEFINITIONS ---
