@@ -1543,9 +1543,9 @@ const TerminalClock = ({ staff, appId, onClose }) => {
     );
 };
 
-     // --- KASSEN-MANAGER V4 (Final: Mit Unterschrift, Read-Only & PDF) ---
+        // --- KASSEN-MANAGER V4.1 (Crash-Fixed & Prozess-Optimiert) ---
 
-// 1. Unterschriften-Pad Komponente
+// 1. Unterschriften-Pad
 const SignaturePad = ({ onSave, onCancel }) => {
     const canvasRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
@@ -1594,7 +1594,6 @@ const CashManager = ({ user, appId, showToast, setView }) => {
     const [logs, setLogs] = useState([]);
     const [showSigPad, setShowSigPad] = useState(false);
     
-    // Geld-Definitionen
     const DENOM_LOOSE = [
         { val: 500, label: '500 €', type: 'note' }, { val: 200, label: '200 €', type: 'note' },
         { val: 100, label: '100 €', type: 'note' }, { val: 50, label: '50 €', type: 'note' },
@@ -1640,16 +1639,26 @@ const CashManager = ({ user, appId, showToast, setView }) => {
     // LOGIK: Morgens anzeigen (locked) oder leer
     useEffect(() => {
         if(mode === 'morning' && todaysMorningLog) {
+            // Wenn es schon einen Morgen-Log gibt: ANZEIGEN (aber UI ist disabled)
             setCounts(todaysMorningLog.counts_loose || {});
             setRollCounts(todaysMorningLog.counts_rolls || {});
             setExtras({ ec: '', vouchers: '', comment: todaysMorningLog.comment || '' });
         } else if(mode === 'morning' && !todaysMorningLog) {
+             // Wenn noch nichts da ist: LEER
              setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
         }
         if(mode === 'evening') {
+             // Abends immer leer starten (man zählt ja neu)
              setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
         }
     }, [mode, todaysMorningLog]);
+
+    // Helper: Sicheren Wert holen (verhindert Crash bei alten Daten)
+    const getSafeTotal = (log) => {
+        if (!log) return 0;
+        // Versuche neue Struktur, dann alte Struktur, sonst 0
+        return log.sum_total || log.cash_total || 0;
+    };
 
     const groupedHistory = useMemo(() => {
         const groups = {};
@@ -1696,7 +1705,7 @@ const CashManager = ({ user, appId, showToast, setView }) => {
             // HIER: Clear nach Abschluss
             setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
             setTab('history');
-        } catch(e) { console.error(e); showToast("Fehler", "error"); }
+        } catch(e) { console.error(e); showToast("Fehler beim Speichern: " + e.message, "error"); }
     };
 
     const downloadDailyReport = (dayData) => {
@@ -1721,7 +1730,7 @@ const CashManager = ({ user, appId, showToast, setView }) => {
             startY: y, head: [['Position', 'Morgens', 'Abends']],
             body: [
                 ...rows, ['', '', ''],
-                ['SUMME BAR', (m.sum_total||0).toFixed(2)+' €', (e.sum_total||0).toFixed(2)+' €'],
+                ['SUMME BAR', getSafeTotal(m).toFixed(2)+' €', getSafeTotal(e).toFixed(2)+' €'],
                 ['Soll-Bestand', '-', (e.target_float||0).toFixed(2)+' €'],
                 ['UMSCHLAG', '-', (e.safe_drop||0).toFixed(2)+' €'],
                 ['EC / Gutscheine', '-', ((e.ec_total||0) + (e.vouchers||0)).toFixed(2)+' €'],
@@ -1753,7 +1762,7 @@ const CashManager = ({ user, appId, showToast, setView }) => {
             {tab === 'count' && (
                 <div className="space-y-6">
                     <div className="bg-slate-100 p-1 rounded-2xl flex font-bold text-sm">
-                        <button onClick={()=>setMode('morning')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='morning'?'bg-white shadow text-slate-800':'text-slate-400'} ${isMorningLocked ? 'opacity-60' : ''}`}>☀️ Morgens {isMorningLocked && ' (Fertig)'}</button>
+                        <button onClick={()=>setMode('morning')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='morning'?'bg-white shadow text-slate-800':'text-slate-400'} ${isMorningLocked ? 'opacity-60' : ''}`}>☀️ Morgens {isMorningLocked && ' (Erledigt)'}</button>
                         <button onClick={()=>setMode('evening')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='evening'?'bg-white shadow text-slate-800':'text-slate-400'}`}>🌙 Abends</button>
                     </div>
                     <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 relative">
@@ -1811,16 +1820,18 @@ const CashManager = ({ user, appId, showToast, setView }) => {
                             <div key={group.date} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm">
                                 <div className="flex justify-between items-center mb-4">
                                     <div className="font-black text-lg text-slate-800">{new Date(group.date).toLocaleDateString('de-DE')}</div>
-                                    {canDownload && (e || m) && <button onClick={()=>downloadDailyReport(group)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-lg shadow-indigo-200 flex items-center gap-2"><FileText size={16}/> PDF</button>}
+                                    {canDownload && (e || m) && (
+                                        <button onClick={()=>downloadDailyReport(group)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-lg shadow-indigo-200 flex items-center gap-2"><FileText size={16}/> PDF</button>
+                                    )}
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className={`p-3 rounded-xl ${m ? 'bg-emerald-50 border border-emerald-100' : 'bg-slate-50 border border-slate-100 border-dashed'}`}>
                                         <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">☀️ Morgens</div>
-                                        {m ? <div><div className="font-bold text-emerald-700">{m.sum_total.toFixed(2)} €</div><div className="text-[10px] text-emerald-600">{m.user}</div></div> : <div className="text-xs text-slate-400 italic">Offen</div>}
+                                        {m ? <div><div className="font-bold text-emerald-700">{getSafeTotal(m).toFixed(2)} €</div><div className="text-[10px] text-emerald-600">{m.user}</div></div> : <div className="text-xs text-slate-400 italic">Offen</div>}
                                     </div>
                                     <div className={`p-3 rounded-xl ${e ? 'bg-indigo-50 border border-indigo-100' : 'bg-slate-50 border border-slate-100 border-dashed'}`}>
                                         <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">🌙 Abends</div>
-                                        {e ? <div><div className="font-bold text-indigo-700">{e.sum_total.toFixed(2)} €</div><div className="text-[10px] text-indigo-600">Drop: {e.safe_drop.toFixed(2)} €</div></div> : <div className="text-xs text-slate-400 italic">Offen</div>}
+                                        {e ? <div><div className="font-bold text-indigo-700">{getSafeTotal(e).toFixed(2)} €</div><div className="text-[10px] text-indigo-600">Drop: {e.safe_drop.toFixed(2)} €</div></div> : <div className="text-xs text-slate-400 italic">Offen</div>}
                                     </div>
                                 </div>
                             </div>
@@ -1831,7 +1842,6 @@ const CashManager = ({ user, appId, showToast, setView }) => {
         </div>
     );
 };
-
 
         
 // --- APP CONTROLLER ---
