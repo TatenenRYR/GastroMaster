@@ -1684,17 +1684,19 @@ const UserProfile = ({ user, staff, appId, showToast, onBack }) => {
                             {view === 'cooling' && <Cooling {...common} />}
                             {view === 'oil' && hasAccess('kitchen') && <Oil {...common} />}
                             {view === 'inventory' && <Inventory {...common} />}
+                            
+                            {/* KORRIGIERT: WasteManager steht jetzt nur noch 1x hier */}
                             {view === 'waste' && <WasteManager {...common} />}
+                            
                             {view === 'maintenance' && <Maintenance {...common} />}
                             {view === 'handover' && <ShiftHandover {...common} />}
                             {view === 'shiftplan' && <SmartShiftPlanner staff={data.staff} appId={appId} showToast={showToast} user={appUser} />}
                             {view === 'absence' && <AbsenceManager user={appUser} appId={appId} showToast={showToast} staff={data.staff} />}
                             
-                            {/* NEU: PROFIL VIEW */}
                             {view === 'profile' && (
                                 <UserProfile 
                                     user={appUser} 
-                                    staff={data.staff} // Wichtig für PIN Update
+                                    staff={data.staff} 
                                     appId={appId} 
                                     showToast={showToast} 
                                     onBack={()=>setView('dashboard')}
