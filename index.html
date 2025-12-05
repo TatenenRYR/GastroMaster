@@ -68,9 +68,9 @@
             History, FileText, ChevronRight, ChevronLeft, Store, Key, ShieldCheck, Lock, Unlock, Zap,
             ClipboardList, Box, Layers, PenTool, ShieldAlert, BadgeCheck, Code, Globe, UserCog, RefreshCcw, Search, ArrowLeft,
             Users, Languages, Ticket, ListChecks, Clock, PlayCircle, StopCircle, Palette, Megaphone, Power, Monitor, Check,
-            MessageCircle, LayoutGrid, ToggleLeft, ToggleRight, Brush, ClipboardCheck, Utensils,
-            Palmtree, Wrench, Link // <--- DIESE WAREN FEHLEND
+            MessageCircle, LayoutGrid, ToggleLeft, ToggleRight, Brush, ClipboardCheck, Utensils
         } from "https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0";
+
         const { useState, useEffect, useRef, useMemo } = React;
 
         // --- CONFIG ---
@@ -698,18 +698,17 @@ const DistrictDashboard = ({ districtId, onLogout, showToast }) => {
         };
     };
     // --- URLAUBS-MANAGER ---
-// --- URLAUBS-MANAGER (Update: Admin trägt für andere ein) ---
 const AbsenceManager = ({ user, appId, showToast, staff }) => {
-    const [tab, setTab] = useState('request');
+    const [tab, setTab] = useState('request'); // 'request', 'list'
     const [start, setStart] = useState('');
     const [end, setEnd] = useState('');
-    const [type, setType] = useState('vacation'); 
-    const [targetUserId, setTargetUserId] = useState(user.id); // Für wen wird eingetragen?
+    const [type, setType] = useState('vacation'); // vacation, sick, other
     const [requests, setRequests] = useState([]);
     
     const isAdmin = ['admin', 'kitchen_lead', 'service_lead'].includes(user.role);
 
     useEffect(() => {
+        // Alle Anfragen laden (Admin sieht alle, User nur eigene)
         const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'requests_absence'), orderBy('createdAt', 'desc'));
         return onSnapshot(q, s => {
             const data = s.docs.map(d => ({id:d.id, ...d.data()}));
@@ -720,24 +719,12 @@ const AbsenceManager = ({ user, appId, showToast, staff }) => {
 
     const sendRequest = async () => {
         if(!start || !end) return showToast("Datum fehlt", "error");
-        
-        // Name des Betroffenen herausfinden
-        const targetUser = staff.find(s => s.id === targetUserId) || user;
-
-        // Automatisch genehmigen, wenn Chef eine Krankmeldung einträgt
-        const initialStatus = (isAdmin && type === 'sick') ? 'approved' : 'pending';
-
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'requests_absence'), {
-            userId: targetUser.id, 
-            userName: targetUser.name,
-            start, end, type, 
-            status: initialStatus,
-            createdAt: serverTimestamp(),
-            createdBy: user.name // Wer hat es eingetippt?
+            userId: user.id, userName: user.name,
+            start, end, type, status: 'pending', // pending, approved, rejected
+            createdAt: serverTimestamp()
         });
-
-        setStart(''); setEnd(''); 
-        showToast(type === 'sick' ? "Krankmeldung erfasst" : "Antrag gestellt!");
+        setStart(''); setEnd(''); showToast("Antrag gestellt!");
         setTab('list');
     };
 
@@ -745,94 +732,62 @@ const AbsenceManager = ({ user, appId, showToast, staff }) => {
         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'requests_absence', id), { status });
     };
 
-    const getTypeLabel = (t) => {
-        if(t==='vacation') return '🏖️ Urlaub';
-        if(t==='sick') return '🤒 Krank';
-        return '📅 Wunschfrei';
-    };
+    const getTypeLabel = (t) => t==='vacation'?'Urlaub':t==='sick'?'Krankheit':'Wunschfrei';
 
     return (
         <div className="animate-in space-y-6">
             <div className="flex justify-between items-center">
-                <div><h2 className="text-3xl font-black text-slate-800">Abwesenheit</h2><p className="opacity-60 text-sm font-medium">Krank & Urlaub</p></div>
+                <div><h2 className="text-3xl font-black text-slate-800">Abwesenheit</h2><p className="opacity-60 text-sm font-medium">Urlaub & Wünsche</p></div>
                 {isAdmin && <div className="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-xl font-bold text-xs">{requests.filter(r=>r.status==='pending').length} Offen</div>}
             </div>
 
             <div className="flex bg-white p-1 rounded-2xl border border-slate-100 mb-4">
-                <button onClick={()=>setTab('request')} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${tab==='request'?'bg-slate-900 text-white':'text-slate-400'}`}>
-                    {isAdmin ? 'Eintragen / Antrag' : 'Neuer Antrag'}
-                </button>
+                <button onClick={()=>setTab('request')} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${tab==='request'?'bg-slate-900 text-white':'text-slate-400'}`}>Neuer Antrag</button>
                 <button onClick={()=>setTab('list')} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${tab==='list'?'bg-slate-900 text-white':'text-slate-400'}`}>Übersicht</button>
             </div>
 
             {tab === 'request' && (
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 space-y-4">
-                    
-                    {/* NUR FÜR ADMINS: Für wen ist der Eintrag? */}
-                    {isAdmin && (
-                        <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100">
-                            <label className="text-[10px] font-bold uppercase text-indigo-400 block mb-1">Für Mitarbeiter:</label>
-                            <select 
-                                value={targetUserId} 
-                                onChange={e=>setTargetUserId(e.target.value)} 
-                                className="w-full bg-white p-2 rounded-lg font-bold text-indigo-900 outline-none"
-                            >
-                                <option value={user.id}>Mich selbst ({user.name})</option>
-                                {staff.filter(s => s.id !== user.id).map(s => (
-                                    <option key={s.id} value={s.id}>{s.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-
                     <div className="grid grid-cols-2 gap-4">
                         <div><label className="text-[10px] font-bold uppercase text-slate-400">Von</label><input type="date" value={start} onChange={e=>setStart(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none"/></div>
                         <div><label className="text-[10px] font-bold uppercase text-slate-400">Bis</label><input type="date" value={end} onChange={e=>setEnd(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none"/></div>
                     </div>
-                    
                     <div>
                         <label className="text-[10px] font-bold uppercase text-slate-400">Grund</label>
                         <select value={type} onChange={e=>setType(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none">
-                            <option value="vacation">🏖️ Urlaub beantragen</option>
+                            <option value="vacation">🏖️ Urlaub</option>
                             <option value="other">📅 Wunschfrei / Termin</option>
-                            {/* KRANKHEIT NUR FÜR ADMIN SICHTBAR */}
-                            {isAdmin && <option value="sick">🤒 Krankmeldung (durch Chef)</option>}
+                            {isAdmin && <option value="sick">🤒 Krankmeldung</option>}
                         </select>
                     </div>
-
-                    <Button onClick={sendRequest} className={type === 'sick' ? 'bg-red-500 shadow-red-200' : 'bg-emerald-500 shadow-emerald-200'}>
-                        {type === 'sick' ? 'Krankmeldung erfassen' : 'Beantragen'}
-                    </Button>
+                    <Button onClick={sendRequest} className="bg-emerald-500 shadow-emerald-200">Beantragen</Button>
                 </div>
             )}
 
             {tab === 'list' && (
                 <div className="space-y-3">
                     {requests.map(r => (
-                        <div key={r.id} className={`p-4 rounded-2xl border shadow-sm relative overflow-hidden ${r.type==='sick' ? 'bg-red-50 border-red-100' : 'bg-white border-slate-100'}`}>
+                        <div key={r.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden">
                             <div className="flex justify-between items-start mb-2">
                                 <div>
                                     <div className="font-black text-slate-800">{r.userName}</div>
-                                    <div className="text-xs text-slate-500 font-bold flex gap-2">
-                                        <span>{new Date(r.start).toLocaleDateString()} - {new Date(r.end).toLocaleDateString()}</span>
-                                        {r.createdBy && r.createdBy !== r.userName && <span className="text-indigo-400">(via {r.createdBy})</span>}
-                                    </div>
+                                    <div className="text-xs text-slate-500 font-bold">{new Date(r.start).toLocaleDateString()} - {new Date(r.end).toLocaleDateString()}</div>
                                 </div>
-                                <div className={`text-[10px] font-bold px-2 py-1 rounded uppercase ${r.status==='approved'?'bg-emerald-100 text-emerald-700':r.status==='rejected'?'bg-red-100 text-red-500':'bg-amber-100 text-amber-600'}`}>
+                                <div className={`text-[10px] font-bold px-2 py-1 rounded uppercase ${r.status==='approved'?'bg-emerald-100 text-emerald-700':r.status==='rejected'?'bg-red-50 text-red-500':'bg-amber-50 text-amber-600'}`}>
                                     {r.status === 'pending' ? 'Wartet...' : r.status}
                                 </div>
                             </div>
-                            <div className="text-xs font-bold opacity-70">{getTypeLabel(r.type)}</div>
+                            <div className="text-xs bg-slate-50 p-2 rounded-lg inline-block text-slate-500 font-medium mb-2">{getTypeLabel(r.type)}</div>
                             
                             {isAdmin && r.status === 'pending' && (
-                                <div className="flex gap-2 mt-3 pt-3 border-t border-slate-200/50">
-                                    <button onClick={()=>handleStatus(r.id, 'approved')} className="flex-1 bg-white border border-emerald-200 text-emerald-600 py-2 rounded-xl font-bold text-xs hover:bg-emerald-50">Genehmigen</button>
-                                    <button onClick={()=>handleStatus(r.id, 'rejected')} className="flex-1 bg-white border border-red-200 text-red-600 py-2 rounded-xl font-bold text-xs hover:bg-red-50">Ablehnen</button>
+                                <div className="flex gap-2 mt-2 pt-2 border-t border-slate-50">
+                                    <button onClick={()=>handleStatus(r.id, 'approved')} className="flex-1 bg-emerald-50 text-emerald-600 py-2 rounded-xl font-bold text-xs hover:bg-emerald-100">Genehmigen</button>
+                                    <button onClick={()=>handleStatus(r.id, 'rejected')} className="flex-1 bg-red-50 text-red-600 py-2 rounded-xl font-bold text-xs hover:bg-red-100">Ablehnen</button>
                                 </div>
                             )}
                         </div>
                     ))}
-                    {requests.length === 0 && <div className="text-center text-slate-400 py-10">Keine Einträge.</div>}
+                    {requests.length === 0 && <div className="text-center text-slate-400 py-10">Keine Anträge.</div>}
                 </div>
             )}
         </div>
@@ -1388,177 +1343,15 @@ const TerminalClock = ({ staff, appId, onClose }) => {
         </div>
     );
 };
-        // --- MITARBEITER PROFIL (MEINE DATEN) ---
-const UserProfile = ({ user, staff, appId, showToast, onBack }) => {
-    const [pinMode, setPinMode] = useState(false);
-    const [newPin, setNewPin] = useState('');
-    const [stats, setStats] = useState({ hours: 0, vacation: 0 });
-
-    // Aktuelle Daten aus der Live-Datenbank holen (falls Admin was geändert hat)
-    const dbUser = staff.find(s => s.id === user.id) || user;
-    const isAdmin = user.role === 'admin';
-
-    useEffect(() => {
-        // 1. Stunden diesen Monat berechnen
-        const startM = getTodayStr().slice(0, 7) + "-01";
-        const endM = getTodayStr().slice(0, 7) + "-31";
-        
-        // Wir holen die Logs live
-        const qLogs = query(
-            collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'),
-            where('userId', '==', user.id),
-            where('dateStr', '>=', startM),
-            where('dateStr', '<=', endM)
-        );
-        
-        const unsubLogs = onSnapshot(qLogs, (s) => {
-            let h = 0;
-            s.docs.forEach(d => {
-                const l = d.data();
-                if(l.start && l.end) {
-                    const [h1, m1] = l.start.split(':').map(Number);
-                    const [h2, m2] = l.end.split(':').map(Number);
-                    let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
-                    if(diff < 0) diff += 24 * 60;
-                    // Einfacher Abzug (Pause ignorieren wir hier für die Schnelleinsicht oder nehmen Pauschale)
-                    h += (diff / 60);
-                }
-            });
-            setStats(p => ({...p, hours: h}));
-        });
-
-        // 2. Urlaubstage zählen (Genehmigt dieses Jahr)
-        const currentYear = new Date().getFullYear();
-        const qVac = query(
-            collection(db, 'artifacts', appId, 'public', 'data', 'requests_absence'),
-            where('userId', '==', user.id),
-            where('type', '==', 'vacation'),
-            where('status', '==', 'approved')
-        );
-        
-        const unsubVac = onSnapshot(qVac, (s) => {
-            let days = 0;
-            s.docs.forEach(d => {
-                const req = d.data();
-                if(req.start.startsWith(String(currentYear))) {
-                    const start = new Date(req.start);
-                    const end = new Date(req.end);
-                    const diffTime = Math.abs(end - start);
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
-                    days += diffDays;
-                }
-            });
-            setStats(p => ({...p, vacation: days}));
-        });
-
-        return () => { unsubLogs(); unsubVac(); };
-    }, [appId, user.id]);
-
-    const updatePin = async () => {
-        if(newPin.length !== 4) return showToast("PIN muss 4 Zahlen haben", "error");
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', user.id), {
-            pin: newPin
-        });
-        showToast("PIN erfolgreich geändert!");
-        setPinMode(false);
-        setNewPin('');
-    };
-
-    return (
-        <div className="animate-in space-y-6">
-            {/* Header */}
-            <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl relative overflow-hidden">
-                <button onClick={onBack} className="absolute top-6 right-6 p-2 bg-white/10 rounded-full hover:bg-white/20"><X size={20}/></button>
-                
-                <div className="flex items-center gap-6 relative z-10">
-                    <div className="w-20 h-20 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-3xl font-black shadow-lg border-4 border-white/10">
-                        {dbUser.name.charAt(0)}
-                    </div>
-                    <div>
-                        <h2 className="text-2xl font-black">{dbUser.name}</h2>
-                        <div className="text-indigo-200 font-bold uppercase text-xs tracking-widest mt-1">{dbUser.role}</div>
-                        <div className="mt-2 inline-block bg-white/10 px-3 py-1 rounded-lg text-xs font-mono">
-                            ID: {user.id.substring(0,6)}...
-                        </div>
-                    </div>
-                </div>
-                
-                {/* Deko Kreis */}
-                <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-indigo-600 rounded-full blur-3xl opacity-50"></div>
-            </div>
-
-            {/* KPIs Grid */}
-            <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
-                    <div className="text-slate-400 mb-2"><Clock size={24}/></div>
-                    <div className="text-3xl font-black text-slate-800">{stats.hours.toFixed(1)}</div>
-                    <div className="text-[10px] font-bold uppercase text-slate-400">Stunden (Dieser Monat)</div>
-                </div>
-                <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
-                    <div className="text-emerald-400 mb-2"><Palmtree size={24}/></div>
-                    <div className="text-3xl font-black text-slate-800">{stats.vacation}</div>
-                    <div className="text-[10px] font-bold uppercase text-slate-400">Urlaubstage (Genommen)</div>
-                </div>
-            </div>
-
-            {/* Vertragsdaten */}
-            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 space-y-4">
-                <h3 className="font-bold text-lg flex items-center gap-2"><Briefcase size={20} className="text-indigo-500"/> Vertragsdaten</h3>
-                
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-slate-50 p-3 rounded-xl">
-                        <div className="text-[10px] uppercase font-bold text-slate-400">Soll-Stunden</div>
-                        <div className="font-black text-lg">{dbUser.contractHours || '-'} h</div>
-                    </div>
-                    <div className="bg-slate-50 p-3 rounded-xl">
-                        <div className="text-[10px] uppercase font-bold text-slate-400">Stundenlohn</div>
-                        <div className="font-black text-lg">{isAdmin || dbUser.hourlyRate ? (dbUser.hourlyRate || '-') + ' €' : '***'}</div>
-                    </div>
-                </div>
-                
-                <div className="text-xs text-slate-400 italic text-center pt-2">
-                    Daten falsch? Bitte an die Filialleitung wenden.
-                </div>
-            </div>
-
-            {/* Sicherheit / PIN */}
-            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
-                <h3 className="font-bold text-lg flex items-center gap-2 mb-4"><ShieldCheck size={20} className="text-emerald-500"/> Sicherheit</h3>
-                
-                {!pinMode ? (
-                    <button onClick={()=>setPinMode(true)} className="w-full py-4 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl font-bold flex items-center justify-center gap-2 border border-slate-200 transition-all">
-                        <Key size={18}/> Persönlichen PIN ändern
-                    </button>
-                ) : (
-                    <div className="space-y-3 animate-in">
-                        <label className="text-xs font-bold text-slate-400 ml-1">Neuer 4-stelliger PIN</label>
-                        <div className="flex gap-2">
-                            <input 
-                                type="number" 
-                                value={newPin} 
-                                onChange={e=>setNewPin(e.target.value)} 
-                                className="flex-1 p-4 bg-slate-50 border border-slate-200 rounded-xl font-mono text-center text-lg outline-none focus:border-indigo-500"
-                                placeholder="1234"
-                                maxLength={4}
-                            />
-                            <button onClick={updatePin} className="bg-emerald-500 text-white px-6 rounded-xl font-bold shadow-lg shadow-emerald-200">OK</button>
-                        </div>
-                        <button onClick={()=>setPinMode(false)} className="w-full text-xs text-red-400 font-bold py-2">Abbrechen</button>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
 // --- APP CONTROLLER ---
-        // --- APP CONTROLLER (Final mit Profil) ---
         function App() {
+            // --- STATE DEFINITIONS ---
             const [user, setUser] = useState(null);
             const [appUser, setAppUser] = useState(null);
             const [appId, setAppId] = useState(localStorage.getItem('gastro_app_id') || null);
             const [lang, setLang] = useState('de');
             const [view, setView] = useState('login'); 
-            const [districtId, setDistrictId] = useState(null);
+            const [districtId, setDistrictId] = useState(null); // Für Bezirksleiter
             const [isHeadAdmin, setIsHeadAdmin] = useState(false);
             const [loading, setLoading] = useState(true);
             const [toast, setToast] = useState(null);
@@ -1566,21 +1359,36 @@ const UserProfile = ({ user, staff, appId, showToast, onBack }) => {
             const [showTutorial, setShowTutorial] = useState(false);
             const [tempMasterPw, setTempMasterPw] = useState('');
             
+            // System Globals
             const [systemMaintenance, setSystemMaintenance] = useState(false);
             const [globalBroadcast, setGlobalBroadcast] = useState(null);
 
+            // Data Stores
             const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [], prep: [], company: {}, settings: {}, messages: [] });
-            const [status, setStatus] = useState({ tempLogs: [], cleaningLogs: {}, oilLogs: {}, prepLogs: {}, shoppingList: [], yesterdayOil: {}, signatures: {}, myTimeLog: null, workerStatus: {}, activeWorkers: [] });
+            
+            // Live Status Stores
+            const [status, setStatus] = useState({ 
+                tempLogs: [], cleaningLogs: {}, oilLogs: {}, prepLogs: {}, shoppingList: [], 
+                yesterdayOil: {}, signatures: {}, myTimeLog: null, 
+                workerStatus: {}, activeWorkers: [] // Für Login Screen Badges
+            });
+            
             const [debugMode, setDebugMode] = useState(false);
             
+            // Design & Config
             const design = data.company?.design || {};
             const themeStyle = { backgroundColor: design.backgroundColor || '#f8fafc', color: design.textColor || '#1e293b' };
             const btnStyle = { backgroundColor: design.primaryColor || '#0f172a', color: '#ffffff' };
             const headerStyle = { backgroundColor: design.headerColor || design.primaryColor || '#0f172a', color: '#ffffff' };
             
+            // Merge Default Config mit gespeicherter Config
             const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules || {}) };
+            
             const showToast = (msg, type='success') => { setToast({msg, type}); setTimeout(() => setToast(null), 3000); };
 
+            // --- SYSTEM EFFECTS ---
+            
+            // 1. System Listener (Wartung & Broadcast)
             useEffect(() => {
                 const unsub = onSnapshot(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'settings', 'global'), (snap) => {
                     if (snap.exists()) {
@@ -1595,85 +1403,227 @@ const UserProfile = ({ user, staff, appId, showToast, onBack }) => {
                 return () => unsub();
             }, []);
 
+            // 2. Bezirksleiter Auto-Login Check
             useEffect(() => {
                 const isDistrictOverride = sessionStorage.getItem('gastro_district_override');
                 if (isDistrictOverride && appId) {
-                    setAppUser({ name: 'BEZIRKSLEITUNG', role: 'admin', id: 'district_super_admin', departments: ['kitchen', 'service'], isDistrictOverride: true });
-                    setView('dashboard');
-                    sessionStorage.removeItem('gastro_district_override'); 
+                    setAppUser({ 
+                        name: 'BEZIRKSLEITUNG', 
+                        role: 'admin', 
+                        id: 'district_super_admin', 
+                        departments: ['kitchen', 'service'], 
+                        isDistrictOverride: true 
+                    });
+                    setView('dashboard'); // Zwingt die App aufs Dashboard
+                    // sessionStorage.removeItem('gastro_district_override'); // Optional: Löschen für Sicherheit
                     showToast("Willkommen Chef! Voller Zugriff aktiviert.");
                 }
             }, [appId]);
 
-            const handleRestaurantLogin = (id) => { if(id === 'head-admin') { setView('head-login'); } else { const normId = normalizeId(id); setLoading(true); localStorage.setItem('gastro_app_id', normId); setAppId(normId); } };
+            // --- AUTH & DATA LOADING ---
+
+            const handleRestaurantLogin = (id) => {
+                if(id === 'head-admin') { setView('head-login'); } else {
+                    const normId = normalizeId(id);
+                    setLoading(true); localStorage.setItem('gastro_app_id', normId); setAppId(normId); 
+                }
+            };
+            
             const deleteBranchLocal = () => { localStorage.removeItem('gastro_app_id'); window.location.reload(); };
-            const handleRegistration = async (token, newId, masterPw) => { setLoading(true); try { const tokenRef = doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'tokens', token); const tokenSnap = await getDoc(tokenRef); if(!tokenSnap.exists() || !tokenSnap.data().active) throw new Error("Code ungültig/benutzt"); const checkRef = doc(db, 'artifacts', newId, 'public', 'data', 'settings', 'global'); const checkSnap = await getDoc(checkRef); if(checkSnap.exists()) throw new Error("ID vergeben"); await seedDB(newId, masterPw); await updateDoc(tokenRef, { active: false, usedBy: newId, usedAt: serverTimestamp() }); await setDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'branches', newId), { id: newId, createdAt: serverTimestamp() }); localStorage.setItem('gastro_app_id', newId); setAppId(newId); setTempMasterPw(masterPw); setShowTutorial(true); } catch(e) { console.error(e); showToast(e.message, "error"); } setLoading(false); };
-            const handleUserLogin = async (u) => { setAppUser(u); setView('dashboard'); if(u.role === 'admin' && String(u.pin) === '1234') setAdminAlert(true); await logBranchAction(appId, u.name, 'LOGIN', 'User logged in'); };
-            const handleMasterKeyRecovery = async (inputKey) => { if(!appId) return; const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global')); if(snap.exists() && snap.data().masterKey === inputKey) { setAppUser({ name: 'MASTER ADMIN', role: 'admin', pin: 'MASTER' }); setView('dashboard'); showToast("Zugriff gewährt!"); } else { showToast("Falscher Schlüssel", "error"); } };
+
+            const handleRegistration = async (token, newId, masterPw) => {
+                setLoading(true);
+                try {
+                    const tokenRef = doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'tokens', token);
+                    const tokenSnap = await getDoc(tokenRef);
+                    if(!tokenSnap.exists() || !tokenSnap.data().active) throw new Error("Code ungültig/benutzt");
+                    
+                    const checkRef = doc(db, 'artifacts', newId, 'public', 'data', 'settings', 'global');
+                    const checkSnap = await getDoc(checkRef);
+                    if(checkSnap.exists()) throw new Error("ID vergeben");
+                    
+                    await seedDB(newId, masterPw);
+                    await updateDoc(tokenRef, { active: false, usedBy: newId, usedAt: serverTimestamp() });
+                    await setDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'branches', newId), { id: newId, createdAt: serverTimestamp() });
+                    
+                    localStorage.setItem('gastro_app_id', newId); setAppId(newId); setTempMasterPw(masterPw); setShowTutorial(true); 
+                } catch(e) { console.error(e); showToast(e.message, "error"); }
+                setLoading(false);
+            };
+
+            const handleUserLogin = async (u) => {
+                setAppUser(u); setView('dashboard');
+                if(u.role === 'admin' && String(u.pin) === '1234') setAdminAlert(true);
+                await logBranchAction(appId, u.name, 'LOGIN', 'User logged in');
+            };
+
+            const handleMasterKeyRecovery = async (inputKey) => {
+                if(!appId) return;
+                const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'));
+                if(snap.exists() && snap.data().masterKey === inputKey) {
+                    setAppUser({ name: 'MASTER ADMIN', role: 'admin', pin: 'MASTER' }); setView('dashboard'); showToast("Zugriff gewährt!");
+                } else { showToast("Falscher Schlüssel", "error"); }
+            };
+
             useEffect(() => { signInAnonymously(auth).catch(e=>console.error(e)); return onAuthStateChanged(auth, u => { setUser(u); if(!u) setLoading(false); }); }, []);
 
+            // --- MAIN DATA LISTENER ---
             useEffect(() => {
                 if (!user || !appId || isHeadAdmin) { if(appId===null && !isHeadAdmin) setLoading(false); return; }
                 setLoading(true);
+                
                 const pub = (c) => collection(db, 'artifacts', appId, 'public', 'data', c);
-                const unsubs = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'prep_tasks', 'suppliers', 'settings', 'company', 'messages'].map(c => onSnapshot(query(pub(c), c==='messages'?orderBy('createdAt','desc'):limit(100)), s => {
-                    if(c === 'settings') { const glob = s.docs.find(d => d.id === 'global')?.data() || {}; setDebugMode(glob?.debugMode || false); setData(p => ({ ...p, settings: { ...glob, loaded: true } })); }
-                    else if (c === 'company') { setData(p => ({ ...p, company: s.docs.find(d => d.id === 'info')?.data() || {} })); }
-                    else if (c === 'messages') { setData(p => ({ ...p, messages: s.docs.map(d => ({id:d.id, ...d.data()})) })); }
-                    else { const key = c === 'cooling_devices' ? 'cooling' : c === 'cleaning_tasks' ? 'tasks' : c === 'prep_tasks' ? 'prep' : c; setData(p => ({ ...p, [key]: s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.name||'').localeCompare(b.name||'')) })); }
-                    if(c==='staff') setLoading(false);
-                }));
+                
+                // Statische Daten (Personal, Geräte, etc.)
+                const unsubs = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'prep_tasks', 'suppliers', 'settings', 'company', 'messages'].map(c => 
+                    onSnapshot(query(pub(c), c==='messages'?orderBy('createdAt','desc'):limit(100)), s => {
+                        if(c === 'settings') { 
+                            const glob = s.docs.find(d => d.id === 'global')?.data() || {};
+                            setDebugMode(glob?.debugMode || false);
+                            setData(p => ({ ...p, settings: { ...glob, loaded: true } }));
+                        }
+                        else if (c === 'company') { setData(p => ({ ...p, company: s.docs.find(d => d.id === 'info')?.data() || {} })); }
+                        else if (c === 'messages') { setData(p => ({ ...p, messages: s.docs.map(d => ({id:d.id, ...d.data()})) })); }
+                        else {
+                            const key = c === 'cooling_devices' ? 'cooling' : c === 'cleaning_tasks' ? 'tasks' : c === 'prep_tasks' ? 'prep' : c;
+                            setData(p => ({ ...p, [key]: s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.name||'').localeCompare(b.name||'')) }));
+                        }
+                        if(c==='staff') setLoading(false);
+                    })
+                );
+
+                // Live Daten (Heute)
                 const today = getTodayStr();
                 const unsubsLive = [
                     onSnapshot(query(pub('logs_temp'), where('dateStr', '==', today)), s => setStatus(p => ({...p, tempLogs: s.docs.map(d=>d.data())}))),
                     onSnapshot(query(pub('logs_cleaning'), where('dateStr', '==', today)), s => { const l = {}; s.docs.forEach(d => l[d.data().taskId] = d.data()); setStatus(p => ({...p, cleaningLogs: l})); }),
                     onSnapshot(query(pub('logs_prep'), where('dateStr', '==', today)), s => { const l = {}; s.docs.forEach(d => l[d.data().taskId] = d.data()); setStatus(p => ({...p, prepLogs: l})); }),
-                    onSnapshot(query(pub('logs_oil'), orderBy('createdAt', 'desc'), limit(50)), s => { const l = {}; s.docs.forEach(d => { const data = d.data(); if(data.dateStr === today && !l[data.deviceId]) l[data.deviceId] = data; }); setStatus(p => ({...p, oilLogs: l})); }),
+                    onSnapshot(query(pub('logs_oil'), orderBy('createdAt', 'desc'), limit(50)), s => { 
+                        const l = {}; s.docs.forEach(d => { const data = d.data(); if(data.dateStr === today && !l[data.deviceId]) l[data.deviceId] = data; });
+                        setStatus(p => ({...p, oilLogs: l})); 
+                    }),
                     onSnapshot(pub('shopping_list'), s => setStatus(p => ({...p, shoppingList: s.docs.map(d=>({...d.data(), id:d.id}))}))),
                     onSnapshot(query(pub('logs_signatures'), where('dateStr', '==', today)), s => { const sigs = {}; s.docs.forEach(d => sigs[d.data().module] = d.data()); setStatus(p => ({...p, signatures: sigs})); }),
-                    onSnapshot(query(pub('logs_time'), where('dateStr', '==', today), where('end', '==', null)), s => { const workerStatus = {}; s.docs.forEach(d => { const log = d.data(); workerStatus[log.userId] = log.status || 'active'; }); setStatus(p => ({...p, workerStatus: workerStatus, activeWorkers: Object.keys(workerStatus)})); })
+                    
+                    // WER ARBEITET GERADE? (Für Login Screen Badges)
+                    onSnapshot(query(pub('logs_time'), where('dateStr', '==', today), where('end', '==', null)), s => {
+                        const workerStatus = {};
+                        s.docs.forEach(d => {
+                            const log = d.data();
+                            workerStatus[log.userId] = log.status || 'active';
+                        });
+                        setStatus(p => ({...p, workerStatus: workerStatus, activeWorkers: Object.keys(workerStatus)}));
+                    })
                 ];
+
+                // Mein eigener Status (fürs Dashboard)
                 let timeUnsub = null;
-                if(appUser) { timeUnsub = onSnapshot(query(pub('logs_time'), where('userId', '==', appUser.id), where('dateStr', '==', today), limit(1)), s => { if(!s.empty) setStatus(p => ({...p, myTimeLog: {id:s.docs[0].id, ...s.docs[0].data()} })); else setStatus(p => ({...p, myTimeLog: null})); }); }
+                if(appUser) {
+                    timeUnsub = onSnapshot(query(pub('logs_time'), where('userId', '==', appUser.id), where('dateStr', '==', today), limit(1)), s => {
+                         if(!s.empty) setStatus(p => ({...p, myTimeLog: {id:s.docs[0].id, ...s.docs[0].data()} }));
+                         else setStatus(p => ({...p, myTimeLog: null}));
+                    });
+                }
+
+                // Gestern Öl Check
                 const fetchYesterday = async () => { try { const yStr = getYesterdayStr(); const snap = await getDocs(query(pub('logs_oil'), where('dateStr', '==', yStr))); const yLogs = {}; snap.docs.forEach(d => { const data = d.data(); if(!yLogs[data.deviceId] || data.createdAt > yLogs[data.deviceId].createdAt) yLogs[data.deviceId] = data; }); setStatus(p => ({...p, yesterdayOil: yLogs})); } catch(e) {} };
                 fetchYesterday();
+
                 return () => { [...unsubs, ...unsubsLive].forEach(u => u()); if(timeUnsub) timeUnsub(); };
             }, [user, appId, isHeadAdmin, appUser]);
 
-            const seedDB = async (targetId, masterKey = null) => { const id = targetId || appId; if(!id) return; try { const finalMasterKey = masterKey || 'gastro123'; if(!masterKey) setTempMasterPw(finalMasterKey); const batch = [ { col: 'staff', data: { name: 'Filialleitung', role: 'admin', departments: ['kitchen','service'], pin: '1234' } }, { col: 'company', id:'info', data: { name: 'Mein Restaurant', address: '', design: { primaryColor: '#0f172a' } } }, { col: 'settings', id: 'global', data: { debugMode: false, masterKey: finalMasterKey, modules: DEFAULT_MODULES_CONFIG } } ]; for (const item of batch) { const ref = item.id ? doc(db, 'artifacts', id, 'public', 'data', item.col, item.id) : collection(db, 'artifacts', id, 'public', 'data', item.col); if(item.id) await setDoc(ref, item.data); else await addDoc(ref, {...item.data, createdAt: serverTimestamp() }); } } catch(e) { console.error(e); } setLoading(false); };
-            const hasAccess = (dept) => { if(appUser?.role === 'admin') return true; if(['kitchen_lead','service_lead'].includes(appUser?.role)) return true; return (appUser?.departments || []).includes(dept); };
+            const seedDB = async (targetId, masterKey = null) => {
+                const id = targetId || appId;
+                if(!id) return;
+                try {
+                    const finalMasterKey = masterKey || 'gastro123';
+                    if(!masterKey) setTempMasterPw(finalMasterKey);
+                    const batch = [
+                        { col: 'staff', data: { name: 'Filialleitung', role: 'admin', departments: ['kitchen','service'], pin: '1234' } },
+                        { col: 'company', id:'info', data: { name: 'Mein Restaurant', address: '', design: { primaryColor: '#0f172a' } } },
+                        { col: 'settings', id: 'global', data: { debugMode: false, masterKey: finalMasterKey, modules: DEFAULT_MODULES_CONFIG } }
+                    ];
+                    for (const item of batch) {
+                        const ref = item.id ? doc(db, 'artifacts', id, 'public', 'data', item.col, item.id) : collection(db, 'artifacts', id, 'public', 'data', item.col);
+                        if(item.id) await setDoc(ref, item.data); else await addDoc(ref, {...item.data, createdAt: serverTimestamp() });
+                    }
+                } catch(e) { console.error(e); }
+                setLoading(false);
+            };
 
+            const common = { user: appUser, appId, showToast, data, status, lang, design, themeStyle, btnStyle, modulesConfig };
+            const hasAccess = (dept) => {
+                if(appUser?.role === 'admin') return true;
+                if(['kitchen_lead','service_lead'].includes(appUser?.role)) return true;
+                return (appUser?.departments || []).includes(dept);
+            };
+
+            // --- VIEW ROUTING ---
+
+            // 1. Head Admin / District
             if (view === 'head-login') return <HeadAdminLogin onSuccess={()=>{setIsHeadAdmin(true); setView('head-panel');}} onBack={()=>setView('login')}/>;
             if (view === 'head-panel') return <HeadAdminPanel onLogout={()=>{setIsHeadAdmin(false); setView('login');}} showToast={showToast} />;
-            if (systemMaintenance && !isHeadAdmin && !appUser?.isDistrictOverride) return <div className="h-full flex items-center justify-center bg-slate-900 text-white p-6"><div className="text-center space-y-6"><h1 className="text-3xl font-black">Wartungsarbeiten</h1><p className="text-slate-400">Das System wird aktuell gewartet.</p><button onClick={()=>window.location.reload()} className="bg-white/10 hover:bg-white/20 px-6 py-3 rounded-xl font-bold transition-colors">Neu laden</button></div></div>;
             if (view === 'district-login') return <DistrictLogin onLogin={(dId) => { setDistrictId(dId); setView('district-dash'); }} onBack={() => setView('login')} />;
             if (view === 'district-dash' && districtId) return <DistrictDashboard districtId={districtId} onLogout={() => { setDistrictId(null); setView('login'); }} showToast={showToast} />;
+
+            // 2. Wartungsmodus (Sperre für normale User)
+            if (systemMaintenance && !isHeadAdmin && !appUser?.isDistrictOverride) {
+                return (
+                    <div className="h-full flex items-center justify-center bg-slate-900 text-white p-6 animate-in">
+                        <div className="text-center space-y-6 max-w-sm">
+                            <div className="w-24 h-24 bg-red-500/20 rounded-full flex items-center justify-center mx-auto text-red-400 animate-pulse"><AlertTriangle size={48}/></div>
+                            <h1 className="text-3xl font-black">Wartungsarbeiten</h1>
+                            <p className="text-slate-400">Das System wird aktuell gewartet.</p>
+                            <button onClick={()=>window.location.reload()} className="bg-white/10 hover:bg-white/20 px-6 py-3 rounded-xl font-bold transition-colors">Neu laden</button>
+                        </div>
+                    </div>
+                );
+            }
+
+            // 3. Login / Loading
             if (!appId) return <EnterpriseLogin onLogin={handleRestaurantLogin} onRegister={handleRegistration} loading={loading} lang={lang} setLang={setLang} setView={setView} />;
             if (loading) return <Loading />;
             if (showTutorial) return <div className="fixed inset-0 z-[200] bg-slate-900/95 flex items-center justify-center p-6 animate-in text-white text-center"><h1>Setup Complete</h1><Button onClick={()=>setShowTutorial(false)}>OK</Button></div>;
-            if (!appUser) return <LoginScreen staff={data.staff} restaurantId={appId} company={data.company} yesterdayOil={status.yesterdayOil} fryers={data.fryers} onLogin={handleUserLogin} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} onSeed={()=>seedDB()} showToast={showToast} lang={lang} onMasterRecovery={handleMasterKeyRecovery} tempMasterPw={tempMasterPw} themeColor={design.primaryColor || '#0f172a'} workerStatus={status.workerStatus || {}} activeWorkers={status.activeWorkers || []} />;
 
+            // 4. Staff Login Screen
+            if (!appUser) return <LoginScreen 
+                staff={data.staff} 
+                restaurantId={appId} 
+                company={data.company} 
+                yesterdayOil={status.yesterdayOil} 
+                fryers={data.fryers} 
+                onLogin={handleUserLogin} 
+                onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} 
+                onSeed={()=>seedDB()} 
+                showToast={showToast} 
+                lang={lang} 
+                onMasterRecovery={handleMasterKeyRecovery} 
+                tempMasterPw={tempMasterPw} 
+                themeColor={design.primaryColor || '#0f172a'}
+                workerStatus={status.workerStatus || {}}
+                activeWorkers={status.activeWorkers || []} 
+            />;
+
+            // 5. MAIN APP UI
             return (
                 <ErrorBoundary>
                     <ConnectionBanner />
                     <div className="min-h-full font-sans pb-20 transition-colors duration-300" style={themeStyle}>
-                        
-                        {/* --- HEADER UPDATE (Avatar Button) --- */}
                         <header className="pt-[max(1rem,env(safe-area-inset-top))] pb-4 px-5 sticky top-0 z-50 shadow-lg flex justify-between items-center transition-colors duration-300" style={headerStyle}>
                             <div className="flex items-center gap-3"><AppLogo company={data.company} design={design} /></div>
-                            <div className="flex gap-2">
-                                {/* PROFIL BUTTON */}
-                                <button onClick={() => setView('profile')} className="bg-white/10 p-1 pr-3 rounded-full hover:bg-white/20 transition-colors text-white flex items-center gap-2">
-                                    <div className="w-8 h-8 bg-white text-slate-900 rounded-full flex items-center justify-center font-black text-xs border-2 border-white/20">
-                                        {appUser.name.charAt(0)}
-                                    </div>
-                                    <span className="text-xs font-bold hidden md:inline">{appUser.name}</span>
-                                </button>
-                                <button onClick={() => setAppUser(null)} className="bg-white/10 p-2 rounded-full hover:bg-white/20 transition-colors text-white"><LogOut size={18}/></button>
-                            </div>
+                            <div className="flex gap-2"><button onClick={() => setAppUser(null)} className="bg-white/10 p-2 rounded-full hover:bg-white/20 transition-colors text-white"><LogOut size={18}/></button></div>
                         </header>
 
-                        {adminAlert && (<div className="fixed inset-0 z-[100] bg-red-900/95 flex items-center justify-center p-6 animate-in"><div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl text-center space-y-6"><h3 className="font-black text-2xl text-red-600 mb-1">SICHERHEITSRISIKO!</h3><p className="text-sm font-bold text-slate-600">Standard-PIN 1234 ist aktiv.</p><Button onClick={()=>setAdminAlert(false)} className="w-full bg-red-600 hover:bg-red-700 shadow-red-200 text-white">Ich habe verstanden</Button></div></div>)}
+                        {adminAlert && (
+                            <div className="fixed inset-0 z-[100] bg-red-900/95 flex items-center justify-center p-6 animate-in">
+                                <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl text-center space-y-6">
+                                    <h3 className="font-black text-2xl text-red-600 mb-1">SICHERHEITSRISIKO!</h3>
+                                    <p className="text-sm font-bold text-slate-600">Standard-PIN 1234 ist aktiv.</p>
+                                    <Button onClick={()=>setAdminAlert(false)} className="w-full bg-red-600 hover:bg-red-700 shadow-red-200 text-white">Ich habe verstanden</Button>
+                                </div>
+                            </div>
+                        )}
+
                         {toast && <Toast {...toast} />}
                         
                         <main className="max-w-lg mx-auto p-5 space-y-6 safe-bottom">
@@ -1684,32 +1634,26 @@ const UserProfile = ({ user, staff, appId, showToast, onBack }) => {
                             {view === 'cooling' && <Cooling {...common} />}
                             {view === 'oil' && hasAccess('kitchen') && <Oil {...common} />}
                             {view === 'inventory' && <Inventory {...common} />}
-                            
-                            {/* KORRIGIERT: WasteManager steht jetzt nur noch 1x hier */}
                             {view === 'waste' && <WasteManager {...common} />}
-                            
                             {view === 'maintenance' && <Maintenance {...common} />}
                             {view === 'handover' && <ShiftHandover {...common} />}
+                            
+                            {/* NEUE MODULE */}
                             {view === 'shiftplan' && <SmartShiftPlanner staff={data.staff} appId={appId} showToast={showToast} user={appUser} />}
                             {view === 'absence' && <AbsenceManager user={appUser} appId={appId} showToast={showToast} staff={data.staff} />}
                             
-                            {view === 'profile' && (
-                                <UserProfile 
-                                    user={appUser} 
-                                    staff={data.staff} 
-                                    appId={appId} 
-                                    showToast={showToast} 
-                                    onBack={()=>setView('dashboard')}
-                                />
-                            )}
-
                             {view === 'admin' && (appUser.role === 'admin' || ['kitchen_lead','service_lead'].includes(appUser.role)) && <Admin {...common} debugMode={debugMode} setView={setView} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} deleteBranch={deleteBranchLocal} currentUser={appUser} lang={lang} />}
                             {view === 'history' && appUser?.role === 'admin' && <SmartHistory {...common} setView={setView} />}
                         </main>
+
                         <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-100 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex nav-scroll overflow-x-auto justify-start items-center shadow-[0_-4px_10px_rgba(0,0,0,0.03)] z-40 text-slate-800 gap-2 px-4">
                             <div className="flex items-center gap-2 min-w-max mx-auto">
                                 <NavBtn icon={<Menu/>} label="Start" active={view==='dashboard'} onClick={()=>setView('dashboard')} design={design}/>
-                                {Object.entries(modulesConfig).sort().map(([key, config]) => { if (!config.enabled) return null; if (key === 'oil' && !hasAccess('kitchen')) return null; return <NavBtn key={key} icon={ICON_MAP[config.icon] || <CheckCircle/>} label={config.name || DICTIONARY[lang][key]} active={view===key} onClick={()=>setView(key)} design={design}/> })}
+                                {Object.entries(modulesConfig).sort().map(([key, config]) => {
+                                    if (!config.enabled) return null;
+                                    if (key === 'oil' && !hasAccess('kitchen')) return null;
+                                    return <NavBtn key={key} icon={ICON_MAP[config.icon] || <CheckCircle/>} label={config.name || DICTIONARY[lang][key]} active={view===key} onClick={()=>setView(key)} design={design}/>
+                                })}
                                 {(appUser.role === 'admin' || ['kitchen_lead','service_lead'].includes(appUser.role)) && <NavBtn icon={<Settings/>} label="Admin" active={view==='admin'} onClick={()=>setView('admin')} design={design}/>}
                             </div>
                         </nav>
@@ -2263,146 +2207,7 @@ const UserProfile = ({ user, staff, appId, showToast, onBack }) => {
                 </div>
             ); 
         };
-const Editor = ({ type, data, close, appId, showToast, btnStyle }) => { 
-            const [form, setForm] = useState({...data}); 
-            const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); 
-            
-            const save = async () => { 
-                const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':type==='prep'?'prep_tasks':'staff'; 
-                const payload = { ...form }; 
-                if(type==='tasks'||type==='prep') payload.schedule = sched; 
-                delete payload.id; 
-                delete payload.isNew; 
-                
-                const ref = collection(db,'artifacts',appId,'public','data',col); 
-                if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()}); 
-                else await updateDoc(doc(ref, data.id), payload); 
-                
-                showToast("Gespeichert"); 
-                close(); 
-            }; 
-            
-            const toggleDept = (d) => { 
-                const cur = form.departments || []; 
-                setForm({...form, departments: cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]}); 
-            };
 
-            return (
-                <div className="space-y-6 animate-in">
-                    <div className="flex justify-between items-center mb-2">
-                        <h3 className="font-black text-xl text-slate-800">{data.isNew?'Neu':'Bearbeiten'}</h3>
-                        <button onClick={close} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button>
-                    </div>
-                    
-                    <div className="space-y-2">
-                        <span className="text-xs font-bold uppercase text-slate-400 ml-1">Bezeichnung / Name</span>
-                        <Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." />
-                    </div>
-
-                    {type==='prep' && (
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Kategorie</span>
-                                    <Select value={form.category||'prep'} onChange={e=>setForm({...form,category:e.target.value})}>
-                                        <option value="prep">Vorbereitung (Mise en Place)</option>
-                                        <option value="stock">Lager/Auffüllen</option>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Zuständigkeit</span>
-                                    <Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}>
-                                        <option value="kitchen">Küche</option>
-                                        <option value="service">Service</option>
-                                    </Select>
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Ziel / Menge</span>
-                                <Input value={form.target||''} onChange={e=>setForm({...form,target:e.target.value})} placeholder="z.B. 2 Behälter, Voll machen..." />
-                            </div>
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                <span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Zeitplan (Tage)</span>
-                                <div className="flex justify-between">
-                                    {['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>
-                                        <button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {type==='staff' && (
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Abteilungen</span>
-                                <div className="flex gap-3">
-                                    <button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('kitchen')?'border-orange-500 bg-orange-50 text-orange-600':'border-slate-100 bg-white text-slate-400'}`}>Küche</button>
-                                    <button onClick={()=>toggleDept('service')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('service')?'border-purple-500 bg-purple-50 text-purple-600':'border-slate-100 bg-white text-slate-400'}`}>Service</button>
-                                </div>
-                            </div>
-
-                            {/* VERTRAGSDATEN */}
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Vertrag (Std/Monat)</span>
-                                    <Input type="number" value={form.contractHours || ''} onChange={e=>setForm({...form, contractHours: e.target.value})} placeholder="z.B. 160" />
-                                </div>
-                                <div className="space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Stundenlohn (€)</span>
-                                    <Input type="number" value={form.hourlyRate || ''} onChange={e=>setForm({...form, hourlyRate: e.target.value})} placeholder="z.B. 12.50" />
-                                </div>
-                            </div>
-
-                            <div className="flex gap-3">
-                                <div className="flex-1 space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Rolle</span>
-                                    <Select value={form.role||'user'} onChange={e=>setForm({...form,role:e.target.value})}>
-                                        <option value="user">Mitarbeiter</option>
-                                        <option value="kitchen_lead">Küchenleitung</option>
-                                        <option value="service_lead">Serviceleitung</option>
-                                        <option value="admin">Filialleitung</option>
-                                    </Select>
-                                </div>
-                                <div className="flex-1 space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">PIN (Optional)</span>
-                                    <Input value={form.pin||''} onChange={e=>setForm({...form,pin:e.target.value})} className="text-center font-mono tracking-widest" maxLength={4}/>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {type==='tasks' && (
-                        <div className="space-y-4">
-                            <div className="flex gap-3">
-                                <div className="flex-1 space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Bereich</span>
-                                    <Input value={form.area||''} onChange={e=>setForm({...form,area:e.target.value})} placeholder="z.B. Bar"/>
-                                </div>
-                                <div className="flex-1 space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Dept</span>
-                                    <Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}>
-                                        <option value="kitchen">Küche</option>
-                                        <option value="service">Service</option>
-                                        <option value="all">Alle</option>
-                                    </Select>
-                                </div>
-                            </div>
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                <span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Wochentage</span>
-                                <div className="flex justify-between">
-                                    {['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>
-                                        <button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    
-                    <Button onClick={save} className="mt-6 shadow-xl shadow-slate-900/10" style={btnStyle}>Speichern</Button>
-                </div>
-            ); 
-        };
         // --- ADMIN SECTION ---
         const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView, onLogoutSystem, deleteBranch, isRemote, currentUser, lang, btnStyle }) => { 
             const [tab, setTab] = useState('staff'); const [edit, setEdit] = useState(null); const [deleteMath, setDeleteMath] = useState(null); const [deleteInput, setDeleteInput] = useState('');
@@ -2649,7 +2454,146 @@ const SettingsEditor = ({ data, appId, showToast, btnStyle, deleteBranch, lang }
             );
         };
         
-        
+        const Editor = ({ type, data, close, appId, showToast, btnStyle }) => { 
+            const [form, setForm] = useState({...data}); 
+            const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); 
+            
+            const save = async () => { 
+                const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':type==='prep'?'prep_tasks':'staff'; 
+                const payload = { ...form }; 
+                if(type==='tasks'||type==='prep') payload.schedule = sched; 
+                delete payload.id; 
+                delete payload.isNew; 
+                
+                const ref = collection(db,'artifacts',appId,'public','data',col); 
+                if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()}); 
+                else await updateDoc(doc(ref, data.id), payload); 
+                
+                showToast("Gespeichert"); 
+                close(); 
+            }; 
+            
+            const toggleDept = (d) => { 
+                const cur = form.departments || []; 
+                setForm({...form, departments: cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]}); 
+            };
+
+            return (
+                <div className="space-y-6 animate-in">
+                    <div className="flex justify-between items-center mb-2">
+                        <h3 className="font-black text-xl text-slate-800">{data.isNew?'Neu':'Bearbeiten'}</h3>
+                        <button onClick={close} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button>
+                    </div>
+                    
+                    <div className="space-y-2">
+                        <span className="text-xs font-bold uppercase text-slate-400 ml-1">Bezeichnung / Name</span>
+                        <Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." />
+                    </div>
+
+                    {type==='prep' && (
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Kategorie</span>
+                                    <Select value={form.category||'prep'} onChange={e=>setForm({...form,category:e.target.value})}>
+                                        <option value="prep">Vorbereitung (Mise en Place)</option>
+                                        <option value="stock">Lager/Auffüllen</option>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Zuständigkeit</span>
+                                    <Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}>
+                                        <option value="kitchen">Küche</option>
+                                        <option value="service">Service</option>
+                                    </Select>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Ziel / Menge</span>
+                                <Input value={form.target||''} onChange={e=>setForm({...form,target:e.target.value})} placeholder="z.B. 2 Behälter, Voll machen..." />
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Zeitplan (Tage)</span>
+                                <div className="flex justify-between">
+                                    {['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>
+                                        <button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {type==='staff' && (
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Abteilungen</span>
+                                <div className="flex gap-3">
+                                    <button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('kitchen')?'border-orange-500 bg-orange-50 text-orange-600':'border-slate-100 bg-white text-slate-400'}`}>Küche</button>
+                                    <button onClick={()=>toggleDept('service')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('service')?'border-purple-500 bg-purple-50 text-purple-600':'border-slate-100 bg-white text-slate-400'}`}>Service</button>
+                                </div>
+                            </div>
+
+                            {/* NEU: VERTRAGSDATEN */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Vertrag (Std/Monat)</span>
+                                    <Input type="number" value={form.contractHours || ''} onChange={e=>setForm({...form, contractHours: e.target.value})} placeholder="z.B. 160" />
+                                </div>
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Stundenlohn (€)</span>
+                                    <Input type="number" value={form.hourlyRate || ''} onChange={e=>setForm({...form, hourlyRate: e.target.value})} placeholder="z.B. 12.50" />
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3">
+                                <div className="flex-1 space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Rolle</span>
+                                    <Select value={form.role||'user'} onChange={e=>setForm({...form,role:e.target.value})}>
+                                        <option value="user">Mitarbeiter</option>
+                                        <option value="kitchen_lead">Küchenleitung</option>
+                                        <option value="service_lead">Serviceleitung</option>
+                                        <option value="admin">Filialleitung</option>
+                                    </Select>
+                                </div>
+                                <div className="flex-1 space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">PIN (Optional)</span>
+                                    <Input value={form.pin||''} onChange={e=>setForm({...form,pin:e.target.value})} className="text-center font-mono tracking-widest" maxLength={4}/>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {type==='tasks' && (
+                        <div className="space-y-4">
+                            <div className="flex gap-3">
+                                <div className="flex-1 space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Bereich</span>
+                                    <Input value={form.area||''} onChange={e=>setForm({...form,area:e.target.value})} placeholder="z.B. Bar"/>
+                                </div>
+                                <div className="flex-1 space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Dept</span>
+                                    <Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}>
+                                        <option value="kitchen">Küche</option>
+                                        <option value="service">Service</option>
+                                        <option value="all">Alle</option>
+                                    </Select>
+                                </div>
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Wochentage</span>
+                                <div className="flex justify-between">
+                                    {['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>
+                                        <button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    <Button onClick={save} className="mt-6 shadow-xl shadow-slate-900/10" style={btnStyle}>Speichern</Button>
+                </div>
+            ); 
+        };
 
         // --- RESTORED HEAD ADMIN PANEL ---
         const HeadAdminLogin = ({ onSuccess, onBack }) => { const [pw, setPw] = useState(''); const check = () => { if(pw === HEAD_ADMIN_PASS) onSuccess(); else alert("Zugriff verweigert"); }; return <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 text-center text-slate-800"><div className="bg-white p-8 rounded-3xl max-w-sm mx-auto w-full shadow-2xl animate-in space-y-4"><h2 className="text-2xl font-black text-slate-800">Head Admin</h2><Input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="Passwort" /><Button variant="head" onClick={check}>Login</Button><button onClick={onBack} className="text-xs text-slate-400 underline pt-4">Zurück</button></div></div>; };
@@ -3068,4 +3012,4 @@ const SettingsEditor = ({ data, appId, showToast, btnStyle, deleteBranch, lang }
         root.render(<App />);
     </script>
 </body>
-</html>
+    </html>
