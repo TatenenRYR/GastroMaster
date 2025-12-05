@@ -1284,12 +1284,13 @@ const TerminalClock = ({ staff, appId, onClose }) => {
 };
 // --- APP CONTROLLER ---
         function App() {
+            // --- STATE DEFINITIONS ---
             const [user, setUser] = useState(null);
             const [appUser, setAppUser] = useState(null);
             const [appId, setAppId] = useState(localStorage.getItem('gastro_app_id') || null);
             const [lang, setLang] = useState('de');
-            const [view, setView] = useState('login');
-            const [districtId, setDistrictId] = useState(null);
+            const [view, setView] = useState('login'); 
+            const [districtId, setDistrictId] = useState(null); // Für Bezirksleiter
             const [isHeadAdmin, setIsHeadAdmin] = useState(false);
             const [loading, setLoading] = useState(true);
             const [toast, setToast] = useState(null);
@@ -1297,25 +1298,37 @@ const TerminalClock = ({ staff, appId, onClose }) => {
             const [showTutorial, setShowTutorial] = useState(false);
             const [tempMasterPw, setTempMasterPw] = useState('');
             
-            // NEU: Globale System-Status Variablen
+            // System Globals
             const [systemMaintenance, setSystemMaintenance] = useState(false);
             const [globalBroadcast, setGlobalBroadcast] = useState(null);
 
+            // Data Stores
             const [data, setData] = useState({ staff: [], cooling: [], fryers: [], tasks: [], suppliers: [], prep: [], company: {}, settings: {}, messages: [] });
-            const [status, setStatus] = useState({ tempLogs: [], cleaningLogs: {}, oilLogs: {}, prepLogs: {}, shoppingList: [], yesterdayOil: {}, signatures: {}, myTimeLog: null });
+            
+            // Live Status Stores
+            const [status, setStatus] = useState({ 
+                tempLogs: [], cleaningLogs: {}, oilLogs: {}, prepLogs: {}, shoppingList: [], 
+                yesterdayOil: {}, signatures: {}, myTimeLog: null, 
+                workerStatus: {}, activeWorkers: [] // Für Login Screen Badges
+            });
+            
             const [debugMode, setDebugMode] = useState(false);
             
+            // Design & Config
             const design = data.company?.design || {};
             const themeStyle = { backgroundColor: design.backgroundColor || '#f8fafc', color: design.textColor || '#1e293b' };
             const btnStyle = { backgroundColor: design.primaryColor || '#0f172a', color: '#ffffff' };
             const headerStyle = { backgroundColor: design.headerColor || design.primaryColor || '#0f172a', color: '#ffffff' };
-            // Wir mischen (mergen) die Standards mit den gespeicherten Daten
-const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules || {}) };
+            
+            // Merge Default Config mit gespeicherter Config
+            const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules || {}) };
+            
             const showToast = (msg, type='success') => { setToast({msg, type}); setTimeout(() => setToast(null), 3000); };
 
-            // --- NEU: System Listener (Wartungsmodus & Broadcasts) ---
+            // --- SYSTEM EFFECTS ---
+            
+            // 1. System Listener (Wartung & Broadcast)
             useEffect(() => {
-                // Hört auf den globalen System-Kanal
                 const unsub = onSnapshot(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'settings', 'global'), (snap) => {
                     if (snap.exists()) {
                         const d = snap.data();
@@ -1329,25 +1342,25 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
                 return () => unsub();
             }, []);
 
+            // 2. Bezirksleiter Auto-Login Check
             useEffect(() => {
                 const isDistrictOverride = sessionStorage.getItem('gastro_district_override');
                 if (isDistrictOverride && appId) {
-                    // Wir simulieren einen User mit maximalen Rechten
                     setAppUser({ 
                         name: 'BEZIRKSLEITUNG', 
                         role: 'admin', 
-                        id: 'district_super_admin',
-                        departments: ['kitchen', 'service'], // Voller Zugriff
+                        id: 'district_super_admin', 
+                        departments: ['kitchen', 'service'], 
                         isDistrictOverride: true 
                     });
-                    setView('dashboard');
-                    // Optional: Flag entfernen, damit beim Neuladen (F5) wieder Sicherheit besteht
-                    sessionStorage.removeItem('gastro_district_override'); 
-                    
+                    setView('dashboard'); // Zwingt die App aufs Dashboard
+                    // sessionStorage.removeItem('gastro_district_override'); // Optional: Löschen für Sicherheit
                     showToast("Willkommen Chef! Voller Zugriff aktiviert.");
                 }
             }, [appId]);
-            // --- Bestehende Logik ---
+
+            // --- AUTH & DATA LOADING ---
+
             const handleRestaurantLogin = (id) => {
                 if(id === 'head-admin') { setView('head-login'); } else {
                     const normId = normalizeId(id);
@@ -1363,12 +1376,15 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
                     const tokenRef = doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'tokens', token);
                     const tokenSnap = await getDoc(tokenRef);
                     if(!tokenSnap.exists() || !tokenSnap.data().active) throw new Error("Code ungültig/benutzt");
+                    
                     const checkRef = doc(db, 'artifacts', newId, 'public', 'data', 'settings', 'global');
                     const checkSnap = await getDoc(checkRef);
                     if(checkSnap.exists()) throw new Error("ID vergeben");
+                    
                     await seedDB(newId, masterPw);
                     await updateDoc(tokenRef, { active: false, usedBy: newId, usedAt: serverTimestamp() });
                     await setDoc(doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'branches', newId), { id: newId, createdAt: serverTimestamp() });
+                    
                     localStorage.setItem('gastro_app_id', newId); setAppId(newId); setTempMasterPw(masterPw); setShowTutorial(true); 
                 } catch(e) { console.error(e); showToast(e.message, "error"); }
                 setLoading(false);
@@ -1390,10 +1406,14 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
 
             useEffect(() => { signInAnonymously(auth).catch(e=>console.error(e)); return onAuthStateChanged(auth, u => { setUser(u); if(!u) setLoading(false); }); }, []);
 
+            // --- MAIN DATA LISTENER ---
             useEffect(() => {
                 if (!user || !appId || isHeadAdmin) { if(appId===null && !isHeadAdmin) setLoading(false); return; }
                 setLoading(true);
+                
                 const pub = (c) => collection(db, 'artifacts', appId, 'public', 'data', c);
+                
+                // Statische Daten (Personal, Geräte, etc.)
                 const unsubs = ['staff', 'cooling_devices', 'fryers', 'cleaning_tasks', 'prep_tasks', 'suppliers', 'settings', 'company', 'messages'].map(c => 
                     onSnapshot(query(pub(c), c==='messages'?orderBy('createdAt','desc'):limit(100)), s => {
                         if(c === 'settings') { 
@@ -1410,8 +1430,9 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
                         if(c==='staff') setLoading(false);
                     })
                 );
+
+                // Live Daten (Heute)
                 const today = getTodayStr();
-                // Suchen Sie diesen Block in function App()
                 const unsubsLive = [
                     onSnapshot(query(pub('logs_temp'), where('dateStr', '==', today)), s => setStatus(p => ({...p, tempLogs: s.docs.map(d=>d.data())}))),
                     onSnapshot(query(pub('logs_cleaning'), where('dateStr', '==', today)), s => { const l = {}; s.docs.forEach(d => l[d.data().taskId] = d.data()); setStatus(p => ({...p, cleaningLogs: l})); }),
@@ -1423,19 +1444,18 @@ const modulesConfig = { ...DEFAULT_MODULES_CONFIG, ...(data.settings?.modules ||
                     onSnapshot(pub('shopping_list'), s => setStatus(p => ({...p, shoppingList: s.docs.map(d=>({...d.data(), id:d.id}))}))),
                     onSnapshot(query(pub('logs_signatures'), where('dateStr', '==', today)), s => { const sigs = {}; s.docs.forEach(d => sigs[d.data().module] = d.data()); setStatus(p => ({...p, signatures: sigs})); }),
                     
-                    // --- NEU HINZUGEFÜGT: Wer arbeitet gerade? (Für den Login Screen) ---
-                    // In function App(), innerhalb von useEffect -> unsubsLive:
-
-onSnapshot(query(pub('logs_time'), where('dateStr', '==', today), where('end', '==', null)), s => {
-    // Wir speichern jetzt ein Objekt: { "user123": "active", "user456": "break" }
-    const workerStatus = {};
-    s.docs.forEach(d => {
-        const log = d.data();
-        workerStatus[log.userId] = log.status || 'active';
-    });
-    setStatus(p => ({...p, workerStatus: workerStatus})); // Speichern als Object
-})
+                    // WER ARBEITET GERADE? (Für Login Screen Badges)
+                    onSnapshot(query(pub('logs_time'), where('dateStr', '==', today), where('end', '==', null)), s => {
+                        const workerStatus = {};
+                        s.docs.forEach(d => {
+                            const log = d.data();
+                            workerStatus[log.userId] = log.status || 'active';
+                        });
+                        setStatus(p => ({...p, workerStatus: workerStatus, activeWorkers: Object.keys(workerStatus)}));
+                    })
                 ];
+
+                // Mein eigener Status (fürs Dashboard)
                 let timeUnsub = null;
                 if(appUser) {
                     timeUnsub = onSnapshot(query(pub('logs_time'), where('userId', '==', appUser.id), where('dateStr', '==', today), limit(1)), s => {
@@ -1443,8 +1463,11 @@ onSnapshot(query(pub('logs_time'), where('dateStr', '==', today), where('end', '
                          else setStatus(p => ({...p, myTimeLog: null}));
                     });
                 }
+
+                // Gestern Öl Check
                 const fetchYesterday = async () => { try { const yStr = getYesterdayStr(); const snap = await getDocs(query(pub('logs_oil'), where('dateStr', '==', yStr))); const yLogs = {}; snap.docs.forEach(d => { const data = d.data(); if(!yLogs[data.deviceId] || data.createdAt > yLogs[data.deviceId].createdAt) yLogs[data.deviceId] = data; }); setStatus(p => ({...p, yesterdayOil: yLogs})); } catch(e) {} };
                 fetchYesterday();
+
                 return () => { [...unsubs, ...unsubsLive].forEach(u => u()); if(timeUnsub) timeUnsub(); };
             }, [user, appId, isHeadAdmin, appUser]);
 
@@ -1474,41 +1497,41 @@ onSnapshot(query(pub('logs_time'), where('dateStr', '==', today), where('end', '
                 return (appUser?.departments || []).includes(dept);
             };
 
-            // --- NAVIGATION LOGIK ---
+            // --- VIEW ROUTING ---
+
+            // 1. Head Admin / District
             if (view === 'head-login') return <HeadAdminLogin onSuccess={()=>{setIsHeadAdmin(true); setView('head-panel');}} onBack={()=>setView('login')}/>;
             if (view === 'head-panel') return <HeadAdminPanel onLogout={()=>{setIsHeadAdmin(false); setView('login');}} showToast={showToast} />;
-            
-            // --- HIER GREIFT DER WARTUNGSMODUS ---
-            if (systemMaintenance && !isHeadAdmin) {
+            if (view === 'district-login') return <DistrictLogin onLogin={(dId) => { setDistrictId(dId); setView('district-dash'); }} onBack={() => setView('login')} />;
+            if (view === 'district-dash' && districtId) return <DistrictDashboard districtId={districtId} onLogout={() => { setDistrictId(null); setView('login'); }} showToast={showToast} />;
+
+            // 2. Wartungsmodus (Sperre für normale User)
+            if (systemMaintenance && !isHeadAdmin && !appUser?.isDistrictOverride) {
                 return (
                     <div className="h-full flex items-center justify-center bg-slate-900 text-white p-6 animate-in">
                         <div className="text-center space-y-6 max-w-sm">
-                            <div className="w-24 h-24 bg-red-500/20 rounded-full flex items-center justify-center mx-auto text-red-400 animate-pulse">
-                                <AlertTriangle size={48}/>
-                            </div>
+                            <div className="w-24 h-24 bg-red-500/20 rounded-full flex items-center justify-center mx-auto text-red-400 animate-pulse"><AlertTriangle size={48}/></div>
                             <h1 className="text-3xl font-black">Wartungsarbeiten</h1>
-                            <p className="text-slate-400">Das System wird aktuell gewartet. Bitte versuchen Sie es in wenigen Minuten erneut.</p>
-                            <button onClick={()=>window.location.reload()} className="bg-white/10 hover:bg-white/20 px-6 py-3 rounded-xl font-bold transition-colors">Erneut prüfen</button>
+                            <p className="text-slate-400">Das System wird aktuell gewartet.</p>
+                            <button onClick={()=>window.location.reload()} className="bg-white/10 hover:bg-white/20 px-6 py-3 rounded-xl font-bold transition-colors">Neu laden</button>
                         </div>
                     </div>
                 );
             }
 
-            if (view === 'district-login') return <DistrictLogin onLogin={(dId) => { setDistrictId(dId); setView('district-dash'); }} onBack={() => setView('login')} />;
-            if (view === 'district-dash' && districtId) return <DistrictDashboard districtId={districtId} onLogout={() => { setDistrictId(null); setView('login'); }} showToast={showToast} />;
-                  
+            // 3. Login / Loading
             if (!appId) return <EnterpriseLogin onLogin={handleRestaurantLogin} onRegister={handleRegistration} loading={loading} lang={lang} setLang={setLang} setView={setView} />;
             if (loading) return <Loading />;
             if (showTutorial) return <div className="fixed inset-0 z-[200] bg-slate-900/95 flex items-center justify-center p-6 animate-in text-white text-center"><h1>Setup Complete</h1><Button onClick={()=>setShowTutorial(false)}>OK</Button></div>;
 
+            // 4. Staff Login Screen
             if (!appUser) return <LoginScreen 
                 staff={data.staff} 
                 restaurantId={appId} 
                 company={data.company} 
                 yesterdayOil={status.yesterdayOil} 
                 fryers={data.fryers} 
-                onLogin={handleUserLogin}
-                workerStatus={status.workerStatus || {}}
+                onLogin={handleUserLogin} 
                 onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} 
                 onSeed={()=>seedDB()} 
                 showToast={showToast} 
@@ -1516,18 +1539,17 @@ onSnapshot(query(pub('logs_time'), where('dateStr', '==', today), where('end', '
                 onMasterRecovery={handleMasterKeyRecovery} 
                 tempMasterPw={tempMasterPw} 
                 themeColor={design.primaryColor || '#0f172a'}
-                
-                // --- NEU HINZUGEFÜGT: ---
+                workerStatus={status.workerStatus || {}}
                 activeWorkers={status.activeWorkers || []} 
             />;
+
+            // 5. MAIN APP UI
             return (
                 <ErrorBoundary>
                     <ConnectionBanner />
                     <div className="min-h-full font-sans pb-20 transition-colors duration-300" style={themeStyle}>
                         <header className="pt-[max(1rem,env(safe-area-inset-top))] pb-4 px-5 sticky top-0 z-50 shadow-lg flex justify-between items-center transition-colors duration-300" style={headerStyle}>
-                            <div className="flex items-center gap-3">
-                                <AppLogo company={data.company} design={design} />
-                            </div>
+                            <div className="flex items-center gap-3"><AppLogo company={data.company} design={design} /></div>
                             <div className="flex gap-2"><button onClick={() => setAppUser(null)} className="bg-white/10 p-2 rounded-full hover:bg-white/20 transition-colors text-white"><LogOut size={18}/></button></div>
                         </header>
 
@@ -1552,25 +1574,16 @@ onSnapshot(query(pub('logs_time'), where('dateStr', '==', today), where('end', '
                             {view === 'oil' && hasAccess('kitchen') && <Oil {...common} />}
                             {view === 'inventory' && <Inventory {...common} />}
                             {view === 'waste' && <WasteManager {...common} />}
-                            {view === 'shiftplan' && (
-    <SmartShiftPlanner 
-        staff={data.staff} 
-        appId={appId} 
-        showToast={showToast} 
-        user={appUser} // WICHTIG: User übergeben!
-    />
-)}
-                            {view === 'absence' && (
-        <AbsenceManager 
-            user={appUser} 
-            appId={appId} 
-            showToast={showToast}
-            staff={data.staff} // Wichtig für Admin Übersicht
-        />
-    )}
+                            {view === 'maintenance' && <Maintenance {...common} />}
+                            {view === 'handover' && <ShiftHandover {...common} />}
+                            
+                            {/* NEUE MODULE */}
+                            {view === 'shiftplan' && <SmartShiftPlanner staff={data.staff} appId={appId} showToast={showToast} user={appUser} />}
+                            {view === 'absence' && <AbsenceManager user={appUser} appId={appId} showToast={showToast} staff={data.staff} />}
+                            
                             {view === 'admin' && (appUser.role === 'admin' || ['kitchen_lead','service_lead'].includes(appUser.role)) && <Admin {...common} debugMode={debugMode} setView={setView} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} deleteBranch={deleteBranchLocal} currentUser={appUser} lang={lang} />}
                             {view === 'history' && appUser?.role === 'admin' && <SmartHistory {...common} setView={setView} />}
-                      </main>
+                        </main>
 
                         <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-100 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex nav-scroll overflow-x-auto justify-start items-center shadow-[0_-4px_10px_rgba(0,0,0,0.03)] z-40 text-slate-800 gap-2 px-4">
                             <div className="flex items-center gap-2 min-w-max mx-auto">
@@ -1587,7 +1600,6 @@ onSnapshot(query(pub('logs_time'), where('dateStr', '==', today), where('end', '
                 </ErrorBoundary>
             );
         }
-
         // --- AUTH COMPONENTS ---
         const EnterpriseLogin = ({ onLogin, onRegister, loading, lang, setLang, setView }) => { // <--- setView hinzugefügt
             const [id, setId] = useState(''); const [regCode, setRegCode] = useState(''); const [masterPw, setMasterPw] = useState(''); const [mode, setMode] = useState('login'); 
