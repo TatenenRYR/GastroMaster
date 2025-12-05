@@ -259,33 +259,105 @@ const WORK_RULES = {
             }
         }
 
-        const PinPad = ({ title, onClose, onSuccess, targetPin }) => {
-            const [pin, setPin] = useState('');
-            const handleNum = (n) => {
-                if(pin.length < 4) {
-                    const newPin = pin + n; setPin(newPin);
-                    if(newPin.length === 4) {
-                        if(targetPin === null || String(targetPin) === String(newPin)) onSuccess(newPin); 
-                        else { setPin(''); alert("Falsche PIN"); }
+        // --- MODIFIZIERTES PIN PAD (Mit Shake & Design) ---
+const PinPad = ({ title, onClose, onSuccess, targetPin }) => {
+    const [pin, setPin] = useState('');
+    const [isError, setIsError] = useState(false);
+
+    // CSS für die Shake-Animation direkt in der Komponente
+    const shakeStyle = {
+        animation: isError ? 'shake 0.4s cubic-bezier(.36,.07,.19,.97) both' : 'none',
+        transform: 'translate3d(0, 0, 0)'
+    };
+
+    const handleNum = (n) => {
+        // Eingabe blockieren, solange die Fehler-Animation läuft
+        if(isError) return;
+
+        if(pin.length < 4) {
+            const newPin = pin + n; 
+            setPin(newPin);
+            
+            if(newPin.length === 4) {
+                // Kurze Verzögerung für UX, damit der User den 4. Punkt sieht
+                setTimeout(() => {
+                    if(targetPin === null || String(targetPin) === String(newPin)) {
+                        onSuccess(newPin); 
+                    } else { 
+                        triggerError();
                     }
+                }, 50);
+            }
+        }
+    };
+
+    const triggerError = () => {
+        setIsError(true);
+        // Haptisches Feedback (Vibration) auf Smartphones
+        if (navigator.vibrate) navigator.vibrate(200);
+        
+        // Nach 500ms Reset
+        setTimeout(() => {
+            setPin('');
+            setIsError(false);
+        }, 500);
+    };
+
+    return (
+        <div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in">
+            {/* Style Tag für die Keyframes */}
+            <style>{`
+                @keyframes shake {
+                    10%, 90% { transform: translate3d(-1px, 0, 0); }
+                    20%, 80% { transform: translate3d(2px, 0, 0); }
+                    30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+                    40%, 60% { transform: translate3d(4px, 0, 0); }
                 }
-            };
-            return (
-                <div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in">
-                    <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden text-slate-800">
-                        <button onClick={onClose} className="absolute top-6 right-6 p-4 text-slate-400 hover:text-slate-600"><X size={32}/></button>
-                        <h3 className="text-center font-black text-xl mb-8 mt-2">{title}</h3>
-                        <div className="flex justify-center gap-6 mb-10">
-                            {[0,1,2,3].map(i => <div key={i} className={`w-4 h-4 rounded-full border-2 transition-colors ${pin.length > i ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}/>)}
-                        </div>
-                        <div className="pin-grid mb-6">
-                            {[1,2,3,4,5,6,7,8,9,0].map(n => n===0 ? <React.Fragment key={0}><div/><button onClick={()=>handleNum(0)} className="pin-btn">0</button></React.Fragment> : <button key={n} onClick={()=>handleNum(n)} className="pin-btn">{n}</button>)}
-                            <button onClick={()=>setPin(pin.slice(0,-1))} className="pin-btn text-red-500 bg-red-50 border-red-100"><Eraser size={28}/></button>
-                        </div>
-                    </div>
+            `}</style>
+
+            <div 
+                className={`bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden text-slate-800 transition-colors duration-300 ${isError ? 'bg-red-50 ring-4 ring-red-200' : ''}`}
+                style={shakeStyle}
+            >
+                <button onClick={onClose} className="absolute top-6 right-6 p-4 text-slate-400 hover:text-slate-600"><X size={32}/></button>
+                
+                <div className="text-center mt-2 mb-8 transition-colors">
+                    <h3 className={`font-black text-xl ${isError ? 'text-red-500' : 'text-slate-800'}`}>
+                        {isError ? "Falsche PIN!" : title}
+                    </h3>
+                    {isError && <p className="text-red-400 text-xs font-bold uppercase mt-1">Bitte erneut versuchen</p>}
                 </div>
-            );
-        };
+
+                {/* PIN DOTS */}
+                <div className="flex justify-center gap-6 mb-10">
+                    {[0,1,2,3].map(i => (
+                        <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all duration-300 
+                            ${pin.length > i 
+                                ? (isError ? 'bg-red-500 border-red-500 scale-125' : 'bg-indigo-600 border-indigo-600') 
+                                : (isError ? 'border-red-200' : 'border-slate-300')
+                            }
+                        `}/>
+                    ))}
+                </div>
+
+                {/* NUM PAD */}
+                <div className="pin-grid mb-6">
+                    {[1,2,3,4,5,6,7,8,9,0].map(n => 
+                        n===0 ? (
+                            <React.Fragment key={0}>
+                                <div/>
+                                <button onClick={()=>handleNum(0)} className={`pin-btn ${isError ? 'bg-red-100 text-red-600 border-red-200' : ''}`}>0</button>
+                            </React.Fragment>
+                        ) : (
+                            <button key={n} onClick={()=>handleNum(n)} className={`pin-btn ${isError ? 'bg-red-100 text-red-600 border-red-200' : ''}`}>{n}</button>
+                        )
+                    )}
+                    <button onClick={()=>setPin(pin.slice(0,-1))} className="pin-btn text-red-500 bg-red-50 border-red-100 hover:bg-red-100 active:bg-red-200"><Eraser size={28}/></button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
         const LanguageSwitcher = ({ current, set }) => (
             <div className="absolute top-6 right-6 z-50">
