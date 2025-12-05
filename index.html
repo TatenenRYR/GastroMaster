@@ -70,7 +70,7 @@
             Users, Languages, Ticket, ListChecks, Clock, PlayCircle, StopCircle, Palette, Megaphone, Power, Monitor, Check,
             MessageCircle, LayoutGrid, ToggleLeft, ToggleRight, Brush, ClipboardCheck, Utensils,
             Palmtree, Wrench, Link, Sun, Cloud, BookOpen, // Vorherige
-            Euro, Wallet, Calculator, Briefcase // <--- NEU HINZUGEFÜGT FÜR KASSE
+            Euro, Coins, Wallet, Calculator, Briefcase // <--- NEU HINZUGEFÜGT FÜR KASSE
         } from "https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0";
         const { useState, useEffect, useRef, useMemo } = React;
 
@@ -634,55 +634,84 @@ const DistrictLogin = ({ onLogin, onBack }) => {
         </div>
     );
 };
-// --- KASSEN-MANAGER (Service & Abrechnung) ---
+// --- KASSEN-MANAGER PRO (Mit detailliertem Zählbrett) ---
 const CashManager = ({ user, appId, showToast, setView }) => {
-    // Standard-Wechselgeld in der Lade
-    const [targetFloat, setTargetFloat] = useState(500); 
+    const [targetFloat, setTargetFloat] = useState(500); // Wechselgeld-Ziel
+    const [mode, setMode] = useState('evening'); 
+    const [tab, setTab] = useState('count');
+    const [history, setHistory] = useState([]);
+
+    // Definition der Geldeinheiten
+    const DENOMINATIONS = [
+        { val: 500, label: '500 €', type: 'note' },
+        { val: 200, label: '200 €', type: 'note' },
+        { val: 100, label: '100 €', type: 'note' },
+        { val: 50, label: '50 €', type: 'note' },
+        { val: 20, label: '20 €', type: 'note' },
+        { val: 10, label: '10 €', type: 'note' },
+        { val: 5, label: '5 €', type: 'note' },
+        { val: 2, label: '2 €', type: 'coin' },
+        { val: 1, label: '1 €', type: 'coin' },
+        { val: 0.50, label: '50 Cent', type: 'coin' },
+        { val: 0.20, label: '20 Cent', type: 'coin' },
+        { val: 0.10, label: '10 Cent', type: 'coin' },
+        { val: 0.05, label: '5 Cent', type: 'coin' },
+        { val: 0.02, label: '2 Cent', type: 'coin' },
+        { val: 0.01, label: '1 Cent', type: 'coin' },
+    ];
+
+    // State für die Anzahl der Münzen/Scheine (z.B. { "0.50": 12 })
+    const [counts, setCounts] = useState({});
     
-    const [mode, setMode] = useState('evening'); // 'morning' oder 'evening'
-    const [form, setForm] = useState({
-        coins_loose: '', coins_rolls: '', notes: '', ec: '', vouchers: '', comment: ''
+    // State für Sonstiges
+    const [extras, setExtras] = useState({
+        rolls_sum: '', // Summe der ungeöffneten Rollen
+        ec: '',
+        vouchers: '',
+        comment: ''
     });
 
-    const [history, setHistory] = useState([]);
-    const [tab, setTab] = useState('count'); // 'count' oder 'history'
-
-    // --- BERECHTIGUNGEN ---
-    // 1. Wer darf rein? (Admin, Service-Leitung ODER normaler Service-Mitarbeiter)
     const hasAccess = ['admin', 'service_lead'].includes(user.role) || (user.departments || []).includes('service');
-    
-    // 2. Wer darf PDFs laden? (Nur Admin & Service-Leitung)
     const canDownload = ['admin', 'service_lead'].includes(user.role);
 
     useEffect(() => {
         const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs_cash'), orderBy('createdAt', 'desc'), limit(30));
-        const unsub = onSnapshot(q, (s) => {
-            setHistory(s.docs.map(d => ({id: d.id, ...d.data()})));
-        });
+        const unsub = onSnapshot(q, (s) => setHistory(s.docs.map(d => ({id: d.id, ...d.data()}))));
         
         getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cash')).then(s => {
             if(s.exists() && s.data().targetFloat) setTargetFloat(s.data().targetFloat);
         });
-
         return () => unsub();
     }, [appId]);
 
-    // --- BERECHNUNGEN ---
-    const loose = parseFloat(form.coins_loose) || 0;
-    const rolls = parseFloat(form.coins_rolls) || 0;
-    const notes = parseFloat(form.notes) || 0;
+    // --- RECHENLOGIK ---
     
-    const cashTotal = loose + rolls + notes; 
-    const safeDrop = Math.max(0, cashTotal - targetFloat);
-    const registerStay = cashTotal - safeDrop;
+    // Berechnet die Summe aus dem Zählbrett (Anzahl * Wert)
+    const calculateCountTotal = () => {
+        return DENOMINATIONS.reduce((sum, d) => {
+            const count = counts[d.val] || 0;
+            return sum + (count * d.val);
+        }, 0);
+    };
 
-    const ecTotal = parseFloat(form.ec) || 0;
-    const voucherTotal = parseFloat(form.vouchers) || 0;
+    const countTotal = calculateCountTotal();
+    const rollsTotal = parseFloat(extras.rolls_sum) || 0;
+    
+    const cashTotal = countTotal + rollsTotal; // Lose + Rollen
+    const safeDrop = Math.max(0, cashTotal - targetFloat); // Abschöpfung
+    const registerStay = cashTotal - safeDrop; // Bleibt in Lade
+
+    const ecTotal = parseFloat(extras.ec) || 0;
+    const voucherTotal = parseFloat(extras.vouchers) || 0;
+
+    // --- HANDLER ---
+    const handleCountChange = (val, qty) => {
+        setCounts(prev => ({...prev, [val]: parseFloat(qty) || 0}));
+    };
 
     const saveLog = async () => {
-        if(cashTotal === 0 && ecTotal === 0) return showToast("Bitte Werte eintragen", "error");
-        
-        if(!confirm(`Kassenbericht abschließen?\n\nGesamt Bar: ${cashTotal.toFixed(2)} €\nIn den Umschlag: ${safeDrop.toFixed(2)} €`)) return;
+        if(cashTotal === 0 && ecTotal === 0) return showToast("Kasse ist leer?", "error");
+        if(!confirm(`Abschließen?\n\nGesamt Bar: ${cashTotal.toFixed(2)} €\nUmschlag: ${safeDrop.toFixed(2)} €`)) return;
 
         try {
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_cash'), {
@@ -693,222 +722,170 @@ const CashManager = ({ user, appId, showToast, setView }) => {
                 dateStr: getTodayStr(),
                 createdAt: serverTimestamp(),
                 
-                coins_loose: loose,
-                coins_rolls: rolls,
-                notes: notes,
+                // Detaillierte Zählung speichern
+                counts: counts,
+                rolls_sum: rollsTotal,
                 ec_total: ecTotal,
                 vouchers: voucherTotal,
                 
+                // Ergebnisse
                 cash_total: cashTotal,
                 target_float: targetFloat,
                 safe_drop: safeDrop,
                 register_stay: registerStay,
                 
-                comment: form.comment,
+                comment: extras.comment,
                 signed: true
             });
 
-            showToast("Kassenbericht gespeichert!", "success");
-            setForm({ coins_loose: '', coins_rolls: '', notes: '', ec: '', vouchers: '', comment: '' });
+            showToast("Gespeichert!", "success");
+            setCounts({});
+            setExtras({ rolls_sum: '', ec: '', vouchers: '', comment: '' });
             setTab('history');
-        } catch(e) {
-            console.error(e);
-            showToast("Fehler beim Speichern", "error");
-        }
+        } catch(e) { console.error(e); showToast("Fehler", "error"); }
     };
 
-    // --- PDF EXPORT ---
     const downloadPDF = (log) => {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         
         doc.setFontSize(18);
-        doc.text(`Kassenbericht: ${log.type === 'morning' ? 'Morgenzählung' : 'Abendabrechnung'}`, 14, 20);
-        
+        doc.text(`Kassenbericht: ${log.type === 'morning' ? 'Morgen' : 'Abend'}`, 14, 20);
         doc.setFontSize(10);
-        doc.text(`Datum: ${new Date(log.createdAt?.seconds * 1000).toLocaleString()}`, 14, 30);
-        doc.text(`Gezählt von: ${log.user} (${log.role})`, 14, 35);
-        doc.text(`Filiale: ${appId}`, 14, 40);
+        doc.text(`${new Date(log.createdAt?.seconds * 1000).toLocaleString()} | ${log.user}`, 14, 30);
 
-        const tableData = [
-            ['Position', 'Betrag (€)'],
-            ['Münzgeld (Lose)', log.coins_loose.toFixed(2)],
-            ['Rollengeld', log.coins_rolls.toFixed(2)],
-            ['Banknoten', log.notes.toFixed(2)],
-            ['---', '---'],
-            ['SUMME BARGELD', log.cash_total.toFixed(2)],
-            ['Soll-Bestand (Wechselgeld)', log.target_float.toFixed(2)],
+        // Tabelle 1: Zählung
+        const countData = DENOMINATIONS.map(d => {
+            const qty = log.counts ? (log.counts[d.val] || 0) : 0; // Fallback für alte Logs
+            if(qty === 0) return null; // Leere Zeilen ausblenden
+            return [`${d.label}`, `${qty}x`, (qty * d.val).toFixed(2) + ' €'];
+        }).filter(Boolean);
+
+        // Rollengeld dazu
+        if(log.rolls_sum > 0) countData.push(['Rollengeld (Gesamt)', '-', log.rolls_sum.toFixed(2) + ' €']);
+
+        doc.autoTable({
+            startY: 40,
+            head: [['Stückelung', 'Anzahl', 'Summe']],
+            body: countData,
+            theme: 'striped',
+            styles: { fontSize: 10, cellPadding: 2 }
+        });
+
+        // Tabelle 2: Abrechnung
+        const finalData = [
+            ['BARGELD GESAMT', log.cash_total.toFixed(2) + ' €'],
+            ['Soll-Bestand (Wechselgeld)', log.target_float.toFixed(2) + ' €'],
+            ['ABSCHÖPFUNG (UMSCHLAG)', log.safe_drop.toFixed(2) + ' €'],
             ['', ''],
-            ['ABWURF / UMSCHLAG', log.safe_drop.toFixed(2)],
-            ['', ''],
-            ['EC-Zahlungen', log.ec_total.toFixed(2)],
-            ['Gutscheine', log.vouchers.toFixed(2)]
+            ['EC-Zahlungen', log.ec_total.toFixed(2) + ' €'],
+            ['Gutscheine', log.vouchers.toFixed(2) + ' €']
         ];
 
         doc.autoTable({
-            startY: 50,
-            head: [['Posten', 'Wert']],
-            body: tableData,
+            startY: doc.lastAutoTable.finalY + 10,
+            body: finalData,
             theme: 'grid',
             headStyles: { fillColor: [40, 40, 40] },
-            styles: { fontSize: 12 }
+            columnStyles: { 0: { fontStyle: 'bold' } }
         });
 
-        doc.text("__________________________", 14, doc.lastAutoTable.finalY + 30);
-        doc.text(`Elektronisch signiert: ${log.user}`, 14, doc.lastAutoTable.finalY + 36);
-
-        doc.save(`Kasse_${log.dateStr}_${log.type}.pdf`);
+        doc.text(`Unterschrift: ${log.user}`, 14, doc.lastAutoTable.finalY + 20);
+        doc.save(`Kasse_${log.dateStr}.pdf`);
     };
 
-    if(!hasAccess) return (
-        <div className="h-full flex flex-col items-center justify-center p-6 text-center space-y-4">
-            <div className="bg-red-50 p-6 rounded-full text-red-500"><Lock size={48}/></div>
-            <h2 className="text-2xl font-black">Zugriff verweigert</h2>
-            <p className="text-slate-500">Dieses Modul ist nur für den Service-Bereich.</p>
-            <button onClick={()=>setView('dashboard')} className="text-indigo-600 font-bold">Zurück</button>
-        </div>
-    );
+    if(!hasAccess) return <div className="p-10 text-center text-slate-400">Kein Zugriff.</div>;
 
     return (
         <div className="animate-in space-y-6 pb-20">
             <div className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-3xl font-black text-slate-800">Kassenbuch</h2>
-                    <p className="opacity-60 text-sm font-medium">Bargeld & Abrechnung</p>
-                </div>
+                <div><h2 className="text-3xl font-black text-slate-800">Kassenbuch</h2><p className="opacity-60 text-sm font-medium">Zählbrett & Abschluss</p></div>
                 <div className="flex gap-2">
-                    <button onClick={()=>setTab('count')} className={`p-3 rounded-2xl transition-all ${tab==='count'?'bg-slate-900 text-white shadow-lg':'bg-white border text-slate-400'}`}><Calculator size={24}/></button>
-                    <button onClick={()=>setTab('history')} className={`p-3 rounded-2xl transition-all ${tab==='history'?'bg-slate-900 text-white shadow-lg':'bg-white border text-slate-400'}`}><History size={24}/></button>
+                    <button onClick={()=>setTab('count')} className={`p-3 rounded-2xl ${tab==='count'?'bg-slate-900 text-white shadow-lg':'bg-white border'}`}><Calculator size={24}/></button>
+                    <button onClick={()=>setTab('history')} className={`p-3 rounded-2xl ${tab==='history'?'bg-slate-900 text-white shadow-lg':'bg-white border'}`}><History size={24}/></button>
                 </div>
             </div>
 
             {tab === 'count' && (
                 <div className="space-y-6">
-                    {/* MODUS WAHL */}
                     <div className="bg-slate-100 p-1 rounded-2xl flex font-bold text-sm">
                         <button onClick={()=>setMode('morning')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='morning'?'bg-white shadow text-slate-800':'text-slate-400'}`}>☀️ Morgens</button>
                         <button onClick={()=>setMode('evening')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='evening'?'bg-white shadow text-slate-800':'text-slate-400'}`}>🌙 Abends</button>
                     </div>
 
-                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 space-y-6">
+                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+                        <h3 className="font-black text-lg mb-4 flex items-center gap-2"><Coins size={20} className="text-amber-500"/> Zählbrett</h3>
                         
-                        {/* 1. BARGELD */}
-                        <div className="space-y-4">
-                            <h3 className="font-black text-lg flex items-center gap-2 border-b pb-2"><Euro size={18} className="text-amber-500"/> Bargeld Zählung</h3>
-                            
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Münzgeld (Lose)</label>
-                                    <Input type="number" value={form.coins_loose} onChange={e=>setForm({...form, coins_loose:e.target.value})} placeholder="0.00" inputMode="decimal"/>
+                        {/* ZÄHLBRETT GRID */}
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-6">
+                            {DENOMINATIONS.map(d => (
+                                <div key={d.val} className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                                    <div className={`w-12 text-[10px] font-bold uppercase text-right ${d.type==='note'?'text-slate-400':'text-amber-600'}`}>{d.label}</div>
+                                    <input 
+                                        type="number" 
+                                        inputMode="numeric" 
+                                        placeholder="0"
+                                        value={counts[d.val] || ''} 
+                                        onChange={e=>handleCountChange(d.val, e.target.value)} 
+                                        className="w-full bg-white p-2 rounded-lg font-bold text-center outline-none border focus:border-indigo-500"
+                                    />
+                                    <div className="w-16 text-right text-xs font-mono text-slate-400">
+                                        {((counts[d.val]||0) * d.val).toFixed(2)}
+                                    </div>
                                 </div>
-                                <div>
-                                    <label className="text-[10px] uppercase font-bold text-slate-400 ml-1 text-indigo-500">Rollengeld</label>
-                                    <Input type="number" value={form.coins_rolls} onChange={e=>setForm({...form, coins_rolls:e.target.value})} placeholder="0.00" className="bg-indigo-50 border-indigo-100 focus:border-indigo-500" inputMode="decimal"/>
-                                </div>
+                            ))}
+                        </div>
+
+                        {/* ZUSATZ & ROLLEN */}
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Rollengeld (€)</label>
+                                <Input type="number" value={extras.rolls_sum} onChange={e=>setExtras({...extras, rolls_sum:e.target.value})} placeholder="0.00" />
                             </div>
                             <div>
-                                <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Banknoten</label>
-                                <Input type="number" value={form.notes} onChange={e=>setForm({...form, notes:e.target.value})} placeholder="0.00" inputMode="decimal"/>
-                            </div>
-
-                            <div className="bg-slate-50 p-4 rounded-xl flex justify-between items-center border border-slate-100">
-                                <span className="font-bold text-slate-500">Gesamt Bar:</span>
-                                <span className="font-black text-xl text-slate-800">{cashTotal.toFixed(2)} €</span>
+                                <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">EC-Summe (€)</label>
+                                <Input type="number" value={extras.ec} onChange={e=>setExtras({...extras, ec:e.target.value})} placeholder="0.00" />
                             </div>
                         </div>
+                        
+                        <div className="mb-6">
+                            <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Gutscheine (€)</label>
+                            <Input type="number" value={extras.vouchers} onChange={e=>setExtras({...extras, vouchers:e.target.value})} placeholder="0.00" />
+                        </div>
 
-                        {/* 2. ENTSCHEIDUNG (UMSCHLAG) */}
-                        <div className={`p-5 rounded-2xl border-2 transition-all ${safeDrop > 0 ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100'}`}>
-                            <div className="flex justify-between text-xs font-bold uppercase text-slate-400 mb-2">
-                                <span>Soll-Bestand: {targetFloat.toFixed(2)} €</span>
-                                <span>Ist: {cashTotal.toFixed(2)} €</span>
-                            </div>
+                        {/* ERGEBNIS KARTE */}
+                        <div className={`p-5 rounded-2xl border-2 mb-4 text-center ${safeDrop > 0 ? 'bg-indigo-50 border-indigo-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                            <div className="text-xs font-bold uppercase text-slate-400 mb-1">Barbestand (Ist)</div>
+                            <div className="text-3xl font-black text-slate-800 mb-2">{cashTotal.toFixed(2)} €</div>
                             
-                            {safeDrop > 0 ? (
-                                <div className="text-center">
-                                    <div className="text-indigo-900 font-bold mb-1 flex justify-center items-center gap-2"><Briefcase size={18}/> ABWURF IN UMSCHLAG</div>
-                                    <div className="text-4xl font-black text-indigo-600">{safeDrop.toFixed(2)} €</div>
-                                    <div className="text-xs text-indigo-400 mt-2 font-medium">Verbleibend in Lade: {registerStay.toFixed(2)} €</div>
-                                </div>
-                            ) : (
-                                <div className="text-center text-slate-400 font-bold py-2">
-                                    <CheckCircle className="inline mb-1" size={20}/> Bestand OK (Kein Abwurf)
-                                </div>
-                            )}
-                        </div>
-
-                        {/* 3. UNBARE ZAHLUNGEN */}
-                        <div className="space-y-4 pt-2">
-                            <h3 className="font-black text-lg flex items-center gap-2 border-b pb-2"><Wallet size={18} className="text-blue-500"/> Sonstiges</h3>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">EC-Terminal (Summe)</label>
-                                    <Input type="number" value={form.ec} onChange={e=>setForm({...form, ec:e.target.value})} placeholder="0.00" inputMode="decimal"/>
-                                </div>
-                                <div>
-                                    <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Gutscheine (Eingelöst)</label>
-                                    <Input type="number" value={form.vouchers} onChange={e=>setForm({...form, vouchers:e.target.value})} placeholder="0.00" inputMode="decimal"/>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Kommentar</label>
-                                <input value={form.comment} onChange={e=>setForm({...form, comment:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none" placeholder="z.B. 2€ Differenz ungeklärt..."/>
+                            <div className="flex justify-between border-t border-black/5 pt-2 text-xs font-bold">
+                                <span className="text-slate-500">Bleibt in Kasse: {registerStay.toFixed(2)} €</span>
+                                <span className={safeDrop>0?'text-indigo-600':'text-slate-300'}>Umschlag: {safeDrop.toFixed(2)} €</span>
                             </div>
                         </div>
 
-                        {/* SIGNATUR */}
-                        <div className="pt-4">
-                            <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-100 p-3 rounded-xl text-emerald-800 text-xs font-bold mb-4">
-                                <div className="bg-white p-2 rounded-full"><PenTool size={14}/></div>
-                                <div>Digitale Unterschrift von <br/> <span className="text-sm uppercase">{user.name}</span></div>
-                            </div>
-                            <Button onClick={saveLog} className="shadow-xl bg-slate-900">
-                                Abschluss {mode === 'evening' ? 'Abend' : 'Morgen'} speichern
-                            </Button>
-                        </div>
+                        <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Kommentar</label>
+                        <input value={extras.comment} onChange={e=>setExtras({...extras, comment:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 mb-4" placeholder="Differenz?"/>
 
+                        <Button onClick={saveLog} className="bg-slate-900 shadow-xl">Kassensturz speichern</Button>
                     </div>
                 </div>
             )}
 
             {tab === 'history' && (
                 <div className="space-y-4">
-                    <h3 className="font-bold text-slate-400 text-xs uppercase ml-2 tracking-widest">Kassen-Historie</h3>
-                    {history.length === 0 && <div className="text-center py-10 text-slate-400 italic">Keine Einträge.</div>}
-                    
                     {history.map(log => (
                         <div key={log.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm">
-                            <div className="flex justify-between items-start mb-4">
-                                <div>
-                                    <div className="font-black text-lg text-slate-800 flex items-center gap-2">
-                                        {log.type==='evening' ? '🌙 Abend' : '☀️ Morgen'}
-                                        <span className="text-slate-300 text-xs font-normal">|</span>
-                                        <span className="text-sm">{new Date(log.createdAt.seconds*1000).toLocaleDateString()}</span>
-                                    </div>
-                                    <div className="text-xs text-slate-400 font-bold">{log.user}</div>
-                                </div>
-                                {/* HIER: DOWNLOAD BUTTON NUR FÜR LEITUNG */}
-                                {canDownload && (
-                                    <button onClick={()=>downloadPDF(log)} className="bg-slate-100 text-slate-600 p-2 rounded-xl hover:bg-slate-200 transition-colors">
-                                        <FileText size={20}/>
-                                    </button>
-                                )}
+                            <div className="flex justify-between items-center mb-2">
+                                <div className="font-bold text-slate-800">{new Date(log.createdAt?.seconds*1000).toLocaleDateString()} <span className="text-slate-400 text-xs font-normal">| {log.type}</span></div>
+                                {canDownload && <button onClick={()=>downloadPDF(log)} className="bg-slate-100 p-2 rounded-xl text-slate-600"><FileText size={18}/></button>}
                             </div>
-
-                            <div className="grid grid-cols-2 gap-2 text-sm mb-3">
-                                <div className="bg-slate-50 p-2 rounded-xl">
-                                    <div className="text-[10px] text-slate-400 uppercase font-bold">Bar Gesamt</div>
-                                    <div className="font-black text-slate-700">{log.cash_total.toFixed(2)} €</div>
+                            <div className="flex justify-between items-end">
+                                <div className="text-xs text-slate-500">Gezählt von {log.user}</div>
+                                <div className="text-right">
+                                    <div className="text-[10px] uppercase font-bold text-slate-400">Gesamt Bar</div>
+                                    <div className="font-black text-lg">{log.cash_total.toFixed(2)} €</div>
                                 </div>
-                                <div className={`p-2 rounded-xl ${log.safe_drop > 0 ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-50 text-slate-400'}`}>
-                                    <div className="text-[10px] uppercase font-bold opacity-70">Umschlag</div>
-                                    <div className="font-black">{log.safe_drop.toFixed(2)} €</div>
-                                </div>
-                            </div>
-                            
-                            <div className="flex justify-between text-xs text-slate-500 border-t border-slate-50 pt-2">
-                                <span>EC: <b>{log.ec_total.toFixed(2)} €</b></span>
-                                <span>Gutscheine: <b>{log.vouchers.toFixed(2)} €</b></span>
                             </div>
                         </div>
                     ))}
@@ -916,8 +893,7 @@ const CashManager = ({ user, appId, showToast, setView }) => {
             )}
         </div>
     );
-};
-        
+};        
 const DistrictDashboard = ({ districtId, onLogout, showToast }) => {
     const [branches, setBranches] = useState([]);
     const [addId, setAddId] = useState('');
