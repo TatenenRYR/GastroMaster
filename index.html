@@ -698,7 +698,7 @@ const DistrictDashboard = ({ districtId, onLogout, showToast }) => {
         };
     };
     // --- URLAUBS-MANAGER ---
-const AbsenceManager = ({ user, appId, showToast, staff }) => {
+/*const AbsenceManager = ({ user, appId, showToast, staff }) => {
     const [tab, setTab] = useState('request'); // 'request', 'list'
     const [start, setStart] = useState('');
     const [end, setEnd] = useState('');
@@ -758,6 +758,110 @@ const AbsenceManager = ({ user, appId, showToast, staff }) => {
                             <option value="vacation">🏖️ Urlaub</option>
                             <option value="other">📅 Wunschfrei / Termin</option>
                             {isAdmin && <option value="sick">🤒 Krankmeldung</option>}
+                        </select>
+                    </div>
+                    <Button onClick={sendRequest} className="bg-emerald-500 shadow-emerald-200">Beantragen</Button>
+                </div>
+            )}
+
+            {tab === 'list' && (
+                <div className="space-y-3">
+                    {requests.map(r => (
+                        <div key={r.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden">
+                            <div className="flex justify-between items-start mb-2">
+                                <div>
+                                    <div className="font-black text-slate-800">{r.userName}</div>
+                                    <div className="text-xs text-slate-500 font-bold">{new Date(r.start).toLocaleDateString()} - {new Date(r.end).toLocaleDateString()}</div>
+                                </div>
+                                <div className={`text-[10px] font-bold px-2 py-1 rounded uppercase ${r.status==='approved'?'bg-emerald-100 text-emerald-700':r.status==='rejected'?'bg-red-50 text-red-500':'bg-amber-50 text-amber-600'}`}>
+                                    {r.status === 'pending' ? 'Wartet...' : r.status}
+                                </div>
+                            </div>
+                            <div className="text-xs bg-slate-50 p-2 rounded-lg inline-block text-slate-500 font-medium mb-2">{getTypeLabel(r.type)}</div>
+                            
+                            {isAdmin && r.status === 'pending' && (
+                                <div className="flex gap-2 mt-2 pt-2 border-t border-slate-50">
+                                    <button onClick={()=>handleStatus(r.id, 'approved')} className="flex-1 bg-emerald-50 text-emerald-600 py-2 rounded-xl font-bold text-xs hover:bg-emerald-100">Genehmigen</button>
+                                    <button onClick={()=>handleStatus(r.id, 'rejected')} className="flex-1 bg-red-50 text-red-600 py-2 rounded-xl font-bold text-xs hover:bg-red-100">Ablehnen</button>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                    {requests.length === 0 && <div className="text-center text-slate-400 py-10">Keine Anträge.</div>}
+                </div>
+            )}
+        </div>
+    );
+};*/
+        // --- URLAUBS-MANAGER ---
+const AbsenceManager = ({ user, appId, showToast, staff }) => {
+    const [tab, setTab] = useState('request'); // 'request', 'list'
+    const [start, setStart] = useState('');
+    const [end, setEnd] = useState('');
+    const [type, setType] = useState('vacation'); // vacation, sick, other
+    const [requests, setRequests] = useState([]);
+    
+    // Hier wird geprüft, ob der User leitend ist
+    const isAdmin = ['admin', 'kitchen_lead', 'service_lead'].includes(user.role);
+
+    useEffect(() => {
+        // Alle Anfragen laden (Admin sieht alle, User nur eigene)
+        const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'requests_absence'), orderBy('createdAt', 'desc'));
+        return onSnapshot(q, s => {
+            const data = s.docs.map(d => ({id:d.id, ...d.data()}));
+            if(isAdmin) setRequests(data);
+            else setRequests(data.filter(r => r.userId === user.id));
+        });
+    }, [appId, user, isAdmin]);
+
+    const sendRequest = async () => {
+        if(!start || !end) return showToast("Datum fehlt", "error");
+        
+        // Sicherheitscheck: Falls jemand versucht, "sick" zu erzwingen
+        if(type === 'sick' && !isAdmin) return showToast("Keine Berechtigung für Krankmeldung", "error");
+
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'requests_absence'), {
+            userId: user.id, userName: user.name,
+            start, end, type, status: 'pending', // pending, approved, rejected
+            createdAt: serverTimestamp()
+        });
+        setStart(''); setEnd(''); showToast("Antrag gestellt!");
+        setTab('list');
+    };
+
+    const handleStatus = async (id, status) => {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'requests_absence', id), { status });
+    };
+
+    const getTypeLabel = (t) => t==='vacation'?'Urlaub':t==='sick'?'Krankheit':'Wunschfrei';
+
+    return (
+        <div className="animate-in space-y-6">
+            <div className="flex justify-between items-center">
+                <div><h2 className="text-3xl font-black text-slate-800">Abwesenheit</h2><p className="opacity-60 text-sm font-medium">Urlaub & Wünsche</p></div>
+                {isAdmin && <div className="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-xl font-bold text-xs">{requests.filter(r=>r.status==='pending').length} Offen</div>}
+            </div>
+
+            <div className="flex bg-white p-1 rounded-2xl border border-slate-100 mb-4">
+                <button onClick={()=>setTab('request')} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${tab==='request'?'bg-slate-900 text-white':'text-slate-400'}`}>Neuer Antrag</button>
+                <button onClick={()=>setTab('list')} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${tab==='list'?'bg-slate-900 text-white':'text-slate-400'}`}>Übersicht</button>
+            </div>
+
+            {tab === 'request' && (
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div><label className="text-[10px] font-bold uppercase text-slate-400">Von</label><input type="date" value={start} onChange={e=>setStart(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none"/></div>
+                        <div><label className="text-[10px] font-bold uppercase text-slate-400">Bis</label><input type="date" value={end} onChange={e=>setEnd(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none"/></div>
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-bold uppercase text-slate-400">Grund</label>
+                        <select value={type} onChange={e=>setType(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none">
+                            <option value="vacation">🏖️ Urlaub</option>
+                            <option value="other">📅 Wunschfrei / Termin</option>
+                            
+                            {/* DIESE ZEILE VERHINDERT DIE ANZEIGE FÜR NORMALE MITARBEITER: */}
+                            {isAdmin && <option value="sick">🤒 Krankmeldung</option>}
+                            
                         </select>
                     </div>
                     <Button onClick={sendRequest} className="bg-emerald-500 shadow-emerald-200">Beantragen</Button>
