@@ -68,9 +68,9 @@
             History, FileText, ChevronRight, ChevronLeft, Store, Key, ShieldCheck, Lock, Unlock, Zap,
             ClipboardList, Box, Layers, PenTool, ShieldAlert, BadgeCheck, Code, Globe, UserCog, RefreshCcw, Search, ArrowLeft,
             Users, Languages, Ticket, ListChecks, Clock, PlayCircle, StopCircle, Palette, Megaphone, Power, Monitor, Check,
-            MessageCircle, LayoutGrid, ToggleLeft, ToggleRight, Brush, ClipboardCheck, Utensils
+            MessageCircle, LayoutGrid, ToggleLeft, ToggleRight, Brush, ClipboardCheck, Utensils,
+            Palmtree, Wrench, Link // <--- DIESE WAREN FEHLEND
         } from "https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0";
-
         const { useState, useEffect, useRef, useMemo } = React;
 
         // --- CONFIG ---
@@ -2207,7 +2207,146 @@ const TerminalClock = ({ staff, appId, onClose }) => {
                 </div>
             ); 
         };
+const Editor = ({ type, data, close, appId, showToast, btnStyle }) => { 
+            const [form, setForm] = useState({...data}); 
+            const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); 
+            
+            const save = async () => { 
+                const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':type==='prep'?'prep_tasks':'staff'; 
+                const payload = { ...form }; 
+                if(type==='tasks'||type==='prep') payload.schedule = sched; 
+                delete payload.id; 
+                delete payload.isNew; 
+                
+                const ref = collection(db,'artifacts',appId,'public','data',col); 
+                if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()}); 
+                else await updateDoc(doc(ref, data.id), payload); 
+                
+                showToast("Gespeichert"); 
+                close(); 
+            }; 
+            
+            const toggleDept = (d) => { 
+                const cur = form.departments || []; 
+                setForm({...form, departments: cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]}); 
+            };
 
+            return (
+                <div className="space-y-6 animate-in">
+                    <div className="flex justify-between items-center mb-2">
+                        <h3 className="font-black text-xl text-slate-800">{data.isNew?'Neu':'Bearbeiten'}</h3>
+                        <button onClick={close} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button>
+                    </div>
+                    
+                    <div className="space-y-2">
+                        <span className="text-xs font-bold uppercase text-slate-400 ml-1">Bezeichnung / Name</span>
+                        <Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." />
+                    </div>
+
+                    {type==='prep' && (
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Kategorie</span>
+                                    <Select value={form.category||'prep'} onChange={e=>setForm({...form,category:e.target.value})}>
+                                        <option value="prep">Vorbereitung (Mise en Place)</option>
+                                        <option value="stock">Lager/Auffüllen</option>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Zuständigkeit</span>
+                                    <Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}>
+                                        <option value="kitchen">Küche</option>
+                                        <option value="service">Service</option>
+                                    </Select>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Ziel / Menge</span>
+                                <Input value={form.target||''} onChange={e=>setForm({...form,target:e.target.value})} placeholder="z.B. 2 Behälter, Voll machen..." />
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Zeitplan (Tage)</span>
+                                <div className="flex justify-between">
+                                    {['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>
+                                        <button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {type==='staff' && (
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Abteilungen</span>
+                                <div className="flex gap-3">
+                                    <button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('kitchen')?'border-orange-500 bg-orange-50 text-orange-600':'border-slate-100 bg-white text-slate-400'}`}>Küche</button>
+                                    <button onClick={()=>toggleDept('service')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('service')?'border-purple-500 bg-purple-50 text-purple-600':'border-slate-100 bg-white text-slate-400'}`}>Service</button>
+                                </div>
+                            </div>
+
+                            {/* VERTRAGSDATEN */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Vertrag (Std/Monat)</span>
+                                    <Input type="number" value={form.contractHours || ''} onChange={e=>setForm({...form, contractHours: e.target.value})} placeholder="z.B. 160" />
+                                </div>
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Stundenlohn (€)</span>
+                                    <Input type="number" value={form.hourlyRate || ''} onChange={e=>setForm({...form, hourlyRate: e.target.value})} placeholder="z.B. 12.50" />
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3">
+                                <div className="flex-1 space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Rolle</span>
+                                    <Select value={form.role||'user'} onChange={e=>setForm({...form,role:e.target.value})}>
+                                        <option value="user">Mitarbeiter</option>
+                                        <option value="kitchen_lead">Küchenleitung</option>
+                                        <option value="service_lead">Serviceleitung</option>
+                                        <option value="admin">Filialleitung</option>
+                                    </Select>
+                                </div>
+                                <div className="flex-1 space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">PIN (Optional)</span>
+                                    <Input value={form.pin||''} onChange={e=>setForm({...form,pin:e.target.value})} className="text-center font-mono tracking-widest" maxLength={4}/>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {type==='tasks' && (
+                        <div className="space-y-4">
+                            <div className="flex gap-3">
+                                <div className="flex-1 space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Bereich</span>
+                                    <Input value={form.area||''} onChange={e=>setForm({...form,area:e.target.value})} placeholder="z.B. Bar"/>
+                                </div>
+                                <div className="flex-1 space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Dept</span>
+                                    <Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}>
+                                        <option value="kitchen">Küche</option>
+                                        <option value="service">Service</option>
+                                        <option value="all">Alle</option>
+                                    </Select>
+                                </div>
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Wochentage</span>
+                                <div className="flex justify-between">
+                                    {['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>
+                                        <button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    <Button onClick={save} className="mt-6 shadow-xl shadow-slate-900/10" style={btnStyle}>Speichern</Button>
+                </div>
+            ); 
+        };
         // --- ADMIN SECTION ---
         const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView, onLogoutSystem, deleteBranch, isRemote, currentUser, lang, btnStyle }) => { 
             const [tab, setTab] = useState('staff'); const [edit, setEdit] = useState(null); const [deleteMath, setDeleteMath] = useState(null); const [deleteInput, setDeleteInput] = useState('');
@@ -2454,146 +2593,7 @@ const SettingsEditor = ({ data, appId, showToast, btnStyle, deleteBranch, lang }
             );
         };
         
-        const Editor = ({ type, data, close, appId, showToast, btnStyle }) => { 
-            const [form, setForm] = useState({...data}); 
-            const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); 
-            
-            const save = async () => { 
-                const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':type==='prep'?'prep_tasks':'staff'; 
-                const payload = { ...form }; 
-                if(type==='tasks'||type==='prep') payload.schedule = sched; 
-                delete payload.id; 
-                delete payload.isNew; 
-                
-                const ref = collection(db,'artifacts',appId,'public','data',col); 
-                if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()}); 
-                else await updateDoc(doc(ref, data.id), payload); 
-                
-                showToast("Gespeichert"); 
-                close(); 
-            }; 
-            
-            const toggleDept = (d) => { 
-                const cur = form.departments || []; 
-                setForm({...form, departments: cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]}); 
-            };
-
-            return (
-                <div className="space-y-6 animate-in">
-                    <div className="flex justify-between items-center mb-2">
-                        <h3 className="font-black text-xl text-slate-800">{data.isNew?'Neu':'Bearbeiten'}</h3>
-                        <button onClick={close} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button>
-                    </div>
-                    
-                    <div className="space-y-2">
-                        <span className="text-xs font-bold uppercase text-slate-400 ml-1">Bezeichnung / Name</span>
-                        <Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." />
-                    </div>
-
-                    {type==='prep' && (
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Kategorie</span>
-                                    <Select value={form.category||'prep'} onChange={e=>setForm({...form,category:e.target.value})}>
-                                        <option value="prep">Vorbereitung (Mise en Place)</option>
-                                        <option value="stock">Lager/Auffüllen</option>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Zuständigkeit</span>
-                                    <Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}>
-                                        <option value="kitchen">Küche</option>
-                                        <option value="service">Service</option>
-                                    </Select>
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Ziel / Menge</span>
-                                <Input value={form.target||''} onChange={e=>setForm({...form,target:e.target.value})} placeholder="z.B. 2 Behälter, Voll machen..." />
-                            </div>
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                <span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Zeitplan (Tage)</span>
-                                <div className="flex justify-between">
-                                    {['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>
-                                        <button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {type==='staff' && (
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Abteilungen</span>
-                                <div className="flex gap-3">
-                                    <button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('kitchen')?'border-orange-500 bg-orange-50 text-orange-600':'border-slate-100 bg-white text-slate-400'}`}>Küche</button>
-                                    <button onClick={()=>toggleDept('service')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('service')?'border-purple-500 bg-purple-50 text-purple-600':'border-slate-100 bg-white text-slate-400'}`}>Service</button>
-                                </div>
-                            </div>
-
-                            {/* NEU: VERTRAGSDATEN */}
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Vertrag (Std/Monat)</span>
-                                    <Input type="number" value={form.contractHours || ''} onChange={e=>setForm({...form, contractHours: e.target.value})} placeholder="z.B. 160" />
-                                </div>
-                                <div className="space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Stundenlohn (€)</span>
-                                    <Input type="number" value={form.hourlyRate || ''} onChange={e=>setForm({...form, hourlyRate: e.target.value})} placeholder="z.B. 12.50" />
-                                </div>
-                            </div>
-
-                            <div className="flex gap-3">
-                                <div className="flex-1 space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Rolle</span>
-                                    <Select value={form.role||'user'} onChange={e=>setForm({...form,role:e.target.value})}>
-                                        <option value="user">Mitarbeiter</option>
-                                        <option value="kitchen_lead">Küchenleitung</option>
-                                        <option value="service_lead">Serviceleitung</option>
-                                        <option value="admin">Filialleitung</option>
-                                    </Select>
-                                </div>
-                                <div className="flex-1 space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">PIN (Optional)</span>
-                                    <Input value={form.pin||''} onChange={e=>setForm({...form,pin:e.target.value})} className="text-center font-mono tracking-widest" maxLength={4}/>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {type==='tasks' && (
-                        <div className="space-y-4">
-                            <div className="flex gap-3">
-                                <div className="flex-1 space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Bereich</span>
-                                    <Input value={form.area||''} onChange={e=>setForm({...form,area:e.target.value})} placeholder="z.B. Bar"/>
-                                </div>
-                                <div className="flex-1 space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Dept</span>
-                                    <Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}>
-                                        <option value="kitchen">Küche</option>
-                                        <option value="service">Service</option>
-                                        <option value="all">Alle</option>
-                                    </Select>
-                                </div>
-                            </div>
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                <span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Wochentage</span>
-                                <div className="flex justify-between">
-                                    {['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>
-                                        <button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    
-                    <Button onClick={save} className="mt-6 shadow-xl shadow-slate-900/10" style={btnStyle}>Speichern</Button>
-                </div>
-            ); 
-        };
+        
 
         // --- RESTORED HEAD ADMIN PANEL ---
         const HeadAdminLogin = ({ onSuccess, onBack }) => { const [pw, setPw] = useState(''); const check = () => { if(pw === HEAD_ADMIN_PASS) onSuccess(); else alert("Zugriff verweigert"); }; return <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 text-center text-slate-800"><div className="bg-white p-8 rounded-3xl max-w-sm mx-auto w-full shadow-2xl animate-in space-y-4"><h2 className="text-2xl font-black text-slate-800">Head Admin</h2><Input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="Passwort" /><Button variant="head" onClick={check}>Login</Button><button onClick={onBack} className="text-xs text-slate-400 underline pt-4">Zurück</button></div></div>; };
