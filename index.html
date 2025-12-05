@@ -1543,9 +1543,9 @@ const TerminalClock = ({ staff, appId, onClose }) => {
     );
 };
 
-   // --- KASSEN-MANAGER V6 (Mit Reset, Settings-Link & Auto-Clear) ---
+   
+// --- KASSEN-MANAGER V6.1 (Final & Crash-Proof) ---
 
-// 1. Unterschriften-Pad (Unverändert, muss aber dabei bleiben)
 const SignaturePad = ({ onSave, onCancel }) => {
     const canvasRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
@@ -1578,12 +1578,11 @@ const SignaturePad = ({ onSave, onCancel }) => {
     );
 };
 
-// 2. Hauptkomponente
-const CashManager = ({ user, appId, showToast, setView, data }) => {
-    // Lade Ziel-Wechselgeld aus globalen Settings oder Fallback 500
-    const globalFloat = parseFloat(data.settings?.modules?.cash?.targetFloat) || 500;
-    
-    const [targetFloat, setTargetFloat] = useState(globalFloat);
+const CashManager = ({ user, appId, showToast, setView, data = {} }) => {
+    // SICHERER ZUGRIFF AUF SETTINGS (Verhindert den Fehler)
+    const settingsFloat = data?.settings?.modules?.cash?.targetFloat;
+    const targetFloat = settingsFloat ? parseFloat(settingsFloat) : 500;
+
     const [mode, setMode] = useState('evening'); 
     const [tab, setTab] = useState('count');
     const [logs, setLogs] = useState([]);
@@ -1601,7 +1600,7 @@ const CashManager = ({ user, appId, showToast, setView, data }) => {
     const [todaysEveningLog, setTodaysEveningLog] = useState(null);
 
     const hasAccess = ['admin', 'service_lead'].includes(user.role) || (user.departments || []).includes('service');
-    const canManage = ['admin', 'service_lead'].includes(user.role); // Darf resetten & downloaden
+    const canManage = ['admin', 'service_lead'].includes(user.role);
 
     useEffect(() => {
         const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs_cash'), orderBy('createdAt', 'desc'), limit(60));
@@ -1614,14 +1613,13 @@ const CashManager = ({ user, appId, showToast, setView, data }) => {
         return () => unsub();
     }, [appId, todayStr]);
 
-    // Auto-Fill für Read-Only View
+    // Werte laden oder leeren
     useEffect(() => {
         if(mode === 'morning' && todaysMorningLog) {
             setCounts(todaysMorningLog.counts_loose || {}); setRollCounts(todaysMorningLog.counts_rolls || {}); setExtras({ ec: '', vouchers: '', comment: todaysMorningLog.comment || '' });
         } else if (mode === 'evening' && todaysEveningLog) {
             setCounts(todaysEveningLog.counts_loose || {}); setRollCounts(todaysEveningLog.counts_rolls || {}); setExtras({ ec: todaysEveningLog.ec_total||'', vouchers: todaysEveningLog.vouchers||'', comment: todaysEveningLog.comment || '' });
         } else {
-            // Reset wenn nichts da ist (Wichtig für neuen Tag!)
             setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
         }
     }, [mode, todaysMorningLog, todaysEveningLog]);
@@ -1635,13 +1633,13 @@ const CashManager = ({ user, appId, showToast, setView, data }) => {
     const handleCount = (v, q) => setCounts(p => ({...p, [v]: parseFloat(q)||0}));
     const handleRolls = (v, q) => setRollCounts(p => ({...p, [v]: parseFloat(q)||0}));
 
-    // NOTFALL RESET (Nur für Chefs)
+    // NOTFALL RESET (Löscht den Eintrag in der Datenbank)
     const resetToday = async () => {
-        if(!confirm(`ACHTUNG: Soll der Bericht für ${mode === 'morning' ? 'MORGENS' : 'ABENDS'} wirklich gelöscht werden?`)) return;
+        if(!confirm(`Eintrag für ${mode === 'morning' ? 'MORGENS' : 'ABENDS'} wirklich unwiderruflich löschen?`)) return;
         const logToDelete = mode === 'morning' ? todaysMorningLog : todaysEveningLog;
         if(logToDelete) {
             await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_cash', logToDelete.id));
-            showToast("Bericht gelöscht. Bitte neu zählen.");
+            showToast("Gelöscht. Bitte neu zählen.");
             setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
         }
     };
@@ -1661,13 +1659,7 @@ const CashManager = ({ user, appId, showToast, setView, data }) => {
                 safe_drop: mode === 'evening' ? safeDrop : 0, comment: extras.comment, signature: sig
             });
             showToast("Erfolgreich gespeichert!", "success");
-            
-            // UI Reset nach Speichern
-            if (mode === 'evening') {
-                // Wenn Abendabschluss fertig, leeren wir alles visuell
-                setCounts({}); setRollCounts({}); setExtras({ ec: '', vouchers: '', comment: '' });
-            }
-            setTab('history');
+            setTab('history'); // Wechselt zur Übersicht, damit man das Ergebnis sieht
         } catch(e) { console.error(e); showToast("Fehler", "error"); }
     };
 
@@ -1724,16 +1716,16 @@ const CashManager = ({ user, appId, showToast, setView, data }) => {
             {tab === 'count' && (
                 <div className="space-y-6">
                     <div className="bg-slate-100 p-1 rounded-2xl flex font-bold text-sm">
-                        <button onClick={()=>setMode('morning')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='morning'?'bg-white shadow text-slate-800':'text-slate-400'}`}>☀️ Morgens {todaysMorningLog && '✓'}</button>
+                        <button onClick={()=>setMode('morning')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='morning'?'bg-white shadow text-slate-800':'text-slate-400'} ${isLocked && mode==='morning' ? 'opacity-60' : ''}`}>☀️ Morgens {todaysMorningLog && '✓'}</button>
                         <button onClick={()=>setMode('evening')} className={`flex-1 py-3 rounded-xl transition-all ${mode==='evening'?'bg-white shadow text-slate-800':'text-slate-400'}`}>🌙 Abends {todaysEveningLog && '✓'}</button>
                     </div>
 
                     <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 relative">
-                        {/* Reset Button für Admins, falls gelockt */}
+                        {/* Reset Button für Admins */}
                         {isLocked && canManage && (
-                            <button onClick={resetToday} className="absolute top-4 right-4 bg-red-50 text-red-500 p-2 rounded-xl hover:bg-red-100 z-20" title="Eintrag löschen / Reset"><Trash2 size={20}/></button>
+                            <button onClick={resetToday} className="absolute top-4 right-4 bg-red-50 text-red-500 p-2 rounded-xl hover:bg-red-100 z-20 border border-red-100" title="Eintrag löschen"><Trash2 size={20}/></button>
                         )}
-                        {isLocked && <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center pointer-events-none"><div className="bg-emerald-500 text-white px-6 py-3 rounded-2xl font-bold shadow-xl -rotate-6">Erledigt & Unterschrieben</div></div>}
+                        {isLocked && <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center pointer-events-none"><div className="bg-emerald-500 text-white px-6 py-3 rounded-2xl font-bold shadow-xl -rotate-6">Bereits Unterschrieben</div></div>}
 
                         <h3 className="font-black text-lg mb-4 flex items-center gap-2"><Coins size={20} className="text-amber-500"/> Lose Münzen/Scheine</h3>
                         <div className="grid grid-cols-2 gap-3 mb-6">
@@ -1793,7 +1785,7 @@ const CashManager = ({ user, appId, showToast, setView, data }) => {
             )}
         </div>
     );
-};   
+};
 // --- APP CONTROLLER ---
         function App() {
             // --- STATE DEFINITIONS ---
@@ -2092,7 +2084,9 @@ const CashManager = ({ user, appId, showToast, setView, data }) => {
                             {/* NEUE MODULE */}
                             {view === 'shiftplan' && <SmartShiftPlanner staff={data.staff} appId={appId} showToast={showToast} user={appUser} />}
                             {view === 'absence' && <AbsenceManager user={appUser} appId={appId} showToast={showToast} staff={data.staff} />}
-                            {view === 'cash' && <CashManager user={appUser} appId={appId} showToast={showToast} setView={setView} />}
+                            
+                            {view === 'cash' && <CashManager user={appUser} appId={appId} showToast={showToast} setView={setView} data={data} />}
+
                             
                             {view === 'admin' && (appUser.role === 'admin' || ['kitchen_lead','service_lead'].includes(appUser.role)) && <Admin {...common} debugMode={debugMode} setView={setView} onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} deleteBranch={deleteBranchLocal} currentUser={appUser} lang={lang} />}
                             {view === 'history' && appUser?.role === 'admin' && <SmartHistory {...common} setView={setView} />}
