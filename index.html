@@ -1077,7 +1077,7 @@ const SmartShiftPlanner = ({ staff, appId, showToast, user }) => {
         </div>
     );
 }; 
-// --- NEUE KOMPONENTE: SMARTE TERMINAL UHR ---
+// --- NEUE KOMPONENTE: SMARTE TERMINAL UHR (FINAL) ---
 const TerminalClock = ({ staff, appId, onClose }) => {
     const [pin, setPin] = useState('');
     const [identifiedUser, setIdentifiedUser] = useState(null);
@@ -1086,13 +1086,14 @@ const TerminalClock = ({ staff, appId, onClose }) => {
     const [loading, setLoading] = useState(false);
     const [msg, setMsg] = useState(null);
 
-    // Zeit-Hilfsfunktion
+    // Hilfsfunktion: Zeitstring "12:00" in Minuten umwandeln
     const timeToMins = (t) => {
         if(!t) return 0;
         const [h, m] = t.split(':').map(Number);
         return h * 60 + m;
     };
 
+    // PIN EINGABE & USER CHECK
     const handleNum = async (n) => {
         if(loading || msg) return;
         const newPin = pin + n;
@@ -1103,11 +1104,12 @@ const TerminalClock = ({ staff, appId, onClose }) => {
             const user = staff.find(s => String(s.pin) === newPin);
             
             if (user) {
-                // 1. Log für heute suchen (egal ob offen oder geschlossen)
+                // 1. Log für heute suchen (Der aktuellste)
                 const qLog = query(
                     collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), 
                     where('userId', '==', user.id), 
                     where('dateStr', '==', getTodayStr()), 
+                    orderBy('createdAt', 'desc'), // Wichtig: Den neuesten zuerst
                     limit(1)
                 );
                 const snapLog = await getDocs(qLog);
@@ -1122,12 +1124,15 @@ const TerminalClock = ({ staff, appId, onClose }) => {
                 setTodayShift(snapShift.exists() ? snapShift.data() : null);
                 setPin('');
             } else {
-                setPin(''); alert("PIN falsch!");
+                setPin(''); 
+                // Kurzes visuelles Feedback für falschen Pin könnte man hier noch einbauen
+                alert("PIN nicht gefunden!");
             }
             setLoading(false);
         }
     };
 
+    // AKTIONEN AUSFÜHREN
     const handleAction = async (action) => {
         setLoading(true);
         const nowObj = new Date();
@@ -1135,146 +1140,202 @@ const TerminalClock = ({ staff, appId, onClose }) => {
         const nowMins = timeToMins(nowStr);
 
         try {
-            // FALL 1: GANZ NEU STARTEN
+            // --- FALL 1: SCHICHT STARTEN ---
             if (action === 'start') {
-                if (todayShift && todayShift.start) {
-                    const startMins = timeToMins(todayShift.start);
-                    if (nowMins < (startMins - 10)) {
-                        throw new Error(`Zu früh! Dienst beginnt erst um ${todayShift.start} Uhr.`);
+                // Dienstplan-Prüfung
+                if (todayShift && todayShift.slots && todayShift.slots.length > 0) {
+                    // Wir nehmen den ersten Slot des Tages als Referenz
+                    const firstSlot = todayShift.slots[0];
+                    if (firstSlot.type !== 'custom') { // Bei Custom keine Prüfung
+                        const startMins = timeToMins(firstSlot.start);
+                        // 10 Minuten Toleranz vor Schichtbeginn
+                        if (nowMins < (startMins - 10)) {
+                            throw new Error(`Zu früh! Dein Dienst (Start: ${firstSlot.start}) beginnt erst in ${(startMins - nowMins)} Minuten.`);
+                        }
                     }
                 }
-                if(currentLog) throw new Error("Bereits eingestempelt!");
+
+                if(currentLog && !currentLog.end) throw new Error("Du bist bereits eingestempelt!");
                 
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_time'), { 
                     userId: identifiedUser.id, userName: identifiedUser.name, dateStr: getTodayStr(), 
                     start: nowStr, end: null, status: 'active', breaks: [], createdAt: serverTimestamp() 
                 });
-                setMsg({ text: `Hallo ${identifiedUser.name}!`, sub: "Schicht gestartet", color: "bg-emerald-500" });
+                setMsg({ text: `Hallo ${identifiedUser.name}!`, sub: "Erfolgreich eingestempelt", color: "bg-emerald-500" });
             }
             
-            // FALL 2: NACH FEIERABEND WIEDERKOMMEN (SMART RESUME)
+            // --- FALL 2: DIENST FORTSETZEN (Smart Resume) ---
             else if (action === 'resume_after_stop') {
-                // Wir berechnen die Lücke als Pause
+                // Wir berechnen die Zeit seit dem "Feierabend" als Pause
                 const oldEnd = currentLog.end;
                 const newBreak = { start: oldEnd, end: nowStr };
                 const updatedBreaks = [...(currentLog.breaks || []), newBreak];
 
                 await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { 
-                    end: null, // "Entfernt" den Feierabend
+                    end: null, // Feierabend aufheben
                     status: 'active', 
                     breaks: updatedBreaks 
                 });
-                setMsg({ text: "Willkommen zurück!", sub: "Zeit dazwischen als Pause gebucht", color: "bg-indigo-500" });
+                setMsg({ text: "Willkommen zurück!", sub: "Abwesenheit als Pause gebucht", color: "bg-indigo-500" });
             }
 
-            // FALL 3: NORMALE PAUSE STARTEN
+            // --- FALL 3: PAUSE STARTEN ---
             else if (action === 'pause_start') {
                  const breaks = currentLog.breaks || [];
                  breaks.push({ start: nowStr, end: null });
                  await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { status: 'break', breaks });
-                 setMsg({ text: "Schöne Pause", sub: "Erhol dich gut", color: "bg-amber-500" });
+                 setMsg({ text: "Schöne Pause!", sub: "Erhol dich gut", color: "bg-amber-500" });
             }
 
-            // FALL 4: NORMALE PAUSE BEENDEN
+            // --- FALL 4: PAUSE BEENDEN ---
             else if (action === 'pause_end') {
                  const breaks = currentLog.breaks || [];
+                 // Den letzten offenen Pauseneintrag schließen
                  if(breaks.length > 0) breaks[breaks.length-1].end = nowStr;
                  await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { status: 'active', breaks });
-                 setMsg({ text: "Weiter geht's", sub: "Power on", color: "bg-indigo-500" });
+                 setMsg({ text: "Weiter geht's!", sub: "Viel Erfolg", color: "bg-indigo-500" });
             }
 
-            // FALL 5: FEIERABEND
+            // --- FALL 5: FEIERABEND ---
             else if (action === 'stop') {
                  await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_time', currentLog.id), { end: nowStr, status: 'closed' });
-                 setMsg({ text: "Feierabend", sub: "Gut gemacht", color: "bg-slate-800" });
+                 setMsg({ text: "Feierabend!", sub: "Danke für deinen Einsatz", color: "bg-slate-800" });
             }
 
+            // Automatisch schließen nach 2.5 Sekunden
             setTimeout(() => { onClose(); }, 2500);
+
         } catch (e) {
             alert(e.message);
             setLoading(false);
         }
     };
 
-    // --- RENDER LOGIK ---
-
-    if (msg) return <div className={`fixed inset-0 z-[200] ${msg.color} flex flex-col items-center justify-center text-white animate-in`}><h2 className="text-4xl font-black">{msg.text}</h2><p className="text-xl font-bold opacity-80">{msg.sub}</p></div>;
+    // --- RENDER: FEEDBACK SCREEN ---
+    if (msg) return (
+        <div className={`fixed inset-0 z-[200] ${msg.color} flex flex-col items-center justify-center text-white animate-in`}>
+            <div className="scale-150 mb-4"><CheckCircle size={64}/></div>
+            <h2 className="text-4xl font-black text-center px-4">{msg.text}</h2>
+            <p className="text-xl font-bold opacity-80 mt-2">{msg.sub}</p>
+        </div>
+    );
     
+    // --- RENDER: PIN PAD ---
     if (!identifiedUser) return (
         <div className="fixed inset-0 z-[200] bg-slate-900 flex flex-col items-center justify-center p-6 animate-in">
-             <button onClick={onClose} className="absolute top-6 right-6 text-white p-4"><X size={32}/></button>
-             <h2 className="text-3xl font-black text-white mb-8">PIN EINGABE</h2>
-             <div className="flex justify-center gap-4 mb-8">{[0,1,2,3].map(i => <div key={i} className={`w-4 h-4 rounded-full transition-all ${pin.length > i ? 'bg-indigo-500 scale-125' : 'bg-slate-700'}`}/>)}</div>
+             <button onClick={onClose} className="absolute top-6 right-6 text-white/50 hover:text-white p-4"><X size={32}/></button>
+             
+             <div className="text-center mb-10">
+                 <div className="inline-block p-4 bg-slate-800 rounded-full mb-4"><Clock size={40} className="text-indigo-400"/></div>
+                 <h2 className="text-3xl font-black text-white tracking-tight">TERMINAL</h2>
+                 <p className="text-slate-400 font-medium mt-1">Bitte Personal-PIN eingeben</p>
+             </div>
+
+             {/* PIN DOTS */}
+             <div className="flex justify-center gap-4 mb-10">
+                {[0,1,2,3].map(i => (
+                    <div key={i} className={`w-4 h-4 rounded-full transition-all duration-300 ${pin.length > i ? 'bg-indigo-500 scale-125 shadow-[0_0_10px_#6366f1]' : 'bg-slate-800'}`}/>
+                ))}
+             </div>
+
+             {/* NUM PAD */}
              <div className="grid grid-cols-3 gap-4 w-full max-w-xs">
-                {[1,2,3,4,5,6,7,8,9,0].map(n => n===0 ? <React.Fragment key={0}><div/><button onClick={()=>handleNum(0)} className="h-20 rounded-full bg-slate-800 text-white text-2xl font-bold active:scale-90 transition-transform">0</button></React.Fragment> : <button key={n} onClick={()=>handleNum(n)} className="h-20 rounded-full bg-slate-800 text-white text-2xl font-bold active:scale-90 transition-transform shadow-lg">{n}</button>)}
-                <button onClick={()=>setPin(pin.slice(0,-1))} className="h-20 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center active:scale-90 transition-transform"><Eraser size={24}/></button>
+                {[1,2,3,4,5,6,7,8,9,0].map(n => 
+                    n===0 ? 
+                    <React.Fragment key={0}><div/><button onClick={()=>handleNum(0)} className="h-20 rounded-2xl bg-slate-800 text-white text-2xl font-bold active:scale-95 transition-all hover:bg-slate-700 shadow-lg border border-white/5">0</button></React.Fragment> : 
+                    <button key={n} onClick={()=>handleNum(n)} className="h-20 rounded-2xl bg-slate-800 text-white text-2xl font-bold active:scale-95 transition-all hover:bg-slate-700 shadow-lg border border-white/5">{n}</button>
+                )}
+                <button onClick={()=>setPin(pin.slice(0,-1))} className="h-20 rounded-2xl bg-red-500/10 text-red-500 border border-red-500/20 flex items-center justify-center active:scale-95 transition-all hover:bg-red-500/20"><Eraser size={28}/></button>
              </div>
         </div>
     );
 
-    // Status ermitteln
+    // --- RENDER: ACTION DASHBOARD ---
+    
+    // Status Analyse
     const isClosed = currentLog && currentLog.status === 'closed';
     const isWorking = currentLog && !isClosed;
     const isPause = isWorking && currentLog.status === 'break';
     
     return (
         <div className="fixed inset-0 z-[200] bg-white flex flex-col p-6 animate-in">
-            <button onClick={()=>setIdentifiedUser(null)} className="absolute top-6 right-6 bg-slate-100 p-3 rounded-full"><X/></button>
-            <div className="flex-1 flex flex-col justify-center items-center text-center">
-                <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center text-4xl mb-4 shadow-inner">
-                    {isClosed ? '🏠' : isPause ? '☕' : '🚀'}
+            <button onClick={()=>setIdentifiedUser(null)} className="absolute top-6 right-6 bg-slate-100 p-3 rounded-full hover:bg-slate-200 transition-colors"><X size={24}/></button>
+            
+            <div className="flex-1 flex flex-col justify-center items-center text-center w-full max-w-md mx-auto">
+                {/* Avatar & Name */}
+                <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center text-4xl mb-4 shadow-inner border border-slate-100 relative">
+                    {isClosed ? '🏠' : isPause ? '☕' : !currentLog ? '👋' : '🚀'}
+                    {/* Status Dot */}
+                    <div className={`absolute bottom-1 right-1 w-6 h-6 rounded-full border-4 border-white ${isWorking ? (isPause ? 'bg-amber-500' : 'bg-emerald-500') : 'bg-slate-300'}`}></div>
                 </div>
-                <h2 className="text-3xl font-black text-slate-900">Hallo, {identifiedUser.name}</h2>
                 
-                {/* Status Text */}
-                {isClosed && <div className="text-red-500 font-bold mt-2 bg-red-50 px-4 py-2 rounded-xl">Bereits ausgecheckt: {currentLog.end}</div>}
-                {isWorking && <div className="text-emerald-500 font-bold mt-2 bg-emerald-50 px-4 py-2 rounded-xl">Startzeit: {currentLog.start}</div>}
-                {todayShift && (
-                    <div className="mt-4 bg-slate-50 border border-slate-100 p-4 rounded-2xl w-full max-w-xs mx-auto">
-                        <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
-                            Geplant für Heute:
+                <h2 className="text-3xl font-black text-slate-900 leading-tight">Hallo, {identifiedUser.name.split(' ')[0]}</h2>
+                
+                {/* Status Meldung */}
+                <div className="mt-2 mb-6">
+                    {isClosed ? 
+                        <span className="text-red-500 font-bold bg-red-50 px-3 py-1 rounded-lg text-sm">Bereits ausgecheckt ({currentLog.end})</span> : 
+                    isWorking ? 
+                        <span className="text-emerald-600 font-bold bg-emerald-50 px-3 py-1 rounded-lg text-sm">
+                            Start: {currentLog.start} {isPause && "• In Pause"}
+                        </span> :
+                        <span className="text-slate-400 font-bold text-sm">Bereit für die Schicht?</span>
+                    }
+                </div>
+
+                {/* Schicht-Info (wenn geplant) */}
+                {todayShift && todayShift.slots && todayShift.slots.length > 0 && (
+                    <div className="mb-8 bg-gradient-to-br from-slate-50 to-white border border-slate-100 p-4 rounded-2xl w-full shadow-sm text-left">
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1"><Calendar size={10}/> Heute geplant:</div>
+                        <div className="space-y-1">
+                            {todayShift.slots.map((slot, idx) => (
+                                <div key={idx} className="flex justify-between items-center">
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${SHIFT_TEMPLATES[slot.type]?.color || 'bg-slate-200 text-slate-600'}`}>
+                                        {SHIFT_TEMPLATES[slot.type]?.short || 'IND'}
+                                    </span>
+                                    <span className="font-bold text-slate-700">{slot.start} - {slot.end}</span>
+                                </div>
+                            ))}
                         </div>
-                        <div className="text-xl font-black text-indigo-600">
-                            {todayShift.label || 'Standard-Schicht'}
-                        </div>
-                        <div className="text-sm font-medium text-slate-500">
-                            {todayShift.start} - {todayShift.end} Uhr
-                        </div>
-                        
-                        {/* Warnung wenn zu früh */}
-                        {(() => {
-                            const nowH = new Date().getHours();
-                            const startH = parseInt(todayShift.start.split(':')[0]);
-                            if (nowH < startH - 1) return <div className="mt-2 text-xs font-bold text-amber-500 bg-amber-50 px-2 py-1 rounded">⚠️ Du bist sehr früh dran!</div>
-                        })()}
                     </div>
                 )}
-                <div className="mt-8 space-y-4 w-full max-w-sm">
-                    {/* BUTTONS JE NACH STATUS */}
-                    
+
+                <div className="space-y-3 w-full">
+                    {/* CASE: NOCH NICHT GESTEMPELT */}
                     {!currentLog && (
-                        <button onClick={()=>handleAction('start')} className="w-full py-6 bg-emerald-500 text-white rounded-2xl font-black text-xl shadow-xl active:scale-95 transition-transform">SCHICHT STARTEN</button>
+                        <button onClick={()=>handleAction('start')} className="w-full py-5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black text-xl shadow-xl shadow-emerald-200 active:scale-[0.98] transition-all flex items-center justify-center gap-3">
+                            <PlayCircle size={28}/> SCHICHT STARTEN
+                        </button>
                     )}
 
+                    {/* CASE: BEREITS BEENDET (Smart Resume) */}
                     {isClosed && (
-                        <div className="space-y-4">
-                            <div className="bg-indigo-50 p-4 rounded-2xl text-indigo-800 text-sm font-medium">
-                                Du hast dich schon ausgestempelt. Möchtest du weitermachen? Die Zeit dazwischen wird als Pause gewertet.
+                        <div className="space-y-3">
+                            <div className="bg-indigo-50 p-3 rounded-xl text-indigo-800 text-xs font-bold">
+                                Feierabend war schon um {currentLog.end}. <br/> Weiterarbeiten?
                             </div>
-                            <button onClick={()=>handleAction('resume_after_stop')} className="w-full py-6 bg-indigo-600 text-white rounded-2xl font-black text-xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-2">
-                                <RefreshCcw/> DIENST FORTSETZEN
+                            <button onClick={()=>handleAction('resume_after_stop')} className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xl shadow-xl shadow-indigo-200 active:scale-[0.98] transition-all flex items-center justify-center gap-3">
+                                <RefreshCcw size={28}/> DIENST FORTSETZEN
                             </button>
                         </div>
                     )}
 
+                    {/* CASE: ARBEITET GERADE */}
                     {isWorking && (
                         <>
                             {isPause ? (
-                                <button onClick={()=>handleAction('pause_end')} className="w-full py-6 bg-indigo-500 text-white rounded-2xl font-black text-xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-2"><PlayCircle/> PAUSE BEENDEN</button>
+                                <button onClick={()=>handleAction('pause_end')} className="w-full py-5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-2xl font-black text-xl shadow-xl shadow-indigo-200 active:scale-[0.98] transition-all flex items-center justify-center gap-3">
+                                    <PlayCircle size={28}/> PAUSE BEENDEN
+                                </button>
                             ) : (
-                                <button onClick={()=>handleAction('pause_start')} className="w-full py-6 bg-amber-400 text-white rounded-2xl font-black text-xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-2"><Coffee/> PAUSE MACHEN</button>
+                                <button onClick={()=>handleAction('pause_start')} className="w-full py-5 bg-amber-400 hover:bg-amber-500 text-white rounded-2xl font-black text-xl shadow-xl shadow-amber-200 active:scale-[0.98] transition-all flex items-center justify-center gap-3">
+                                    <Coffee size={28}/> PAUSE MACHEN
+                                </button>
                             )}
-                            <button onClick={()=>handleAction('stop')} className="w-full py-6 bg-slate-800 text-white rounded-2xl font-black text-xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-2"><StopCircle/> FEIERABEND</button>
+                            
+                            <button onClick={()=>handleAction('stop')} className="w-full py-5 bg-slate-800 hover:bg-slate-900 text-white rounded-2xl font-black text-xl shadow-xl shadow-slate-200 active:scale-[0.98] transition-all flex items-center justify-center gap-3">
+                                <StopCircle size={28}/> FEIERABEND
+                            </button>
                         </>
                     )}
                 </div>
