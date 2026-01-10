@@ -2442,7 +2442,7 @@ const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
                             {view === 'cleaning' && <Cleaning {...common} />}
                             {view === 'cooling' && <Cooling {...common} />}
                             {view === 'oil' && hasAccess('kitchen') && <Oil {...common} />}
-                            {view === 'ordering' && <SmartOrdering data={data} appId={appId}
+                            {view === 'ordering' && <SmartOrdering data={data} appId={appId} showToast={showToast} user={appUser} lang={lang} />}
                             {view === 'inventory' && <Inventory {...common} />}
                             {view === 'waste' && <WasteManager {...common} />}
                             {view === 'maintenance' && <Maintenance {...common} />}
