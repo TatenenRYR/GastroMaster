@@ -42,6 +42,13 @@
             scrollbar-width: none;
         }
     </style>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+<script type="text/javascript">
+   (function(){
+      // Hier Public Key von emailjs.com einfügen (kostenlos), sonst geht nur mailto:
+      emailjs.init("TMFx2hP-RUgy_g9LC"); 
+   })();
+</script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
@@ -2351,6 +2358,7 @@ const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
                             {view === 'cleaning' && <Cleaning {...common} />}
                             {view === 'cooling' && <Cooling {...common} />}
                             {view === 'oil' && hasAccess('kitchen') && <Oil {...common} />}
+                            {view === 'ordering' && <SmartOrdering data={data} appId={appId}
                             {view === 'inventory' && <Inventory {...common} />}
                             {view === 'waste' && <WasteManager {...common} />}
                             {view === 'maintenance' && <Maintenance {...common} />}
