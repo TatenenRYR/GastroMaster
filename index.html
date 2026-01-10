@@ -57,6 +57,90 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
+
+
+
+<script>
+(function() {
+    // UI Elemente erstellen
+    var btn = document.createElement("button");
+    var panel = document.createElement("div");
+    var clearBtn = document.createElement("button");
+    var isOpen = false;
+
+    // 1. Der Rote Button (Unten Links)
+    btn.innerHTML = "🐞 DEBUG";
+    btn.style.cssText = "position:fixed; bottom:20px; left:20px; z-index:999999; padding:10px 15px; background:red; color:white; border:none; border-radius:30px; font-weight:bold; box-shadow:0 4px 15px rgba(0,0,0,0.5); font-family:sans-serif;";
+    
+    // 2. Das Log-Fenster
+    panel.style.cssText = "display:none; position:fixed; top:0; left:0; width:100%; height:50vh; background:rgba(0,0,0,0.9); color:#0f0; font-family:monospace; font-size:11px; padding:10px 40px 10px 10px; overflow-y:auto; z-index:999998; box-sizing:border-box; border-bottom:2px solid #333;";
+    
+    // 3. Clear Button im Fenster
+    clearBtn.innerHTML = "🗑️";
+    clearBtn.style.cssText = "position:absolute; top:10px; right:10px; background:#333; border:none; padding:5px 10px; border-radius:5px; cursor:pointer;";
+    
+    document.body.appendChild(btn);
+    document.body.appendChild(panel);
+    panel.appendChild(clearBtn);
+
+    // Toggle Funktion
+    btn.onclick = function() {
+        isOpen = !isOpen;
+        panel.style.display = isOpen ? "block" : "none";
+        btn.style.background = isOpen ? "#333" : "red";
+    };
+    
+    clearBtn.onclick = function() {
+        panel.innerHTML = "";
+        panel.appendChild(clearBtn);
+    };
+
+    // Logging Funktion
+    function logToScreen(type, args) {
+        var msg = Array.from(args).map(function(arg) {
+            try { return typeof arg === 'object' ? JSON.stringify(arg) : String(arg); } catch(e) { return String(arg); }
+        }).join(" ");
+        
+        var line = document.createElement("div");
+        line.style.cssText = "border-bottom:1px solid #333; padding:4px 0; word-break:break-all;";
+        
+        if (type === 'error') line.style.color = "#ff5555";
+        else if (type === 'warn') line.style.color = "#ffcc00";
+        else line.style.color = "#00ff00";
+
+        var time = new Date().toLocaleTimeString().split(' ')[0];
+        line.innerHTML = `<span style="opacity:0.5">[${time}]</span> ${msg}`;
+        
+        panel.appendChild(line);
+        // Auto-Scroll nach unten
+        panel.scrollTop = panel.scrollHeight;
+    }
+
+    // --- CONSOLE ÜBERSCHREIBEN ---
+    var originalLog = console.log;
+    var originalWarn = console.warn;
+    var originalError = console.error;
+
+    console.log = function() { logToScreen('log', arguments); originalLog.apply(console, arguments); };
+    console.warn = function() { logToScreen('warn', arguments); originalWarn.apply(console, arguments); };
+    console.error = function() { logToScreen('error', arguments); originalError.apply(console, arguments); };
+
+    // --- GLOBALE FEHLER ABFANGEN (Wichtig für weißen Bildschirm!) ---
+    window.onerror = function(message, source, lineno, colno, error) {
+        logToScreen('error', ["CRASH:", message, "\nZeile:", lineno]);
+        // Öffnet die Konsole automatisch bei einem Crash
+        if(!isOpen) btn.click(); 
+    };
+    
+    window.addEventListener('unhandledrejection', function(event) {
+        logToScreen('error', ["PROMISE ERROR:", event.reason]);
+    });
+
+})();
+</script>
+
+
+    
 <body class="h-full text-slate-800 bg-slate-50">
     <div id="root" class="h-full"></div>
 
