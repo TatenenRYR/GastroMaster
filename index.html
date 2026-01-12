@@ -2582,6 +2582,7 @@ const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
                 onSeed={()=>seedDB()} 
                 showToast={showToast} 
                 lang={lang} 
+                modulesConfig={modulesConfig}
                 onMasterRecovery={handleMasterKeyRecovery} 
                 tempMasterPw={tempMasterPw} 
                 themeColor={design.primaryColor || '#0f172a'}
@@ -2697,7 +2698,7 @@ const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
         const LoginScreen = ({ 
             staff, restaurantId, company, onLogoutSystem, yesterdayOil, fryers, 
             onSeed, onLogin, showToast, lang, onMasterRecovery, tempMasterPw, 
-            themeColor, workerStatus = {} // <--- WICHTIG: Das neue Status-Objekt
+            themeColor, workerStatus = {}, modulesConfig
         }) => {
             const [selectedUser, setSelectedUser] = useState(null); 
             const [showPin, setShowPin] = useState(false); 
@@ -2766,16 +2767,19 @@ const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
                             </div>
                         </div>
 
-                        {/* TERMINAL BUTTON (GROSS) */}
-                        <button onClick={()=>setShowTerminal(true)} className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-6 rounded-[2rem] shadow-2xl shadow-indigo-900/50 flex items-center justify-between group active:scale-95 transition-transform border border-white/10 hover:border-white/30">
-                            <div className="text-left">
-                                <div className="font-black text-xl mb-1 flex items-center gap-2"><Clock size={24}/> STEMPELUHR</div>
-                                <div className="text-indigo-200 text-xs font-bold uppercase tracking-widest">Zum Ein-/Ausstempeln</div>
-                            </div>
-                            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center group-hover:rotate-90 transition-transform">
-                                <ChevronRight size={24} className="text-white"/>
-                            </div>
-                        </button>
+                        {/* TERMINAL BUTTON (GROSS) - Wird nur angezeigt, wenn Modul 'time' aktiv ist */}
+{modulesConfig?.time?.enabled !== false && (
+    <button onClick={()=>setShowTerminal(true)} className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-6 rounded-[2rem] shadow-2xl shadow-indigo-900/50 flex items-center justify-between group active:scale-95 transition-transform border border-white/10 hover:border-white/30">
+        <div className="text-left">
+            <div className="font-black text-xl mb-1 flex items-center gap-2"><Clock size={24}/> STEMPELUHR</div>
+            <div className="text-indigo-200 text-xs font-bold uppercase tracking-widest">Zum Ein-/Ausstempeln</div>
+        </div>
+        <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center group-hover:rotate-90 transition-transform">
+            <ChevronRight size={24} className="text-white"/>
+        </div>
+    </button>
+)}
+
 
                         <div className="border-t border-white/10 my-2"></div>
 
