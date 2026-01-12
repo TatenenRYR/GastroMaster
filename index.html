@@ -1917,6 +1917,7 @@ const Wiki = ({ user, appId, showToast }) => {
             .replace(/\n/g, '<br/>');
     };
 
+    // Fix: Daten explizit in den State laden
     const handleEdit = (entry) => {
         setCurrentEntry({
             id: entry.id,
