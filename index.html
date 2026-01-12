@@ -1892,180 +1892,181 @@ const CashManager = ({ user, appId, showToast, setView, data = {} }) => {
 };
 
 
-const Wiki = () => {
-    const [view, setView] = React.useState('list');
-    const [search, setSearch] = React.useState('');
-    const [currentEntry, setCurrentEntry] = React.useState(null);
-    const [loading, setLoading] = React.useState(false);
+const Wiki = ({ user, appId, showToast }) => {
+    const [entries, setEntries] = useState([]);
+    const [view, setView] = useState('list'); // 'list', 'edit', 'view'
+    const [currentEntry, setCurrentEntry] = useState({ title: '', content: '', category: 'Allgemein', videoUrl: '', status: 'draft' });
+    const [search, setSearch] = useState('');
+    const [loading, setLoading] = useState(false);
 
-    const categories = ['Alle', 'Küche', 'Service', 'Allgemein'];
-    const [activeCat, setActiveCat] = React.useState('Alle');
+    const isLeader = ['admin', 'kitchen_lead', 'service_lead'].includes(user.role);
+
+    // Synchronisation mit Firestore
+    useEffect(() => {
+        const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'wiki'), orderBy('createdAt', 'desc'));
+        return onSnapshot(q, s => setEntries(s.docs.map(d => ({id:d.id, ...d.data()}))));
+    }, [appId]);
+
+    const formatContent = (text) => {
+        if (!text) return "";
+        return text
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/^# (.*$)/gm, '<h1 class="text-2xl font-black mt-4 mb-2 text-slate-900 border-b pb-1">$1</h1>')
+            .replace(/^## (.*$)/gm, '<h2 class="text-xl font-bold mt-3 mb-1 text-slate-800">$1</h2>')
+            .replace(/^\- (.*$)/gm, '<li class="ml-4 list-disc text-slate-600">$1</li>')
+            .replace(/\n/g, '<br/>');
+    };
 
     const handleEdit = (entry = null) => {
         if (entry) {
             setCurrentEntry({
-                ...entry,
+                id: entry.id,
                 title: entry.title || '',
                 content: entry.content || '',
                 category: entry.category || 'Allgemein',
-                videoUrl: entry.videoUrl || ''
+                videoUrl: entry.videoUrl || '',
+                status: entry.status || 'draft',
+                createdAt: entry.createdAt
             });
         } else {
-            setCurrentEntry({ title: '', content: '', category: 'Allgemein', videoUrl: '' });
+            setCurrentEntry({ title: '', content: '', category: 'Allgemein', videoUrl: '', status: 'draft' });
         }
         setView('edit');
     };
 
-    const handleSave = async (status) => {
-        if (!currentEntry.title) return alert('Bitte Titel eingeben');
+    const handleSave = async (status = 'draft') => {
+        if (!currentEntry.title.trim()) {
+            showToast("Bitte einen Titel angeben", "error");
+            return;
+        }
         setLoading(true);
         try {
-            const entryData = {
-                ...currentEntry,
-                status,
-                updatedAt: new Date().toISOString(),
-                author: b.user?.name || 'Admin'
+            const dataToSave = {
+                title: currentEntry.title,
+                content: currentEntry.content,
+                category: currentEntry.category,
+                videoUrl: currentEntry.videoUrl || '',
+                status: status,
+                updatedBy: user.name,
+                updatedAt: serverTimestamp(),
+                createdAt: currentEntry.createdAt || serverTimestamp()
             };
-
+            
             if (currentEntry.id) {
-                await updateDoc(doc(db, 'wiki', currentEntry.id), entryData);
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'wiki', currentEntry.id), dataToSave);
             } else {
-                await addDoc(collection(db, 'wiki'), { ...entryData, createdAt: new Date().toISOString() });
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'wiki'), dataToSave);
             }
+
+            showToast(status === 'published' ? "Veröffentlicht!" : "Entwurf gespeichert");
             setView('list');
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
+        } catch(err) { 
+            showToast("Fehler beim Speichern", "error");
         }
+        setLoading(false);
     };
 
+    const embedVideo = (url) => {
+        if (!url) return null;
+        try {
+            let id = url.includes('v=') ? url.split('v=')[1].split('&')[0] : url.split('/').pop();
+            let embedUrl = url.includes('vimeo') ? `https://player.vimeo.com/video/${id}` : `https://www.youtube.com/embed/${id}`;
+            return (
+                <div className="relative pt-[56.25%] w-full rounded-xl overflow-hidden bg-black mb-4 shadow-sm">
+                    <iframe className="absolute inset-0 w-full h-full" src={embedUrl} frameBorder="0" allowFullScreen></iframe>
+                </div>
+            );
+        } catch (e) { return null; }
+    };
+
+    const filtered = entries.filter(e => 
+        e.title.toLowerCase().includes(search.toLowerCase()) && (isLeader || e.status === 'published')
+    );
+
     return (
-        <div className="h-full flex flex-col bg-slate-50">
+        <div className="animate-in space-y-6">
             {view === 'list' && (
                 <>
-                    <div className="p-6 bg-white border-b border-slate-100">
-                        <div className="flex justify-between items-center mb-6">
-                            <div>
-                                <h2 className="text-3xl font-black text-slate-900 tracking-tight">Wissen</h2>
-                                <p className="text-slate-500 font-medium">Betriebshandbuch & Anleitungen</p>
-                            </div>
-                            <button onClick={() => handleEdit()} className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200 hover:scale-105 transition-transform">
-                                <Plus size={24}/>
-                            </button>
+                    <div className="flex justify-between items-center">
+                        <div><h2 className="text-3xl font-black text-slate-800">Wissen</h2><p className="opacity-60 text-sm font-medium">Anleitungen & Training</p></div>
+                        {isLeader && (
+                            <button onClick={() => handleEdit()} className="bg-slate-900 text-white p-3 rounded-2xl shadow-lg hover:scale-105 transition-transform"><Plus/></button>
+                        )}
+                    </div>
+                    <div className="space-y-4">
+                        <div className="relative">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
+                            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Suchen..." className="w-full pl-12 p-4 bg-white border border-slate-100 rounded-2xl text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"/>
                         </div>
-                        
-                        <div className="relative mb-6">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/>
-                            <input 
-                                value={search}
-                                onChange={e => setSearch(e.target.value)}
-                                placeholder="Suche nach Themen..."
-                                className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500 transition-all shadow-inner"
-                            />
-                        </div>
-
-                        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-                            {categories.map(c => (
-                                <button 
-                                    key={c}
-                                    onClick={() => setActiveCat(c)}
-                                    className={`px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${activeCat === c ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                >
-                                    {c}
-                                </button>
+                        <div className="grid gap-3">
+                            {filtered.map(e => (
+                                <div key={e.id} onClick={() => { setCurrentEntry(e); setView('view'); }} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex justify-between items-center group cursor-pointer active:scale-95 transition-transform">
+                                    <div className="flex items-center gap-4">
+                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${e.status === 'draft' ? 'bg-amber-50 text-amber-500' : 'bg-indigo-50 text-indigo-500'}`}>
+                                            {e.videoUrl ? <PlayCircle size={24}/> : <BookOpen size={24}/>}
+                                        </div>
+                                        <div>
+                                            <div className="font-bold text-slate-800">{e.title} {e.status === 'draft' && <span className="ml-2 text-[8px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded uppercase font-black">Entwurf</span>}</div>
+                                            <div className="text-[10px] font-bold uppercase text-slate-400">{e.category}</div>
+                                        </div>
+                                    </div>
+                                    <ChevronRight className="text-slate-200"/>
+                                </div>
                             ))}
                         </div>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                        {wikiEntries
-                            .filter(e => (activeCat === 'Alle' || e.category === activeCat) && (e.title.toLowerCase().includes(search.toLowerCase())))
-                            .map(entry => (
-                                <div key={entry.id} onClick={() => { setCurrentEntry(entry); setView('detail'); }} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all group">
-                                    <div className="flex justify-between items-start mb-3">
-                                        <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black uppercase tracking-wider">{entry.category}</span>
-                                        <button onClick={(e) => { e.stopPropagation(); handleEdit(entry); }} className="opacity-0 group-hover:opacity-100 p-2 hover:bg-slate-50 rounded-full transition-all">
-                                            <Edit3 size={16} className="text-slate-400"/>
-                                        </button>
-                                    </div>
-                                    <h4 className="text-xl font-black text-slate-800 mb-2 leading-tight">{entry.title}</h4>
-                                    <p className="text-slate-500 text-sm line-clamp-2 leading-relaxed">{entry.content}</p>
-                                </div>
-                            ))
-                        }
                     </div>
                 </>
             )}
 
-            {view === 'detail' && currentEntry && (
-                <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in">
-                    <div className="p-4 flex justify-between items-center border-b">
-                        <button onClick={() => setView('list')} className="p-2 bg-slate-100 rounded-full"><ArrowLeft size={20}/></button>
+            {view === 'edit' && (
+                <div className="fixed inset-0 z-[110] bg-slate-50 flex flex-col animate-in">
+                    <div className="bg-white border-b p-4 flex justify-between items-center shadow-sm">
+                        <div className="flex items-center gap-4">
+                            <button onClick={()=>setView('list')} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><ArrowLeft size={20}/></button>
+                            <h3 className="font-black text-lg">Wiki Editor</h3>
+                        </div>
                         <div className="flex gap-2">
-                            <button onClick={() => handleEdit(currentEntry)} className="p-2 bg-slate-100 rounded-full text-slate-600"><Edit3 size={20}/></button>
+                            <button onClick={()=>handleSave('draft')} disabled={loading} className="px-4 py-2 bg-slate-200 text-slate-700 rounded-xl font-bold text-sm">Entwurf speichern</button>
+                            <button onClick={()=>handleSave('published')} disabled={loading} className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold text-sm flex items-center gap-2"><BadgeCheck size={18}/> Veröffentlichen</button>
                         </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto">
-                        <div className="max-w-3xl mx-auto p-6 md:p-12">
-                            <span className="text-indigo-600 font-black uppercase tracking-[0.2em] text-xs mb-4 block">{currentEntry.category}</span>
-                            <h1 className="text-4xl md:text-6xl font-black text-slate-900 mb-8 leading-[1.1]">{currentEntry.title}</h1>
-                            {currentEntry.videoUrl && (
-                                <div className="mb-10 rounded-[2.5rem] overflow-hidden shadow-2xl bg-black aspect-video">
-                                    {embedVideo(currentEntry.videoUrl)}
-                                </div>
-                            )}
-                            <div className="prose prose-slate prose-lg max-w-none text-slate-700" dangerouslySetInnerHTML={{ __html: formatContent(currentEntry.content) }} />
+
+                    <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+                        <div className="w-full md:w-1/2 p-6 overflow-y-auto border-r bg-white space-y-4">
+                            <input value={currentEntry.title} onChange={e=>setCurrentEntry({...currentEntry, title: e.target.value})} placeholder="Titel eingeben..." className="w-full text-2xl font-black outline-none border-b border-slate-100 pb-2 focus:border-indigo-500"/>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <Select value={currentEntry.category} onChange={e=>setCurrentEntry({...currentEntry, category: e.target.value})}><option value="Küche">Küche</option><option value="Service">Service</option><option value="Allgemein">Allgemein</option></Select>
+                                <input value={currentEntry.videoUrl} onChange={e=>setCurrentEntry({...currentEntry, videoUrl: e.target.value})} placeholder="YouTube / Vimeo URL" className="p-3 bg-slate-50 rounded-xl border border-slate-100 outline-none text-sm"/>
+                            </div>
+                            <textarea value={currentEntry.content} onChange={e=>setCurrentEntry({...currentEntry, content: e.target.value})} className="w-full h-96 p-4 font-mono text-sm outline-none resize-none bg-slate-50 rounded-2xl border border-slate-200" placeholder="Schreibe deinen Inhalt hier..."/>
+                        </div>
+                        <div className="hidden md:block w-1/2 p-8 overflow-y-auto bg-slate-50">
+                            <div className="max-w-2xl mx-auto bg-white p-10 rounded-[2.5rem] shadow-sm min-h-full border border-slate-200">
+                                <span className="text-[10px] font-bold uppercase text-indigo-500 mb-2 block tracking-widest">{currentEntry.category}</span>
+                                <h1 className="text-4xl font-black mb-6 text-slate-900 leading-tight">{currentEntry.title || 'Titel Vorschau'}</h1>
+                                {currentEntry.videoUrl && embedVideo(currentEntry.videoUrl)}
+                                <div className="prose prose-slate max-w-none text-slate-700" dangerouslySetInnerHTML={{ __html: formatContent(currentEntry.content) }} />
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
 
-            {view === 'edit' && currentEntry && (
-                <div className="fixed inset-0 z-[110] bg-slate-50 flex flex-col">
-                    <div className="bg-white border-b p-4 flex justify-between items-center">
-                        <button onClick={() => setView('list')} className="p-2 bg-slate-100 rounded-full"><X size={20}/></button>
-                        <div className="flex gap-2">
-                            <button onClick={() => handleSave('draft')} className="px-4 py-2 bg-slate-200 text-slate-700 rounded-xl font-bold text-sm">Entwurf</button>
-                            <button onClick={() => handleSave('published')} className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm">Speichern</button>
-                        </div>
+            {view === 'view' && currentEntry && (
+                <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100 animate-in">
+                    <div className="flex justify-between items-start mb-8">
+                        <div><span className="text-[10px] font-bold uppercase bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full mb-3 inline-block">{currentEntry.category}</span><h3 className="text-4xl font-black text-slate-800 leading-tight">{currentEntry.title}</h3></div>
+                        <button onClick={()=>setView('list')} className="p-3 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"><X/></button>
                     </div>
-                    <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-                        <div className="w-full md:w-1/2 p-6 overflow-y-auto bg-white border-r space-y-6">
-                            <input 
-                                value={currentEntry.title}
-                                onChange={e => setCurrentEntry({...currentEntry, title: e.target.value})}
-                                placeholder="Titel der Anleitung..."
-                                className="w-full text-3xl font-black outline-none border-b-2 border-slate-50 focus:border-indigo-500 pb-4"
-                            />
-                            <div className="grid grid-cols-2 gap-4">
-                                <Select value={currentEntry.category} onChange={e => setCurrentEntry({...currentEntry, category: e.target.value})}>
-                                    <option>Küche</option>
-                                    <option>Service</option>
-                                    <option>Allgemein</option>
-                                </Select>
-                                <input 
-                                    value={currentEntry.videoUrl}
-                                    onChange={e => setCurrentEntry({...currentEntry, videoUrl: e.target.value})}
-                                    placeholder="Video URL (optional)"
-                                    className="p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500"
-                                />
-                            </div>
-                            <textarea 
-                                value={currentEntry.content}
-                                onChange={e => setCurrentEntry({...currentEntry, content: e.target.value})}
-                                placeholder="Inhalt (Markdown unterstützt)..."
-                                className="w-full h-[400px] p-4 bg-slate-50 rounded-2xl border border-slate-200 font-mono text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                            />
+                    {currentEntry.videoUrl && embedVideo(currentEntry.videoUrl)}
+                    <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed text-lg mb-10" dangerouslySetInnerHTML={{ __html: formatContent(currentEntry.content) }} />
+                    {isLeader && (
+                        <div className="flex gap-3 pt-8 border-t border-slate-100">
+                            <button onClick={()=>handleEdit(currentEntry)} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl hover:bg-indigo-100 transition-all flex items-center gap-2 font-bold"><PenTool size={20}/> Bearbeiten</button>
+                            <button onClick={async()=>{if(confirm("Löschen?")){await deleteDoc(doc(db,'artifacts',appId,'public', 'data', 'wiki', currentEntry.id)); setView('list'); showToast("Gelöscht");}}} className="p-4 bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 transition-all ml-auto"><Trash2 size={20}/></button>
                         </div>
-                        <div className="hidden md:block md:w-1/2 p-12 overflow-y-auto">
-                            <div className="max-w-xl mx-auto">
-                                <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-8">Live Vorschau</h4>
-                                <h1 className="text-4xl font-black mb-6">{currentEntry.title || 'Titel'}</h1>
-                                <div className="prose prose-slate" dangerouslySetInnerHTML={{ __html: formatContent(currentEntry.content) }} />
-                            </div>
-                        </div>
-                    </div>
+                    )}
                 </div>
             )}
         </div>
