@@ -1890,21 +1890,17 @@ const CashManager = ({ user, appId, showToast, setView, data = {} }) => {
         </div>
     );
 };
-/*
-const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
-        const EMAILJS_TEMPLATE_ID = "template_mcithcs"; // <--- ÄNDERN
-        const EMAILJS_PUBLIC_KEY = "TMFx2hP-RUgy_g9LC";    // <--- ÄNDERN
 
-*/
+
+
         const Wiki = ({ user, appId, showToast }) => {
     const [entries, setEntries] = useState([]);
-    const [view, setView] = useState('list'); // 'list', 'edit', 'view'
+    const [view, setView] = useState('list'); // 'list', 'edit', 'preview', 'view'
     const [currentEntry, setCurrentEntry] = useState(null);
     const [search, setSearch] = useState('');
     const [filter, setFilter] = useState('Alle');
     const [loading, setLoading] = useState(false);
 
-    // Berechtigung prüfen: Nur Leitungen dürfen schreiben
     const isLeader = ['admin', 'kitchen_lead', 'service_lead'].includes(user.role);
 
     useEffect(() => {
@@ -1912,36 +1908,46 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
         return onSnapshot(q, s => setEntries(s.docs.map(d => ({id:d.id, ...d.data()}))));
     }, [appId]);
 
-    const saveEntry = async (e) => {
-        e.preventDefault();
+    const handleSave = async (status = 'draft') => {
         setLoading(true);
-        const formData = new FormData(e.target);
-        const data = {
-            title: formData.get('title'),
-            content: formData.get('content'),
-            category: formData.get('category'),
-            videoUrl: formData.get('videoUrl'),
-            updatedBy: user.name,
-            createdAt: serverTimestamp()
-        };
-
         try {
-            if (currentEntry?.id) {
-                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'wiki', currentEntry.id), data);
+            const dataToSave = {
+                title: currentEntry.title,
+                content: currentEntry.content,
+                category: currentEntry.category,
+                videoUrl: currentEntry.videoUrl || '',
+                status: status, // 'draft' oder 'published'
+                updatedBy: user.name,
+                updatedAt: serverTimestamp(),
+                createdAt: currentEntry.createdAt || serverTimestamp()
+            };
+            
+            let docRef;
+            if (currentEntry.id) {
+                docRef = doc(db, 'artifacts', appId, 'public', 'data', 'wiki', currentEntry.id);
+                await updateDoc(docRef, dataToSave);
             } else {
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'wiki'), data);
+                docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'wiki'), dataToSave);
             }
-            showToast("Gespeichert!");
+
+            // Automatische Benachrichtigung am Team-Board bei Veröffentlichung
+            if (status === 'published') {
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), {
+                    text: `📢 Neues Wissen verfügbar: "${currentEntry.title}" in Kategorie ${currentEntry.category}.`,
+                    user: "SYSTEM",
+                    role: "admin",
+                    createdAt: serverTimestamp()
+                });
+            }
+            
+            showToast(status === 'published' ? "Veröffentlicht & Team informiert!" : "Als Entwurf gespeichert");
             setView('list');
             setCurrentEntry(null);
-        } catch(err) { showToast("Fehler beim Speichern", "error"); }
+        } catch(err) { 
+            console.error("Wiki Save Error:", err);
+            showToast("Fehler beim Speichern", "error");
+        }
         setLoading(false);
-    };
-
-    const deleteEntry = async (id) => {
-        if(!confirm("Eintrag wirklich löschen?")) return;
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'wiki', id));
-        showToast("Gelöscht");
     };
 
     const embedVideo = (url) => {
@@ -1954,55 +1960,50 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
             const id = url.split('/').pop();
             embedUrl = `https://player.vimeo.com/video/${id}`;
         }
-        
-        if (embedUrl) {
-            return (
-                <div className="relative pt-[56.25%] w-full rounded-2xl overflow-hidden bg-black mb-4 shadow-lg">
-                    <iframe className="absolute inset-0 w-full h-full" src={embedUrl} frameBorder="0" allowFullScreen></iframe>
-                </div>
-            );
-        }
-        return <a href={url} target="_blank" className="block p-4 bg-indigo-50 text-indigo-600 rounded-xl font-bold mb-4 flex items-center gap-2"><Video size={20}/> Video extern öffnen</a>;
+        return embedUrl ? (
+            <div className="relative pt-[56.25%] w-full rounded-2xl overflow-hidden bg-black mb-4 shadow-lg">
+                <iframe className="absolute inset-0 w-full h-full" src={embedUrl} frameBorder="0" allowFullScreen></iframe>
+            </div>
+        ) : null;
     };
 
-    const filtered = entries.filter(e => 
-        (filter === 'Alle' || e.category === filter) &&
-        (e.title.toLowerCase().includes(search.toLowerCase()) || e.content.toLowerCase().includes(search.toLowerCase()))
-    );
+    const filtered = entries.filter(e => {
+        const matchesSearch = e.title.toLowerCase().includes(search.toLowerCase());
+        const isVisible = isLeader || e.status === 'published';
+        return matchesSearch && isVisible;
+    });
 
     return (
         <div className="animate-in space-y-6">
             <div className="flex justify-between items-center">
                 <div><h2 className="text-3xl font-black text-slate-800">Wissen</h2><p className="opacity-60 text-sm font-medium">Anleitungen & Standards</p></div>
                 {isLeader && view === 'list' && (
-                    <button onClick={()=>{setCurrentEntry(null); setView('edit');}} className="bg-slate-900 text-white p-3 rounded-2xl shadow-lg"><Plus/></button>
+                    <button onClick={()=>{setCurrentEntry({title:'', content:'', category:'Allgemein', videoUrl:'', status:'draft'}); setView('edit');}} className="bg-slate-900 text-white p-3 rounded-2xl shadow-lg"><Plus/></button>
                 )}
             </div>
 
             {view === 'list' && (
                 <div className="space-y-4">
-                    <div className="flex gap-2">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
-                            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Suchen..." className="w-full pl-12 p-3 bg-white border border-slate-100 rounded-2xl text-sm font-bold shadow-sm outline-none"/>
-                        </div>
-                        <select value={filter} onChange={e=>setFilter(e.target.value)} className="bg-white border border-slate-100 p-3 rounded-2xl text-sm font-bold shadow-sm">
-                            <option>Alle</option><option>Küche</option><option>Service</option><option>Allgemein</option>
-                        </select>
+                    <div className="relative flex-1">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
+                        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Suchen..." className="w-full pl-12 p-3 bg-white border border-slate-100 rounded-2xl text-sm font-bold shadow-sm outline-none"/>
                     </div>
                     <div className="grid gap-3">
                         {filtered.map(e => (
-                            <div key={e.id} onClick={()=>{setCurrentEntry(e); setView('view');}} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex justify-between items-center group cursor-pointer active:scale-95 transition-transform">
+                            <div key={e.id} onClick={()=>{setCurrentEntry(e); setView('view');}} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex justify-between items-center cursor-pointer active:scale-95 transition-transform">
                                 <div className="flex items-center gap-4">
-                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${e.videoUrl ? 'bg-red-50 text-red-500' : 'bg-indigo-50 text-indigo-500'}`}>
+                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${e.status === 'draft' ? 'bg-amber-50 text-amber-500' : 'bg-indigo-50 text-indigo-500'}`}>
                                         {e.videoUrl ? <PlayCircle size={24}/> : <BookOpen size={24}/>}
                                     </div>
                                     <div>
-                                        <div className="font-bold text-slate-800">{e.title}</div>
+                                        <div className="font-bold text-slate-800 flex items-center gap-2">
+                                            {e.title}
+                                            {e.status === 'draft' && <span className="text-[8px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded uppercase">Entwurf</span>}
+                                        </div>
                                         <div className="text-[10px] font-bold uppercase text-slate-400">{e.category}</div>
                                     </div>
                                 </div>
-                                <ChevronRight className="text-slate-200 group-hover:text-indigo-500 transition-colors"/>
+                                <ChevronRight className="text-slate-200"/>
                             </div>
                         ))}
                     </div>
@@ -2010,46 +2011,66 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
             )}
 
             {view === 'edit' && (
-                <form onSubmit={saveEntry} className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-slate-100 space-y-4 animate-in">
-                    <h3 className="font-black text-xl mb-4">{currentEntry ? 'Bearbeiten' : 'Neuer Eintrag'}</h3>
-                    <Input name="title" defaultValue={currentEntry?.title} required placeholder="Titel" />
+                <div className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-slate-100 space-y-4 animate-in">
+                    <h3 className="font-black text-xl mb-4">Inhalt bearbeiten</h3>
+                    <Input value={currentEntry.title} onChange={e=>setCurrentEntry({...currentEntry, title: e.target.value})} placeholder="Titel" />
                     <div className="grid grid-cols-2 gap-4">
-                        <Select name="category" defaultValue={currentEntry?.category || 'Allgemein'}>
+                        <Select value={currentEntry.category} onChange={e=>setCurrentEntry({...currentEntry, category: e.target.value})}>
                             <option>Küche</option><option>Service</option><option>Allgemein</option>
                         </Select>
-                        <Input name="videoUrl" defaultValue={currentEntry?.videoUrl} placeholder="Video Link (YouTube/Vimeo)" />
+                        <Input value={currentEntry.videoUrl} onChange={e=>setCurrentEntry({...currentEntry, videoUrl: e.target.value})} placeholder="Video URL" />
                     </div>
-                    <textarea name="content" defaultValue={currentEntry?.content} rows="6" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-medium" placeholder="Beschreibung..."></textarea>
+                    <textarea value={currentEntry.content} onChange={e=>setCurrentEntry({...currentEntry, content: e.target.value})} rows="8" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-medium" placeholder="Beschreibung..."></textarea>
                     <div className="flex gap-2">
-                        <Button variant="ghost" onClick={()=>{setView('list'); setCurrentEntry(null);}}>Abbrechen</Button>
-                        <Button type="submit" loading={loading} className="flex-1">Speichern</Button>
+                        <Button variant="ghost" onClick={()=>setView('list')}>Abbruch</Button>
+                        <Button onClick={()=>setView('preview')} disabled={!currentEntry.title} className="flex-1 bg-indigo-600 text-white">Vorschau</Button>
                     </div>
-                </form>
+                </div>
             )}
 
-            {view === 'view' && currentEntry && (
+            {view === 'preview' && (
+                <div className="animate-in space-y-4">
+                    <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl text-amber-800 text-xs font-bold flex items-center gap-2"><Info size={16}/> Vorschau-Modus</div>
+                    <div className="bg-white p-6 rounded-[2.5rem] shadow-xl border-2 border-indigo-500">
+                        <h2 className="text-2xl font-black mb-4">{currentEntry.title}</h2>
+                        {currentEntry.videoUrl && embedVideo(currentEntry.videoUrl)}
+                        <div className="whitespace-pre-wrap text-slate-600 mb-6">{currentEntry.content}</div>
+                        <div className="flex gap-2">
+                            <button onClick={()=>setView('edit')} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold">Editor</button>
+                            <button onClick={()=>handleSave('draft')} className="flex-1 py-4 bg-slate-800 text-white rounded-2xl font-bold">Entwurf</button>
+                        </div>
+                        <button onClick={()=>handleSave('published')} className="w-full mt-2 py-4 bg-emerald-600 text-white rounded-2xl font-black shadow-lg shadow-emerald-200 flex items-center justify-center gap-2"><BadgeCheck size={20}/> VERÖFFENTLICHEN</button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'view' && (
                 <div className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-slate-100 animate-in">
                     <div className="flex justify-between items-start mb-6">
                         <div><span className="text-[10px] font-bold uppercase bg-indigo-50 text-indigo-600 px-2 py-1 rounded mb-2 inline-block">{currentEntry.category}</span><h3 className="text-2xl font-black text-slate-800">{currentEntry.title}</h3></div>
-                        <button onClick={()=>{setView('list'); setCurrentEntry(null);}} className="p-2 bg-slate-100 rounded-full"><X/></button>
+                        <button onClick={()=>setView('list')} className="p-2 bg-slate-100 rounded-full"><X/></button>
                     </div>
                     {currentEntry.videoUrl && embedVideo(currentEntry.videoUrl)}
                     <div className="whitespace-pre-wrap text-slate-600 leading-relaxed font-medium mb-8">{currentEntry.content}</div>
-                    <div className="flex justify-between items-center pt-6 border-t border-slate-50">
-                        <span className="text-xs text-slate-400 font-bold">Zuletzt von {currentEntry.updatedBy}</span>
-                        {isLeader && (
-                            <div className="flex gap-2">
-                                <button onClick={()=>setView('edit')} className="p-2 bg-slate-50 text-slate-400 rounded-xl hover:text-indigo-600"><Settings size={18}/></button>
-                                <button onClick={()=>deleteEntry(currentEntry.id)} className="p-2 bg-slate-50 text-slate-400 rounded-xl hover:text-red-500"><Trash2 size={18}/></button>
-                            </div>
-                        )}
-                    </div>
+                    {isLeader && (
+                        <div className="flex gap-2 pt-6 border-t border-slate-50">
+                            <button onClick={()=>setView('edit')} className="p-3 bg-slate-50 text-indigo-600 rounded-xl"><Settings size={18}/></button>
+                            <button onClick={async()=>{if(confirm("Löschen?")){await deleteDoc(doc(db,'artifacts',appId,'public', 'data', 'wiki', currentEntry.id)); setView('list');}}} className="p-3 bg-slate-50 text-red-500 rounded-xl"><Trash2 size={18}/></button>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
     );
 };
 
+/*
+const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
+        const EMAILJS_TEMPLATE_ID = "template_mcithcs"; // <--- ÄNDERN
+        const EMAILJS_PUBLIC_KEY = "TMFx2hP-RUgy_g9LC";    // <--- ÄNDERN
+
+*/
+    
 
 // --- SMART ORDERING V6 (UI FIX: BUTTONS IM WEG) ---
 const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
