@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="de" class="h-full">
 <head>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gastromaster">
+<link rel="manifest" href="data:application/manifest+json;base64,ewogICJuYW1lIjogIkdhc3Ryb21hc3RlciB2MzcuMCIsCiAgInNob3J0X25hbWUiOiAiR2FzdHJvbWFzdGVyIiwKICAic3RhcnRfdXJsIjogIi4iLAogICJkaXNwbGF5IjogInN0YW5kYWxvbmUiLAogICJiYWNrZ3JvdW5kX2NvbG9yIjogIiMwZjE3MmEiLAogICJ0aGVtZV9jb2xvciI6ICIjMGYxNzJhIiwKICAiaWNvbnMiOiBbCiAgICB7CiAgICAgICJzcmMiOiAiaHR0cHM6Ly9jZG4taWNvbnMtcG5nLmZscXRpY29uLmNvbS81MTIvMzExNi8zMTE2MjEwLnBuZyIsCiAgICAgICJzaXplcyI6ICI1MTJ4NTEyIiwKICAgICAgInR5cGUiOiAiaW1hZ2UvcG5nIiwKICAgICAgInB1cnBvc2UiOiAiYW55IG1hc2thYmxlIgogICAgfQogIF0KfQ==">
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Gastromaster v37.0</title>
@@ -4063,5 +4068,19 @@ const SettingsEditor = ({ data, appId, showToast, btnStyle, deleteBranch, lang }
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
+    <script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    const swContent = `
+      self.addEventListener('install', (e) => self.skipWaiting());
+      self.addEventListener('fetch', (e) => e.respondWith(fetch(e.request).catch(() => e.default)));
+    `;
+    const blob = new Blob([swContent], {type: 'application/javascript'});
+    const swUrl = URL.createObjectURL(blob);
+    navigator.serviceWorker.register(swUrl).catch(err => console.log('SW error', err));
+  });
+}
+</script>
+
 </body>
 </html>
