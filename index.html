@@ -552,143 +552,127 @@ const PinPad = ({ title, onClose, onSuccess, targetPin }) => {
             );
         };
         const Dashboard = ({ user, status, data, setView, modulesConfig, lang, showToast, appId }) => {
-            const t = DICTIONARY[lang];
-            
-            // Berechnung der offenen Aufgaben für die Anzeige
-            const openClean = (data.tasks || []).filter(i => !status.cleaningLogs[i.id]).length;
-            
-            // Relevante Prep-Tasks filtern (nur heutiger Tag)
-            const day = getWeekdayShort();
-            const relevantPrep = (data.prep || []).filter(i => i.schedule?.[day]);
-            const openPrep = relevantPrep.filter(i => !status.prepLogs[i.id]).length;
-            
-            const activeCooling = (data.cooling || []).filter(d => d.status !== 'defekt');
-            const openTemp = activeCooling.filter(d => !status.tempLogs.find(l => l.deviceId === d.id)).length;
-            
-            const activeFryers = (data.fryers || []).filter(d => d.status !== 'defekt');
-            const openOil = activeFryers.filter(d => !status.oilLogs[d.id]).length;
+    const t = DICTIONARY[lang];
+    
+    // Definition aller verfügbaren Dashboard-Elemente
+    const allCards = [
+        { id: 'time', title: t.time, sub: "Zeiterfassung", icon: <Clock/>, col: "bg-violet-500" },
+        { id: 'prep', title: t.prep, sub: "Mise en place", icon: <ClipboardList/>, col: "bg-indigo-500" },
+        { id: 'cleaning', title: t.clean, sub: "Hygienekonzept", icon: <Sparkles/>, col: "bg-emerald-500" },
+        { id: 'wiki', title: "Wissen", sub: "Wiki & Videos", icon: <BookOpen/>, col: "bg-amber-500" },
+        { id: 'cooling', title: t.temp, sub: "Temperaturen", icon: <Snowflake/>, col: "bg-sky-500" },
+        { id: 'oil', title: t.oil, sub: "Fett & Öl", icon: <Droplet/>, col: "bg-amber-500", dept: 'kitchen' },
+        { id: 'inventory', title: t.inventory, sub: "Bestellliste", icon: <Truck/>, col: "bg-slate-500" }
+    ];
 
-            // Status für Stempeluhr
-            const myTime = status.myTimeLog;
-            const timeStatus = myTime && !myTime.end ? (myTime.status === 'break' ? 'PAUSE' : 'LÄUFT') : 'STARTEN';
+    // Reihenfolge aus dem LocalStorage laden (spezifisch für diesen User)
+    const storageKey = `gastro_order_${user.id}`;
+    const [order, setOrder] = useState(() => {
+        const saved = localStorage.getItem(storageKey);
+        return saved ? JSON.parse(saved) : allCards.map(c => c.id);
+    });
 
-            // Berechtigungen prüfen
-            const hasKitchenAccess = user.role === 'admin' || user.role === 'kitchen_lead' || (user.departments || []).includes('kitchen');
+    const [draggedItem, setDraggedItem] = useState(null);
 
-            return (
-                <div className="animate-in space-y-6">
-                    <div className="flex justify-between items-center">
-                       <div>
-                           <h2 className="text-3xl font-black text-inherit">Hi, {user.name}</h2>
-                           <p className="text-inherit opacity-60 text-sm font-bold">{t.dash}</p>
-                       </div>
-                       <div className="text-right">
-                           <div className="text-xs font-bold opacity-50 uppercase">{getTodayStr()}</div>
-                       </div>
+    // Drag & Drop Funktionen
+    const onDragStart = (e, id) => {
+        setDraggedItem(id);
+        e.dataTransfer.effectAllowed = "move";
+    };
+
+    const onDragOver = (idx) => {
+        const draggedIdx = order.indexOf(draggedItem);
+        if (draggedIdx === idx) return;
+        
+        const newOrder = [...order];
+        newOrder.splice(draggedIdx, 1);
+        newOrder.splice(idx, 0, draggedItem);
+        setOrder(newOrder);
+    };
+
+    const onDragEnd = () => {
+        setDraggedItem(null);
+        localStorage.setItem(storageKey, JSON.stringify(order));
+    };
+
+    // Hilfsfunktion für die Status-Werte (Zähler)
+    const getCardValue = (id) => {
+        if (id === 'time') return status.myTimeLog && !status.myTimeLog.end ? (status.myTimeLog.status === 'break' ? 'PAUSE' : 'LÄUFT') : 'STARTEN';
+        if (id === 'cleaning') return (data.tasks || []).filter(i => !status.cleaningLogs[i.id]).length;
+        const day = ['So','Mo','Di','Mi','Do','Fr','Sa'][new Date().getDay()];
+        if (id === 'prep') return (data.prep || []).filter(i => i.schedule?.[day] && !status.prepLogs[i.id]).length;
+        if (id === 'cooling') return (data.cooling || []).filter(d => d.status !== 'defekt' && !status.tempLogs.find(l => l.deviceId === d.id)).length;
+        if (id === 'oil') return (data.fryers || []).filter(d => d.status !== 'defekt' && !status.oilLogs[d.id]).length;
+        if (id === 'inventory') return status.shoppingList?.length || 0;
+        return null;
+    };
+
+    return (
+        <div className="animate-in space-y-6">
+            <div className="flex justify-between items-center">
+               <div>
+                   <h2 className="text-3xl font-black text-slate-800">Hi, {user.name}</h2>
+                   <p className="opacity-60 text-sm font-bold uppercase tracking-[0.2em]">{t.dash}</p>
+               </div>
+               <div className="bg-indigo-50 p-2 rounded-xl text-indigo-400" title="Karten zum Sortieren gedrückt halten">
+                    <LayoutGrid size={20}/>
+               </div>
+            </div>
+
+            <TeamBoard messages={data.messages || []} user={user} appId={appId} showToast={showToast} />
+
+            {/* Kassen-Button bleibt fest oben fixiert */}
+            {(['admin', 'service_lead'].includes(user.role) || (user.departments || []).includes('service')) && (
+                <button onClick={() => setView('cash')} className="w-full bg-slate-900 text-white p-5 rounded-[2rem] shadow-xl flex items-center justify-between group active:scale-95 transition-transform mb-4">
+                    <div className="flex items-center gap-4">
+                        <div className="bg-white/20 p-3 rounded-2xl"><Euro size={24}/></div>
+                        <div className="text-left">
+                            <div className="font-black text-lg">Kassenbuch</div>
+                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Abrechnung & Zählung</div>
+                        </div>
                     </div>
+                    <ChevronRight className="opacity-50"/>
+                </button>
+            )}
 
-                    {/* Team Nachrichten Board */}
-                    <TeamBoard messages={data.messages || []} user={user} appId={appId} showToast={showToast} />
+            {/* Sortierbares Raster */}
+            <div className="grid grid-cols-2 gap-4 pb-20">
+                {order.map((cardId, index) => {
+                    const card = allCards.find(c => c.id === cardId);
+                    const config = modulesConfig[cardId];
+                    
+                    // Filter: Modul aktiviert + Rollen-Berechtigung
+                    if (!config?.enabled) return null;
+                    if (card.dept && user.role !== 'admin' && !user.role.includes('lead') && !(user.departments || []).includes(card.dept)) return null;
 
-                     {/* KASSEN BUTTON (Sichtbar für Admin, Leitung UND Service-Mitarbeiter) */}
-                    {(['admin', 'service_lead'].includes(user.role) || (user.departments || []).includes('service')) && (
-                        <button onClick={() => setView('cash')} className="w-full bg-slate-900 text-white p-5 rounded-[2rem] shadow-xl flex items-center justify-between group active:scale-95 transition-transform mb-4">
-                            <div className="flex items-center gap-4">
-                                <div className="bg-white/20 p-3 rounded-2xl"><Euro size={24}/></div>
-                                <div className="text-left">
-                                    <div className="font-black text-lg">Kassenbuch</div>
-                                    <div className="text-xs text-slate-400 font-bold uppercase">Abrechnung & Zählung</div>
-                                </div>
-                            </div>
-                            <ChevronRight className="opacity-50"/>
-                        </button>
-                    )}
-                    <div className="grid grid-cols-2 gap-4 pb-20">
-                        {/* Stempeluhr */}
-                         {modulesConfig.time?.enabled && (
+                    const statusVal = getCardValue(cardId);
+
+                    return (
+                        <div 
+                            key={cardId}
+                            draggable
+                            onDragStart={(e) => onDragStart(e, cardId)}
+                            onDragOver={(e) => { e.preventDefault(); onDragOver(index); }}
+                            onDragEnd={onDragEnd}
+                            className={`cursor-grab active:cursor-grabbing transition-all ${draggedItem === cardId ? 'opacity-20 scale-95' : 'opacity-100'}`}
+                        >
                             <DashCard
-                                title={t.time}
-                                icon={<Clock/>}
-                                col="bg-violet-500"
-                                customStatus={timeStatus}
-                                onClick={() => setView('time')}
-                                sub="Zeiterfassung"
+                                title={config.name || card.title}
+                                val={typeof statusVal === 'number' ? statusVal : null}
+                                customStatus={typeof statusVal === 'string' ? statusVal : null}
+                                icon={card.icon}
+                                col={card.col}
+                                onClick={() => setView(cardId)}
+                                sub={card.sub}
                             />
-                        )}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
 
-                        {/* Mise en Place */}
-                        {modulesConfig.prep?.enabled && (
-                            <DashCard
-                                title={t.prep}
-                                val={openPrep}
-                                icon={<ClipboardList/>}
-                                col="bg-indigo-500"
-                                onClick={() => setView('prep')}
-                                sub="Mise en place"
-                            />
-                        )}
-
-                        {/* Putzplan */}
-                        {modulesConfig.cleaning?.enabled && (
-                            <DashCard
-                                title={t.clean}
-                                val={openClean}
-                                icon={<Sparkles/>}
-                                col="bg-emerald-500"
-                                onClick={() => setView('cleaning')}
-                                sub="Hygienekonzept"
-                            />
-                        )}
-
-                        {modulesConfig.wiki?.enabled && (
-    <DashCard
-        title="Wissen"
-        icon={<BookOpen/>}
-        col="bg-amber-500"
-        onClick={() => setView('wiki')}
-        sub="Wiki & Videos"
-    />
-)}
-
-                        {/* Kühlung */}
-                        {modulesConfig.cooling?.enabled && (
-                            <DashCard
-                                title={t.temp}
-                                val={openTemp}
-                                icon={<Snowflake/>}
-                                col="bg-sky-500"
-                                onClick={() => setView('cooling')}
-                                sub="Temperaturen"
-                            />
-                        )}
-
-                        {/* Fett & Öl (Nur Küche) */}
-                        {modulesConfig.oil?.enabled && hasKitchenAccess && (
-                            <DashCard
-                                title={t.oil}
-                                val={openOil}
-                                icon={<Droplet/>}
-                                col="bg-amber-500"
-                                onClick={() => setView('oil')}
-                                sub="Fett & Öl"
-                            />
-                        )}
-
-                        {/* Einkauf */}
-                        {modulesConfig.inventory?.enabled && (
-                            <DashCard
-                                title={t.inventory}
-                                val={status.shoppingList?.length || 0}
-                                icon={<Truck/>}
-                                col="bg-slate-500"
-                                onClick={() => setView('inventory')}
-                                sub="Bestellliste"
-                            />
-                        )}
-                    </div>
-                </div>
-            );
-        };
 
         // --- BEZIRKSLEITUNG / MULTI-STORE MANAGEMENT ---
 
@@ -2877,22 +2861,83 @@ const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
         };
         // --- DASHBOARD & MODULES ---
         const TeamBoard = ({ messages, user, appId, showToast }) => {
-            const [newMsg, setNewMsg] = useState('');
-            const canPost = user.role === 'admin' || user.role.includes('lead');
-            const post = async () => {
-                if(!newMsg.trim()) return;
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), { text: newMsg, user: user.name, role: user.role, createdAt: serverTimestamp() });
-                setNewMsg(''); showToast("Nachricht gesendet");
-            };
-            const del = async (id) => { if(confirm("Löschen?")) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', id)); };
-            return (
-                <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden animate-in">
-                    <div className="flex justify-between items-center mb-4"><h3 className="font-black text-slate-800 flex items-center gap-2"><MessageCircle size={20}/> Team Board</h3></div>
-                    {canPost && <div className="flex gap-2 mb-4"><input value={newMsg} onChange={e=>setNewMsg(e.target.value)} placeholder="Nachricht an das Team..." className="w-full bg-slate-50 p-3 rounded-xl text-sm outline-none border border-slate-100"/><button onClick={post} className="bg-indigo-600 text-white p-3 rounded-xl"><Save size={18}/></button></div>}
-                    <div className="space-y-3 max-h-60 overflow-y-auto custom-scrollbar">{messages.length === 0 && <div className="text-center text-slate-400 text-xs italic py-4">Keine Nachrichten.</div>}{messages.map(m => (<div key={m.id} className="bg-slate-50 p-3 rounded-xl text-sm border border-slate-100"><div className="flex justify-between items-start mb-1"><span className={`text-xs font-bold px-2 py-0.5 rounded ${m.role==='admin'?'bg-indigo-100 text-indigo-700':'bg-slate-200 text-slate-600'}`}>{m.user}</span><div className="flex items-center gap-2"><span className="text-[10px] text-slate-400">{m.createdAt?.seconds ? new Date(m.createdAt.seconds*1000).toLocaleDateString() : ''}</span>{canPost && <button onClick={()=>del(m.id)} className="text-slate-300 hover:text-red-500"><X size={12}/></button>}</div></div><div className="text-slate-700 ml-1">{m.text}</div></div>))}</div>
+    const [newMsg, setNewMsg] = useState('');
+    // Prüfen, ob der User Admin oder eine Leitung ist
+    const canManage = user.role === 'admin' || user.role.includes('lead');
+
+    const post = async () => {
+        if(!newMsg.trim()) return;
+        try {
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), { 
+                text: newMsg, 
+                user: user.name, 
+                role: user.role, 
+                createdAt: serverTimestamp() 
+            });
+            setNewMsg(''); 
+            showToast("Nachricht gesendet");
+        } catch(e) { showToast("Fehler beim Senden", "error"); }
+    };
+
+    const deleteMessage = async (id) => {
+        if(!confirm("Diese Nachricht wirklich löschen?")) return;
+        try {
+            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', id));
+            showToast("Nachricht gelöscht");
+        } catch(e) { showToast("Fehler beim Löschen", "error"); }
+    };
+
+    return (
+        <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden animate-in">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="font-black text-slate-800 flex items-center gap-2"><MessageCircle size={20}/> Team Board</h3>
+            </div>
+            
+            {canManage && (
+                <div className="flex gap-2 mb-4">
+                    <input 
+                        value={newMsg} 
+                        onChange={e => setNewMsg(e.target.value)} 
+                        placeholder="Nachricht an das Team..." 
+                        className="w-full bg-slate-50 p-3 rounded-xl text-sm outline-none border border-slate-100 focus:border-indigo-300"
+                    />
+                    <button onClick={post} className="bg-indigo-600 text-white p-3 rounded-xl shadow-lg active:scale-90 transition-transform">
+                        <Plus size={18}/>
+                    </button>
                 </div>
-            );
-        };
+            )}
+
+            <div className="space-y-3 max-h-60 overflow-y-auto custom-scrollbar">
+                {messages.length === 0 && (
+                    <div className="text-center text-slate-400 text-xs italic py-4">Keine Nachrichten vorhanden.</div>
+                )}
+                {messages.map(m => (
+                    <div key={m.id} className="bg-slate-50 p-3 rounded-xl text-sm border border-slate-100 group">
+                        <div className="flex justify-between items-start mb-1">
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${m.role==='admin'?'bg-indigo-100 text-indigo-700':'bg-slate-200 text-slate-600'}`}>
+                                {m.user}
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[9px] text-slate-400 font-bold">
+                                    {m.createdAt?.seconds ? new Date(m.createdAt.seconds*1000).toLocaleDateString() : 'Jetzt'}
+                                </span>
+                                {canManage && (
+                                    <button 
+                                        onClick={() => deleteMessage(m.id)} 
+                                        className="text-slate-300 hover:text-red-500 p-1 bg-white rounded-md shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                        <Trash2 size={12}/>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                        <div className="text-slate-700 ml-1 font-medium leading-relaxed">{m.text}</div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
 
         const DashCard = ({ title, val, icon, col, onClick, sub, customStatus }) => {
             // Berechne einen fiktiven Fortschritt oder nutze Werte, falls verfügbar
