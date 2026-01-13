@@ -2414,35 +2414,12 @@ const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
 
             // --- AUTH & DATA LOADING ---
 
-            const handleRestaurantLogin = async (id) => {
-    if(id === 'head-admin') { 
-        setView('head-login'); 
-        return;
-    }
-    
-    setLoading(true);
-    const normId = normalizeId(id);
-    
-    try {
-        // Prüfen, ob die Filiale in der Globalen Registrierung existiert
-        const branchRef = doc(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'branches', normId);
-        const branchSnap = await getDoc(branchRef);
-        
-        if (branchSnap.exists()) {
-            localStorage.setItem('gastro_app_id', normId);
-            setAppId(normId);
-            // Wir bleiben im Loading-Status, bis die App-Daten geladen sind
-        } else {
-            showToast("Restaurant-ID nicht gefunden. Bitte Key nutzen.", "error");
-            setLoading(false);
-        }
-    } catch (e) {
-        console.error("Login Error", e);
-        showToast("Verbindungsfehler", "error");
-        setLoading(false);
-    }
-};
-
+            const handleRestaurantLogin = (id) => {
+                if(id === 'head-admin') { setView('head-login'); } else {
+                    const normId = normalizeId(id);
+                    setLoading(true); localStorage.setItem('gastro_app_id', normId); setAppId(normId); 
+                }
+            };
             
             const deleteBranchLocal = () => { localStorage.removeItem('gastro_app_id'); window.location.reload(); };
 
@@ -2601,108 +2578,24 @@ const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
             if (showTutorial) return <div className="fixed inset-0 z-[200] bg-slate-900/95 flex items-center justify-center p-6 animate-in text-white text-center"><h1>Setup Complete</h1><Button onClick={()=>setShowTutorial(false)}>OK</Button></div>;
 
             // 4. Staff Login Screen
-            // --- BRANCH LOCK & LOGIN SCREEN ---
-if (!appUser) {
-    // 1. Prüfen, ob die Filiale für diesen Browser-Tab bereits entsperrt wurde
-    const isUnlocked = sessionStorage.getItem(`unlocked_${appId}`);
-    
-    // 2. Wenn nicht entsperrt, zeige den Master-Passwort-Sperrbildschirm
-    if (!isUnlocked) {
-        const handleUnlock = (e) => {
-            if (e.key === 'Enter') {
-                const inputPw = e.target.value;
-                const masterKey = data.settings?.masterKey;
-
-                // Vergleich mit dem in Firebase hinterlegten Master-Key
-                if (masterKey && inputPw === masterKey) {
-                    sessionStorage.setItem(`unlocked_${appId}`, 'true');
-                    showToast("Filiale erfolgreich entsperrt", "success");
-                    // Kleiner State-Trigger oder Reload, um den LoginScreen anzuzeigen
-                    window.location.reload(); 
-                } else {
-                    showToast("Falsches Master-Passwort!", "error");
-                    // Haptisches Feedback bei Fehlern (optional)
-                    if (navigator.vibrate) navigator.vibrate(200);
-                }
-            }
-        };
-
-        return (
-            <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 text-white overflow-hidden relative">
-                {/* Hintergrund-Effekt für das Design */}
-                <div className="absolute top-[-10%] right-[-10%] w-64 h-64 bg-indigo-600 rounded-full blur-[120px] opacity-20"></div>
-                
-                <div className="max-w-sm mx-auto w-full space-y-8 animate-in relative z-10">
-                    <div className="text-center">
-                        <AppLogo large design={data.company?.design} />
-                        <div className="mt-4 inline-block px-3 py-1 bg-white/5 border border-white/10 rounded-full">
-                            <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-[0.2em] flex items-center gap-2">
-                                <Lock size={10}/> ID: {appId}
-                            </span>
-                        </div>
-                    </div>
-
-                    <div className="bg-white/10 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/10 shadow-2xl space-y-6">
-                        <div className="text-center space-y-2">
-                            <h2 className="text-xl font-black tracking-tight">Filiale gesperrt</h2>
-                            <p className="text-xs text-slate-400 font-medium">Geben Sie das Master-Passwort ein, um den Team-Login freizuschalten.</p>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div className="relative">
-                                <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
-                                <input 
-                                    type="password" 
-                                    placeholder="Master-Passwort" 
-                                    autoFocus
-                                    className="w-full pl-12 p-4 rounded-2xl bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-mono"
-                                    onKeyDown={handleUnlock}
-                                />
-                            </div>
-                            
-                            <p className="text-[10px] text-center text-slate-500 font-bold uppercase">Drücken Sie Enter zum Bestätigen</p>
-                        </div>
-
-                        <div className="pt-4 border-t border-white/5">
-                            <button 
-                                onClick={() => { localStorage.clear(); window.location.reload(); }} 
-                                className="w-full py-3 text-xs text-slate-400 hover:text-red-400 transition-colors uppercase font-bold tracking-widest flex items-center justify-center gap-2"
-                            >
-                                <ArrowLeft size={14}/> ID ändern / Abbrechen
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    // 3. Wenn entsperrt, zeige den normalen Mitarbeiter-Login
-    return (
-        <LoginScreen 
-            staff={data.staff} 
-            restaurantId={appId} 
-            company={data.company} 
-            yesterdayOil={status.yesterdayOil} 
-            fryers={data.fryers} 
-            onLogin={handleUserLogin} 
-            onLogoutSystem={() => { 
-                // Beim System-Logout auch den Sperrbildschirm reaktivieren
-                sessionStorage.removeItem(`unlocked_${appId}`);
-                localStorage.clear(); 
-                window.location.reload(); 
-            }} 
-            onSeed={() => seedDB()} 
-            showToast={showToast} 
-            lang={lang} 
-            onMasterRecovery={handleMasterKeyRecovery} 
-            themeColor={design.primaryColor || '#0f172a'}
-            workerStatus={status.workerStatus || {}}
-            activeWorkers={status.activeWorkers || []} 
-        />
-    );
-}
-
+            if (!appUser) return <LoginScreen 
+                staff={data.staff} 
+                restaurantId={appId} 
+                company={data.company} 
+                yesterdayOil={status.yesterdayOil} 
+                fryers={data.fryers} 
+                onLogin={handleUserLogin} 
+                onLogoutSystem={()=>{localStorage.clear(); window.location.reload()}} 
+                onSeed={()=>seedDB()} 
+                showToast={showToast} 
+                lang={lang} 
+                modulesConfig={modulesConfig}
+                onMasterRecovery={handleMasterKeyRecovery} 
+                tempMasterPw={tempMasterPw} 
+                themeColor={design.primaryColor || '#0f172a'}
+                workerStatus={status.workerStatus || {}}
+                activeWorkers={status.activeWorkers || []} 
+            />;
 
             // 5. MAIN APP UI
             return (
@@ -4192,4 +4085,4 @@ if ('serviceWorker' in navigator) {
 </script>
 
 </body>
-</html>
+        </html>
