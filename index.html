@@ -2062,65 +2062,79 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
 
 */
     
-
-// --- SMART ORDERING V6 (UI FIX: BUTTONS IM WEG) ---
 const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
-    // Views: dashboard, manage_supplier, today_check, cart_review, incoming_list, incoming_check
     const [view, setView] = useState('dashboard'); 
     const [selectedSupplier, setSelectedSupplier] = useState(null);
     const [selectedOrder, setSelectedOrder] = useState(null);
-    
-    // Daten
-    const suppliers = data.suppliers || [];
     const [sentOrders, setSentOrders] = useState([]); 
-
-    // Warenkorb
     const [cart, setCart] = useState([]); 
     const [manualItem, setManualItem] = useState('');
-
-    // Editor & Helper
     const [editSup, setEditSup] = useState({ name: '', email: '', catalog: [] });
     const [newCatItem, setNewCatItem] = useState({ 
         name: '', unit: '', sku: '', target: '', 
         schedule: { Mo:true, Di:true, Mi:true, Do:true, Fr:true, Sa:true, So:true } 
     });
-    
-    // Status für Wareneingang
     const [checkList, setCheckList] = useState({}); 
 
-    const days = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+    const suppliers = data.suppliers || [];
     const todayShort = getWeekdayShort();
 
-    // --- DATA LOADING ---
+    // --- CSV IMPORT LOGIK ---
+    const handleCSVImport = async (file, supplierId) => {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const text = e.target.result;
+                const lines = text.split('\n');
+                
+                [span_1](start_span)// Extrahiere Lieferant aus Zeile 3[span_1](end_span)
+                const supplierLine = lines[2]?.split(',');
+                const fileNameSupplier = supplierLine ? supplierLine[2].trim() : "Neuer Lieferant";
+
+                [span_2](start_span)// Produkte ab Zeile 7[span_2](end_span)
+                const productLines = lines.slice(6); 
+                
+                const newItems = productLines.map(line => {
+                    const cols = line.split(',');
+                    if (cols.length < 5 || !cols[2]) return null;
+                    
+                    return {
+                        [span_3](start_span)category: cols[0].trim(),               // Category[span_3](end_span)
+                        [span_4](start_span)sku: cols[1].trim(),                    // product_id[span_4](end_span)
+                        [span_5](start_span)name: cols[2].replace(/"/g, '').trim(), // product_name[span_5](end_span)
+                        [span_6](start_span)unit: cols[3].replace(/"/g, '').trim(), // unit[span_6](end_span)
+                        [span_7](start_span)target: cols[4].trim(),                 // par[span_7](end_span)
+                        schedule: { Mo:true, Di:true, Mi:true, Do:true, Fr:true, Sa:true, So:true }
+                    };
+                }).filter(item => item !== null);
+
+                if (newItems.length === 0) throw new Error("Keine Artikel gefunden.");
+
+                const supplierRef = doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', supplierId);
+                await updateDoc(supplierRef, {
+                    catalog: newItems,
+                    name: fileNameSupplier 
+                });
+
+                showToast(`${newItems.length} Artikel importiert!`);
+                setView('dashboard');
+            } catch (err) {
+                showToast("Import fehlgeschlagen", "error");
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    // --- STANDARD FUNKTIONEN ---
     useEffect(() => {
         if(view === 'incoming_list' || view === 'dashboard') {
             const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), where('status', '==', 'sent'), orderBy('createdAt', 'desc'));
-            const unsub = onSnapshot(q, (snap) => {
-                setSentOrders(snap.docs.map(d => ({id: d.id, ...d.data()})));
-            });
-            return () => unsub();
+            return onSnapshot(q, (snap) => setSentOrders(snap.docs.map(d => ({id: d.id, ...d.data()}))));
         }
     }, [view, appId]);
 
-    // --- HELPER: PDF GENERATOR ---
-    const generatePDF = (orderData) => {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-        doc.setFontSize(22); doc.text(`Bestellung`, 14, 20);
-        doc.setFontSize(10);
-        doc.text(`Absender: ${data.company?.name || 'Gastromaster'}`, 14, 30);
-        doc.text(`Datum: ${new Date().toLocaleString()}`, 14, 35);
-        doc.text(`Besteller: ${user.name}`, 14, 40);
-        doc.setFontSize(12); doc.text(`Lieferant: ${orderData.supplierName}`, 14, 50);
-
-        const tableRows = orderData.items.map(item => [item.qty, item.name, item.unit||'-', item.sku||'-']);
-        doc.autoTable({ head: [["Menge", "Artikel", "Einheit", "Art-Nr."]], body: tableRows, startY: 55, theme: 'grid', headStyles: { fillColor: [40, 40, 40] } });
-        return doc.output('datauristring').split(',')[1];
-    };
-
-    // --- LOGIC: CART ---
-    const updateCartItem = (item, val, isManual=false) => {
-        const lineItem = { name: item.name||item, unit: item.unit||'', sku: item.sku||'', qty: val, isManual };
+    const updateCartItem = (item, val) => {
+        const lineItem = { name: item.name||item, unit: item.unit||'', sku: item.sku||'', qty: val };
         const idx = cart.findIndex(c => c.name === lineItem.name);
         let newCart = [...cart];
         if (!val || val == 0) { if (idx >= 0) newCart.splice(idx, 1); } 
@@ -2128,206 +2142,56 @@ const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
         setCart(newCart);
     };
 
-    const adjustQty = (item, delta) => {
-        const found = cart.find(c => c.name === (item.name || item));
-        let current = found ? parseFloat(found.qty) : 0;
-        if(isNaN(current)) current = 0;
-        updateCartItem(item, Math.max(0, current + delta).toString());
-    };
-
-    const calculateNeed = (item, currentStock) => {
-        if(!item.target) return;
-        const target = parseFloat(item.target);
-        const current = parseFloat(currentStock);
-        if(isNaN(target) || isNaN(current)) return;
-        const need = Math.max(0, target - current);
-        updateCartItem(item, need.toString());
-    };
-
-    // --- LOGIC: SENDING ---
-    const sendOrder = async () => {
-        if (cart.length === 0) return;
-        const orderData = { supplierId: selectedSupplier.id, supplierName: selectedSupplier.name, supplierEmail: selectedSupplier.email, items: cart, user: user.name, dateStr: new Date().toISOString().slice(0, 10) };
-        let pdfBase64 = null; try { pdfBase64 = generatePDF(orderData); } catch(e) {}
-
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), { ...orderData, status: 'sent', createdAt: serverTimestamp() });
-        
-        const subject = `Bestellung ${data.company?.name||''} - ${new Date().toLocaleDateString()}`;
-        let body = `Hallo,\nbitte folgende Bestellung erfassen:\n\n`;
-        cart.forEach(pos => body += `- ${pos.qty} ${pos.name}\n`);
-        sendEmailJS(selectedSupplier.email, subject, body, pdfBase64, "Order.pdf");
-        setCart([]); setView('dashboard');
-    };
-
-    // --- LOGIC: WARENEINGANG ---
-    const finishIncoming = async () => {
-        if(!selectedOrder) return;
-        const missingItems = selectedOrder.items.filter((_, i) => checkList[i] === 'missing');
-        const isClean = missingItems.length === 0;
-        const newStatus = isClean ? 'completed' : 'claimed';
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', selectedOrder.id), { status: newStatus, checkedBy: user.name, checkedAt: serverTimestamp(), issues: missingItems });
-
-        if(!isClean) {
-            const subject = `REKLAMATION: Bestellung vom ${new Date(selectedOrder.createdAt.seconds*1000).toLocaleDateString()}`;
-            let body = `Hallo Team von ${selectedOrder.supplierName},\n\nbei der Warenannahme wurden folgende Fehler festgestellt:\n\n`;
-            missingItems.forEach(item => body += `[FEHLT/DEFEKT] ${item.qty}x ${item.name}\n`);
-            body += `\nBitte um Gutschrift oder Nachlieferung.\n\n${user.name}`;
-            sendEmailJS(selectedOrder.supplierEmail, subject, body, null, null);
-            showToast("Bestellung abgeschlossen & Reklamation gesendet!", "warning");
-        } else {
-            showToast("Wareneingang erfolgreich.", "success");
-        }
-        setView('incoming_list');
-    };
-
-    const sendEmailJS = async (to, subject, body, attachment, filename) => {
-        const SID = "service_dejsfye";  // <--- ÄNDERN
-        const TID = "template_mcithcs"; // <--- ÄNDERN
-        const KEY = "TMFx2hP-RUgy_g9LC";    // <--- ÄNDERN
-
-        if (window.emailjs && SID) {
-            try { await window.emailjs.send(SID, TID, { to_email: to, subject, message: body, from_name: data.company?.name, content: attachment, file_name: filename }); return true; } 
-            catch (e) { window.location.href = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; }
-        } else { window.location.href = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; }
-    };
-
-    // --- UI COMPONENTS ---
-    const QtyControl = ({ item }) => {
-        const inCart = cart.find(c => c.name === (item.name||item));
-        const val = inCart ? inCart.qty : '';
-        const [stockInput, setStockInput] = useState('');
-
-        return (
-            <div className="flex flex-col gap-2 items-end">
-                {item.target && (
-                    <div className="flex items-center gap-2 bg-indigo-50 px-2 py-1 rounded-lg">
-                        <span className="text-[9px] font-bold text-indigo-400 uppercase">Habe noch:</span>
-                        <input type="number" placeholder="Ist" className="w-10 bg-white border border-indigo-100 rounded text-center text-xs font-bold outline-none" value={stockInput} onChange={(e) => { setStockInput(e.target.value); calculateNeed(item, e.target.value); }}/>
-                        <span className="text-[9px] font-bold text-indigo-400">/ {item.target}</span>
-                    </div>
-                )}
-                <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1 shadow-inner">
-                    <button onClick={()=>adjustQty(item, -1)} className="w-8 h-8 bg-white rounded-lg text-slate-600 font-bold">-</button>
-                    <input type="number" value={val} onChange={(e)=>updateCartItem(item, e.target.value)} placeholder="0" className="w-10 h-8 bg-transparent text-center font-black outline-none"/>
-                    <button onClick={()=>adjustQty(item, 1)} className="w-8 h-8 bg-indigo-600 text-white rounded-lg font-bold">+</button>
-                </div>
-            </div>
-        );
-    };
-
-    // --- VIEW: SUPPLIER MANAGER ---
+    // --- RENDER VIEWS ---
     if (view === 'manage_supplier') return (
         <div className="animate-in space-y-4 pb-40">
-             <div className="flex justify-between items-center"><h2 className="text-2xl font-black">Lieferant Setup</h2><button onClick={()=>setView('dashboard')} className="p-2 bg-slate-100 rounded-full"><X/></button></div>
-             <div className="bg-white p-4 rounded-2xl border border-slate-100 space-y-3"><h3 className="font-bold text-sm uppercase text-slate-400">Stammdaten</h3><input value={editSup.name} onChange={e=>setEditSup({...editSup, name:e.target.value})} placeholder="Name" className="w-full p-3 bg-slate-50 rounded-xl font-bold"/><input value={editSup.email} onChange={e=>setEditSup({...editSup, email:e.target.value})} placeholder="Email" className="w-full p-3 bg-slate-50 rounded-xl font-bold"/></div>
-             <div className="bg-white p-4 rounded-2xl border border-slate-100 space-y-3"><h3 className="font-bold text-sm uppercase text-slate-400">Artikel anlegen</h3>
-                <div className="flex gap-2"><input value={newCatItem.name} onChange={e=>setNewCatItem({...newCatItem, name:e.target.value})} placeholder="Produkt" className="flex-1 p-2 bg-slate-50 rounded-lg font-bold"/><input value={newCatItem.target} onChange={e=>setNewCatItem({...newCatItem, target:e.target.value})} placeholder="Soll" className="w-16 p-2 bg-slate-50 rounded-lg text-center font-bold"/></div>
-                <div className="bg-slate-50 p-2 rounded-xl flex justify-between">{days.map(d=><button key={d} onClick={()=>setNewCatItem(p=>({...p, schedule:{...p.schedule,[d]:!p.schedule[d]}}))} className={`w-8 h-8 rounded-lg text-[10px] font-bold ${newCatItem.schedule[d]?'bg-indigo-600 text-white':'bg-white text-slate-300'}`}>{d}</button>)}</div>
-                <button onClick={()=>{if(!newCatItem.name)return;setEditSup({...editSup, catalog:[...(editSup.catalog||[]), newCatItem]});setNewCatItem({...newCatItem, name:''})}} className="w-full py-2 bg-emerald-500 text-white rounded-lg font-bold"><Plus size={16}/></button>
-             </div>
-             <div className="space-y-1">{(editSup.catalog||[]).map((c,i)=>(<div key={i} className="flex justify-between items-center text-sm bg-white p-3 rounded-xl border"><div>{c.name} {c.target && <span className="bg-indigo-50 text-indigo-600 px-1 rounded text-xs">Soll: {c.target}</span>}</div><button onClick={()=>{const n=[...editSup.catalog];n.splice(i,1);setEditSup({...editSup,catalog:n})}} className="text-red-400"><X size={14}/></button></div>))}</div>
-             <button onClick={async()=>{if(editSup.id)await updateDoc(doc(db,'artifacts',appId,'public','data','suppliers',editSup.id),editSup);else await addDoc(collection(db,'artifacts',appId,'public','data','suppliers'),editSup);setEditSup({name:'',email:'',catalog:[]});setView('dashboard');}} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black">Speichern</button>
+            <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-black">Lieferant Setup</h2>
+                <button onClick={()=>setView('dashboard')} className="p-2 bg-slate-100 rounded-full"><X/></button>
+            </div>
+            
+            {/* IMPORT BOX */}
+            {editSup.id && (
+                <div className="bg-indigo-50 p-6 rounded-[2rem] border-2 border-dashed border-indigo-200 text-center space-y-3">
+                    <Database className="mx-auto text-indigo-400" size={32}/>
+                    <div className="text-xs font-black text-indigo-900 uppercase">Artikelliste Import (CSV)</div>
+                    <label className="block">
+                        <span className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold text-xs cursor-pointer inline-block shadow-lg">DATEI WÄHLEN</span>
+                        <input type="file" accept=".csv" className="hidden" onChange={(e) => handleCSVImport(e.target.files[0], editSup.id)} />
+                    </label>
+                </div>
+            )}
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-100 space-y-3">
+                <Input value={editSup.name} onChange={e=>setEditSup({...editSup, name:e.target.value})} placeholder="Name des Lieferanten" />
+                <Input value={editSup.email} onChange={e=>setEditSup({...editSup, email:e.target.value})} placeholder="Bestell-Email" />
+            </div>
+            
+            <Button onClick={async()=>{
+                if(editSup.id) await updateDoc(doc(db,'artifacts',appId,'public','data','suppliers',editSup.id),editSup);
+                else await addDoc(collection(db,'artifacts',appId,'public','data','suppliers'),editSup);
+                setView('dashboard');
+            }} className="bg-slate-900 text-white">Speichern</Button>
         </div>
     );
 
-    // --- VIEW: INCOMING LIST ---
-    if (view === 'incoming_list') return (
-        <div className="animate-in space-y-4 pb-40">
-            <div className="flex justify-between items-center"><h2 className="text-2xl font-black text-slate-800">Wareneingang</h2><button onClick={()=>setView('dashboard')} className="text-sm font-bold text-slate-400">Zurück</button></div>
-            <div className="space-y-3">
-                {sentOrders.map(order => (
-                    <div key={order.id} onClick={()=>{setSelectedOrder(order); setCheckList({}); setView('incoming_check');}} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center cursor-pointer hover:border-indigo-300">
-                        <div><div className="font-bold text-slate-800">{order.supplierName}</div><div className="text-xs text-slate-400">{new Date(order.createdAt?.seconds*1000).toLocaleDateString()} • {order.items.length} Pos.</div></div><ChevronRight className="text-slate-300"/>
-                    </div>
-                ))}
-                {sentOrders.length === 0 && <div className="text-center p-10 text-slate-400 border-2 border-dashed rounded-[2rem]">Keine offenen Lieferungen.</div>}
-            </div>
-        </div>
-    );
-
-    // --- VIEW: INCOMING CHECK ---
-    if (view === 'incoming_check' && selectedOrder) return (
-        <div className="animate-in space-y-4 pb-40">
-            <div className="flex justify-between items-center sticky top-0 bg-slate-50/95 backdrop-blur py-2 z-20"><div><h2 className="text-xl font-black">Kontrolle</h2><div className="text-xs font-bold text-indigo-500">{selectedOrder.supplierName}</div></div><button onClick={()=>setView('incoming_list')} className="text-slate-400 text-sm font-bold">Abbruch</button></div>
-            <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
-                {selectedOrder.items.map((item, idx) => {
-                    const status = checkList[idx] || 'pending';
-                    return (
-                        <div key={idx} className={`p-4 border-b border-slate-50 flex justify-between items-center transition-colors ${status==='missing'?'bg-red-50':status==='ok'?'bg-emerald-50/30':''}`}>
-                            <div><div className="font-bold text-slate-800 text-lg">{item.qty} x {item.name}</div><div className="text-xs text-slate-400">{item.unit}</div></div>
-                            <div className="flex gap-2"><button onClick={()=>setCheckList({...checkList, [idx]:'ok'})} className={`p-3 rounded-xl font-bold ${status==='ok'?'bg-emerald-500 text-white':'bg-slate-100 text-slate-300'}`}><Check/></button><button onClick={()=>setCheckList({...checkList, [idx]:'missing'})} className={`p-3 rounded-xl font-bold ${status==='missing'?'bg-red-500 text-white':'bg-slate-100 text-slate-300'}`}><AlertTriangle/></button></div>
-                        </div>
-                    );
-                })}
-            </div>
-            <div className="fixed bottom-24 left-5 right-5 z-20"><button onClick={finishIncoming} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-lg shadow-xl flex items-center justify-center gap-2"><Save size={20}/> Abschluss & Buchen</button></div>
-        </div>
-    );
-
-    // --- VIEW: TODAY CHECK (Bestellmaske) ---
-    if (view === 'today_check') {
-        const todaysItems = (selectedSupplier.catalog || []).filter(item => item.schedule && item.schedule[todayShort]);
-        return (
-            <div className="animate-in space-y-4 pb-40"> 
-                <div className="flex justify-between items-center sticky top-0 bg-slate-50/95 backdrop-blur py-2 z-20"><div><h2 className="text-2xl font-black text-slate-800">Bestellung</h2><div className="text-xs font-bold text-indigo-500 uppercase">{selectedSupplier.name} • {todayShort}</div></div><button onClick={()=>{setView('dashboard'); setCart([]);}} className="text-slate-400 text-sm font-bold">Abbruch</button></div>
-                {todaysItems.length === 0 && <div className="text-center p-10 text-slate-400 border-2 border-dashed rounded-[2rem]">Heute nichts geplant.</div>}
-                <div className="space-y-3">
-                    {todaysItems.map((item, idx) => (
-                        <div key={idx} className="bg-white p-3 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
-                            <div className="flex-1 mr-2"><div className="font-bold text-slate-800 leading-tight">{item.name}</div><div className="text-[10px] text-slate-500 mt-1">{item.unit}</div></div>
-                            <QtyControl item={item} />
-                        </div>
-                    ))}
-                </div>
-                <div className="mt-6 pt-6 border-t border-slate-200">
-                    <h3 className="text-xs font-bold uppercase text-slate-400 mb-2">Zusätzlich</h3>
-                    <div className="flex gap-2"><input value={manualItem} onChange={e=>setManualItem(e.target.value)} placeholder="Produkt..." className="flex-1 p-3 bg-white border border-slate-200 rounded-xl font-bold"/><button onClick={()=>{updateCartItem(manualItem,'1',true);setManualItem('')}} className="bg-slate-900 text-white p-3 rounded-xl"><Plus/></button></div>
-                </div>
-                {cart.length > 0 && <div className="fixed bottom-24 left-5 right-5 z-20"><button onClick={()=>setView('cart_review')} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black text-lg shadow-2xl flex items-center justify-center gap-2 animate-in">Zur Kontrolle ({cart.length}) <ArrowLeft className="rotate-180"/></button></div>}
-            </div>
-        );
-    }
-
-    // --- VIEW: CART REVIEW ---
-    if (view === 'cart_review') {
-        return (
-            <div className="animate-in space-y-4 pb-40">
-                <div className="flex justify-between items-center sticky top-0 bg-slate-50/95 backdrop-blur py-2 z-20"><div><h2 className="text-2xl font-black">Kontrolle</h2></div><button onClick={()=>setView('today_check')} className="text-slate-400 text-sm font-bold">Zurück</button></div>
-                <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
-                    {cart.map((c, i) => (
-                        <div key={i} className="p-4 border-b border-slate-50 flex justify-between items-center last:border-0"><div className="flex-1 font-bold text-slate-800">{c.name}</div><QtyControl item={c} /></div>
-                    ))}
-                </div>
-                <div className="fixed bottom-24 left-5 right-5 z-20"><button onClick={sendOrder} className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-white rounded-2xl font-black text-lg shadow-2xl flex items-center justify-center gap-2"><Truck size={24}/> Bestellung Senden</button></div>
-            </div>
-        );
-    }
-
-    // --- VIEW: DASHBOARD ---
+    // Dashboard View (Standard)
     return (
         <div className="animate-in space-y-6 pb-40">
-            <div className="flex justify-between items-end mb-4">
-                <div><h2 className="text-3xl font-black text-slate-800">Bestellung</h2><p className="opacity-60 text-sm font-medium">Auto-PDF & Wareneingang</p></div>
-                <div className="flex gap-2">
-                    {/* HIER IST DAS UI UPDATE: Buttons nebeneinander */}
-                    <button onClick={()=>setView('incoming_list')} className="bg-white text-indigo-600 border border-indigo-100 p-3 rounded-2xl shadow-sm relative"><ClipboardCheck size={20}/>
-                       {sentOrders.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{sentOrders.length}</span>}
-                    </button>
-                    <button onClick={()=>{setEditSup({name:'',email:'',catalog:[]}); setView('manage_supplier');}} className="bg-slate-900 text-white p-3 rounded-2xl shadow-lg"><Plus size={20}/></button>
-                </div>
+            <div className="flex justify-between items-end">
+                <div><h2 className="text-3xl font-black">Bestellung</h2><p className="opacity-60 text-sm">Lieferanten & Waren</p></div>
+                <button onClick={()=>{setEditSup({name:'',email:'',catalog:[]}); setView('manage_supplier');}} className="bg-slate-900 text-white p-3 rounded-2xl"><Plus/></button>
             </div>
 
-            <div className="grid grid-cols-1 gap-4">{suppliers.map(s => {
-                const todayCount = (s.catalog || []).filter(i => i.schedule && i.schedule[todayShort]).length;
-                return (
-                    <div key={s.id} onClick={()=>{setSelectedSupplier(s); setView('today_check');}} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm relative group cursor-pointer active:scale-95 transition-transform">
-                        <div className="flex items-center gap-3 mb-4"><div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 font-bold"><Truck size={24}/></div><div><div className="font-bold text-xl text-slate-800">{s.name}</div><div className="text-xs text-slate-400">{s.email}</div></div></div>
-                        {todayCount > 0 ? <div className="bg-amber-50 border border-amber-100 p-3 rounded-xl flex items-center gap-3"><div className="bg-amber-500 text-white font-bold w-8 h-8 rounded-lg flex items-center justify-center text-sm">{todayCount}</div><div className="text-xs font-bold text-amber-800 uppercase">Artikel für Heute<br/><span className="opacity-60 font-normal normal-case">Jetzt prüfen</span></div></div> : <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl text-center text-xs text-slate-400">Heute keine geplanten Artikel.</div>}
-                        <div className="absolute top-5 right-5 flex gap-2"><button onClick={(e)=>{e.stopPropagation(); setEditSup({...s}); setView('manage_supplier');}} className="p-2 bg-slate-100 text-slate-400 rounded-lg hover:text-indigo-600"><Settings size={18}/></button><button onClick={(e)=>{e.stopPropagation();if(confirm("Löschen?"))deleteDoc(doc(db,'artifacts',appId,'public','data','suppliers',s.id));}} className="p-2 bg-slate-100 text-slate-400 rounded-lg hover:text-red-600"><Trash2 size={18}/></button></div>
+            <div className="grid gap-4">
+                {suppliers.map(s => (
+                    <div key={s.id} onClick={()=>{setSelectedSupplier(s); setView('today_check');}} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm relative cursor-pointer active:scale-95 transition-transform">
+                        <div className="font-bold text-xl">{s.name}</div>
+                        <div className="text-xs text-slate-400">{s.catalog?.length || 0} Artikel im Katalog</div>
+                        <button onClick={(e)=>{e.stopPropagation(); setEditSup({...s}); setView('manage_supplier');}} className="absolute top-5 right-5 p-2 bg-slate-50 rounded-lg"><Settings size={18}/></button>
                     </div>
-                );
-            })}</div>
-            {suppliers.length===0 && <div className="text-center p-10 border-2 border-dashed border-slate-200 rounded-[2rem] text-slate-400"><p>Keine Lieferanten.</p></div>}
+                ))}
+            </div>
         </div>
     );
 };
