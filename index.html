@@ -3258,8 +3258,29 @@ const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
 
         const Oil = ({ data, status, user, appId, showToast, lang }) => { 
             const [inp, setInp] = useState({}); const active = (data.fryers || []).filter(d => d.status!=='defekt'); const signature = (status.signatures || {})['oil']; const t = DICTIONARY[lang]; const oilLogs = status.oilLogs || {}; const canSign = active.length > 0 && active.every(d => oilLogs[d.id]); 
-            const save = async (dev) => { const t = inp[dev.id]?.t, p = inp[dev.id]?.p; if(!t || !p) return; await addDoc(collection(db,'artifacts',appId,'public','data','logs_oil'), { deviceId:dev.id, deviceName:dev.name, temp:t, tpm:p, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); await logBranchAction(appId, user.name, 'OIL_LOG', `${dev.name}: ${p}% TPM`); showToast("Gespeichert"); }; 
-            const deleteLog = async (logId) => { if(confirm("Eintrag wirklich löschen?")) { await deleteDoc(doc(db,'artifacts',appId,'public','data','logs_oil', logId)); showToast("Gelöscht"); }}; 
+            const save = async (dev) => 
+                    { 
+                            const t = inp[dev.id]?.t, p = inp[dev.id]?.p; 
+                            if(!t || !p) return; 
+                            await addDoc(collection(db,'artifacts',appId,'public','data','logs_oil'), { 
+                                    deviceId:dev.id, deviceName:dev.name, temp:t, tpm:p, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); 
+                            await logBranchAction(appId, user.name, 'OIL_LOG', `${dev.name}: ${p}% TPM`); 
+                            showToast("Gespeichert"); 
+                    }; 
+           const deleteLog = async (logId, deviceId) => { 
+                    if(confirm("Eintrag wirklich löschen?")) { 
+                        // 1. Löscht den Eintrag aus der Datenbank
+                        await deleteDoc(doc(db,'artifacts',appId,'public','data','logs_oil', logId)); 
+                        
+                        // 2. LEERT DIE FELDER LOKAL
+                        setInp(prev => ({
+                            ...prev,
+                            [deviceId]: { t: '', p: '' } // Setzt Temperatur (t) und TPM (p) auf leer
+                        }));
+                        
+                        showToast("Gelöscht und Felder geleert"); 
+                    }
+                };
             const sign = async () => { if(confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) { await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_oil`), { module:'oil', user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); await logBranchAction(appId, user.name, 'SIGNATURE', 'Oil protocol signed'); showToast("Protokoll signiert!"); } }; 
             return (
                 <div className="animate-in space-y-6">
