@@ -3268,37 +3268,122 @@ const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
                             showToast("Gespeichert"); 
                     }; 
           const deleteLog = async (logId, deviceId) => { 
-    if (!logId) {
-        // Falls keine ID da ist (Fehlermeldung verhindern), einfach Felder leeren
-        setInp(prev => ({ ...prev, [deviceId]: { t: '', p: '' } }));
-        return;
-    }
-
     if(confirm("Eintrag wirklich löschen?")) { 
         try {
-            // Erst in der Datenbank löschen
-            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_oil', logId)); 
-
-            // JETZT: Die Felder der betroffenen Fritteuse leeren
+            // 1. Löschen in der Datenbank (nur wenn logId existiert)
+            if (logId) {
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_oil', logId)); 
+            }
+            
+            // 2. Felder der betroffenen Fritteuse leeren (IMMER ausführen)
             setInp(prev => ({
                 ...prev,
                 [deviceId]: { t: '', p: '' } 
             }));
-
-            showToast("Gelöscht und Felder geleert"); 
+            
+            showToast("Werte zurückgesetzt"); 
         } catch (e) {
-            console.error("Löschfehler:", e);
+            console.error("Fehler beim Löschen:", e);
+            // Selbst bei Fehler: Felder leeren, damit der User neu tippen kann
+            setInp(prev => ({ ...prev, [deviceId]: { t: '', p: '' } }));
         }
     }
 };
             const sign = async () => { if(confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) { await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_oil`), { module:'oil', user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); await logBranchAction(appId, user.name, 'SIGNATURE', 'Oil protocol signed'); showToast("Protokoll signiert!"); } }; 
             return (
-                <div className="animate-in space-y-6">
-                    <div><h2 className="text-3xl font-black text-inherit">{t.oil}</h2><p className="text-inherit opacity-60 text-sm font-medium">TPM Messung</p></div>
-                    <div className="space-y-4">{active.map(dev => { const l = oilLogs[dev.id]; const quality = l ? (l.tpm>=24?'bad':l.tpm>=20?'warn':'good') : null; const colors = { bad: 'bg-red-500 shadow-red-200', warn: 'bg-amber-500 shadow-amber-200', good: 'bg-emerald-500 shadow-emerald-200' }; const labels = { bad: 'Wechseln', warn: 'Filtern', good: 'OK' }; return (<div key={dev.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm"><div className="flex justify-between items-center mb-6"><span className="font-bold text-lg text-slate-700">{dev.name}</span>{l ? <div className="flex items-center gap-2"><span className={`text-white text-xs font-black px-3 py-1.5 rounded-xl uppercase shadow-lg ${colors[quality]}`}>{labels[quality]}</span><button onClick={()=>deleteLog(l.id)} className="p-2 bg-slate-100 rounded-full hover:bg-red-100 hover:text-red-500 transition-colors"><Trash2 size={14}/></button></div> : <span className="bg-slate-100 text-slate-400 text-xs font-bold px-2 py-1 rounded-lg">Messung offen</span>}</div>{!l ? (<div className="flex gap-3"><div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">Temp</div><Input type="number" inputMode="decimal" placeholder="°C" className="text-center h-14 font-bold text-xl" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],t:e.target.value}})} /></div><div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">TPM %</div><Input type="number" inputMode="decimal" placeholder="%" className="text-center h-14 font-bold text-xl" onChange={e=>setInp({...inp,[dev.id]:{...inp[dev.id],p:e.target.value}})} /></div><div className="space-y-1"><div className="h-[17px]"></div><button onClick={()=>save(dev)} className="bg-slate-900 text-white h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg"><Save size={24}/></button></div></div>) : (<div className="grid grid-cols-2 gap-3"><div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Temp</div><div className="font-black text-xl text-slate-700">{l.temp}°C</div></div><div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">TPM</div><div className="font-black text-xl text-slate-700">{l.tpm}%</div></div></div>)}</div>); })}</div>
-                    <div className="mt-8 pt-6 border-t border-slate-200">{signature ? (<div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold"><PenTool size={20}/><div className="flex-1"><div className="text-xs uppercase opacity-70">Digital Signiert von</div><div className="text-lg">{signature.user}</div></div></div>) : (<div className="space-y-2"><Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18}/> {t.sign}</Button></div>)}</div>
+    <div className="animate-in space-y-6">
+        <div><h2 className="text-3xl font-black text-inherit">{t.oil}</h2><p className="text-inherit opacity-60 text-sm font-medium">TPM Messung</p></div>
+        <div className="space-y-4">
+            {active.map(dev => { 
+                const l = oilLogs[dev.id]; 
+                const quality = l ? (l.tpm >= 24 ? 'bad' : l.tpm >= 20 ? 'warn' : 'good') : null; 
+                const colors = { bad: 'bg-red-500 shadow-red-200', warn: 'bg-amber-500 shadow-amber-200', good: 'bg-emerald-500 shadow-emerald-200' }; 
+                const labels = { bad: 'Wechseln', warn: 'Filtern', good: 'OK' }; 
+                
+                return (
+                    <div key={dev.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                        <div className="flex justify-between items-center mb-6">
+                            <span className="font-bold text-lg text-slate-700">{dev.name}</span>
+                            {l ? (
+                                <div className="flex items-center gap-2">
+                                    <span className={`text-white text-xs font-black px-3 py-1.5 rounded-xl uppercase shadow-lg ${colors[quality]}`}>{labels[quality]}</span>
+                                    {/* BEARBEITET: Übergibt dev.id an deleteLog zum Leeren der Felder */}
+                                    <button onClick={() => deleteLog(l.id, dev.id)} className="p-2 bg-slate-100 rounded-full hover:bg-red-100 hover:text-red-500 transition-colors">
+                                        <Trash2 size={14}/>
+                                    </button>
+                                </div>
+                            ) : (
+                                <span className="bg-slate-100 text-slate-400 text-xs font-bold px-2 py-1 rounded-lg">Messung offen</span>
+                            )}
+                        </div>
+                        
+                        {!l ? (
+                            <div className="flex gap-3">
+                                <div className="flex-1 space-y-1">
+                                    <div className="text-[10px] uppercase font-bold text-slate-400 ml-1">Temp</div>
+                                    <Input 
+                                        type="number" 
+                                        inputMode="decimal" 
+                                        placeholder="°C" 
+                                        className="text-center h-14 font-bold text-xl" 
+                                        value={inp[dev.id]?.t || ''} 
+                                        onChange={e => setInp({...inp, [dev.id]: {...inp[dev.id], t: e.target.value}})} 
+                                    />
+                                </div>
+                                <div className="flex-1 space-y-1">
+                                    <div className="text-[10px] uppercase font-bold text-slate-400 ml-1">TPM %</div>
+                                    <Input 
+                                        type="number" 
+                                        inputMode="decimal" 
+                                        placeholder="%" 
+                                        className="text-center h-14 font-bold text-xl" 
+                                        value={inp[dev.id]?.p || ''} 
+                                        onChange={e => setInp({...inp, [dev.id]: {...inp[dev.id], p: e.target.value}})} 
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <div className="h-[17px]"></div>
+                                    <button onClick={() => save(dev)} className="bg-slate-900 text-white h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg">
+                                        <Save size={24}/>
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100">
+                                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Temp</div>
+                                    <div className="font-black text-xl text-slate-700">{l.temp}°C</div>
+                                </div>
+                                <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100">
+                                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">TPM</div>
+                                    <div className="font-black text-xl text-slate-700">{l.tpm}%</div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                ); 
+            })}
+        </div>
+        
+        <div className="mt-8 pt-6 border-t border-slate-200">
+            {signature ? (
+                <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold">
+                    <PenTool size={20}/>
+                    <div className="flex-1">
+                        <div className="text-xs uppercase opacity-70">Digital Signiert von</div>
+                        <div className="text-lg">{signature.user}</div>
+                    </div>
                 </div>
-            ); 
+            ) : (
+                <div className="space-y-2">
+                    <Button onClick={sign} disabled={!canSign} className="shadow-indigo-200">
+                        <PenTool size={18}/> {t.sign}
+                    </Button>
+                </div>
+            )}
+        </div>
+    </div>
+);
         };
 const Editor = ({ type, data, close, appId, showToast, btnStyle }) => { 
             const [form, setForm] = useState({...data}); 
