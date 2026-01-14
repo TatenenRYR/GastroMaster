@@ -3267,20 +3267,30 @@ const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
                             await logBranchAction(appId, user.name, 'OIL_LOG', `${dev.name}: ${p}% TPM`); 
                             showToast("Gespeichert"); 
                     }; 
-           const deleteLog = async (logId, deviceId) => { 
-                    if(confirm("Eintrag wirklich löschen?")) { 
-                        // 1. Löscht den Eintrag aus der Datenbank
-                        await deleteDoc(doc(db,'artifacts',appId,'public','data','logs_oil', logId)); 
-                        
-                        // 2. LEERT DIE FELDER LOKAL
-                        setInp(prev => ({
-                            ...prev,
-                            [deviceId]: { t: '', p: '' } // Setzt Temperatur (t) und TPM (p) auf leer
-                        }));
-                        
-                        showToast("Gelöscht und Felder geleert"); 
-                    }
-                };
+          const deleteLog = async (logId, deviceId) => { 
+    if (!logId) {
+        // Falls keine ID da ist (Fehlermeldung verhindern), einfach Felder leeren
+        setInp(prev => ({ ...prev, [deviceId]: { t: '', p: '' } }));
+        return;
+    }
+
+    if(confirm("Eintrag wirklich löschen?")) { 
+        try {
+            // Erst in der Datenbank löschen
+            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_oil', logId)); 
+
+            // JETZT: Die Felder der betroffenen Fritteuse leeren
+            setInp(prev => ({
+                ...prev,
+                [deviceId]: { t: '', p: '' } 
+            }));
+
+            showToast("Gelöscht und Felder geleert"); 
+        } catch (e) {
+            console.error("Löschfehler:", e);
+        }
+    }
+};
             const sign = async () => { if(confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) { await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_oil`), { module:'oil', user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); await logBranchAction(appId, user.name, 'SIGNATURE', 'Oil protocol signed'); showToast("Protokoll signiert!"); } }; 
             return (
                 <div className="animate-in space-y-6">
