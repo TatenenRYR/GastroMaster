@@ -2066,111 +2066,117 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
         const EMAILJS_PUBLIC_KEY = "TMFx2hP-RUgy_g9LC";    // <--- ÄNDERN
 
 */
-const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
-    const [view, setView] = useState('dashboard'); 
-    const [selectedSupplier, setSelectedSupplier] = useState(null);
+const SmartOrdering = ({ data, appId, showToast, user }) => {
+    // --- STATES ---
+    const [view, setView] = useState('dashboard'); // dashboard, setup, order, cart
+    const [suppliers, setSuppliers] = useState(data.suppliers || []);
+    const [selectedSup, setSelectedSup] = useState(null);
     const [editSup, setEditSup] = useState(null);
     const [editItem, setEditItem] = useState(null);
-    const [cart, setCart] = useState([]); 
-    const [searchTerm, setSearchTerm] = useState('');
+    const [cart, setCart] = useState({}); // { sku: qty }
+    const [search, setSearch] = useState('');
 
-    const suppliers = data.suppliers || [];
     const weekdays = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
-    const todayStr = weekdays[new Date().getDay()];
+    const today = weekdays[new Date().getDay()];
 
-    // Hilfsfunktion: Ermittelt das Soll für heute
-    const getTargetForToday = (item) => {
-        if (item.targets && item.targets[todayStr]) return item.targets[todayStr];
-        return item.target || 0;
-    };
-
-    // --- PDF GENERIERUNG ---
-    const generateOrderPDF = (supplier, orderItems) => {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-        doc.setFontSize(20);
-        doc.text("BESTELLSCHEIN (KOPIE)", 14, 22);
-        doc.setFontSize(10);
-        doc.text(`Lieferant: ${supplier.name}`, 14, 32);
-        doc.text(`Datum: ${new Date().toLocaleString()} | Filiale: ${appId}`, 14, 38);
-
-        const tableBody = orderItems.map(i => [i.qty, i.unit, i.name, i.sku, ""]);
-        doc.autoTable({
-            startY: 45,
-            head: [['Menge', 'Einheit', 'Artikelbezeichnung', 'Art-Nr.', 'Check']],
-            body: tableBody,
-            headStyles: { fillColor: [79, 70, 229] }
-        });
-        doc.save(`Bestellung_${supplier.name}.pdf`);
-    };
-
-    // --- EXCEL IMPORT MIT TAG-LOGIK ---
-    const handleExcelImport = async (file) => {
-        const targetDay = prompt("Für welchen Liefertag ist diese Liste? (Mo, Di, Mi, Do, Fr, Sa, So oder 'Alle')", todayStr);
-        if(!targetDay) return;
+    // --- LOGIK: IMPORT / EXPORT ---
+    const handleImport = async (e) => {
+        const file = e.target.files[0];
+        const dayMode = prompt("Für welchen Liefertag? (Mo, Di, Mi, Do, Fr, Sa, So oder 'Alle')", today);
+        if(!dayMode) return;
 
         const reader = new FileReader();
-        reader.onload = async (e) => {
-            const bdata = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(bdata, { type: 'array' });
-            const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+        reader.onload = async (evt) => {
+            const bdata = new Uint8Array(evt.target.result);
+            const wb = XLSX.read(bdata, {type:'array'});
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1});
             
-            const supplierName = rows[2]?.[2] || "Unbekannt";
-            const productRows = rows.slice(6);
-            
-            const newCatalog = productRows.map(row => {
-                if (!row[2]) return null;
-                const sched = { Mo:false, Di:false, Mi:false, Do:false, Fr:false, Sa:false, So:false };
-                if (targetDay === "Alle") Object.keys(sched).forEach(k => sched[k] = true);
-                else sched[targetDay] = true;
+            const sName = rows[2]?.[2] || "Unbekannt";
+            const catalog = rows.slice(6).map(r => {
+                if(!r[2]) return null;
+                const targets = {};
+                if(dayMode === 'Alle') weekdays.forEach(d => targets[d] = r[4]);
+                else targets[dayMode] = r[4];
 
                 return {
-                    category: row[0] || "Allgemein",
-                    sku: row[1]?.toString() || "",
-                    name: row[2]?.toString() || "",
-                    unit: row[3]?.toString() || "",
-                    targets: { [targetDay]: parseFloat(row[4]) || 0 },
-                    schedule: sched
+                    cat: r[0] || 'Allgemein',
+                    sku: r[1]?.toString() || Math.random().toString(36),
+                    name: r[2],
+                    unit: r[3] || 'Stk',
+                    targets: targets,
+                    active: true
                 };
             }).filter(Boolean);
 
-            let existing = suppliers.find(s => s.name === supplierName);
-            if (existing) {
-                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', existing.id), { catalog: newCatalog });
-            } else {
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'suppliers'), {
-                    name: supplierName,
-                    catalog: newCatalog,
-                    categories: ["Kühlhaus", "Trockenlager", "Tiefkühler", "Mittagstisch", "Allgemein"]
-                });
-            }
-            showToast("Import abgeschlossen!");
+            const newSup = {
+                name: sName,
+                catalog: catalog,
+                categories: [...new Set(catalog.map(i => i.cat))],
+                email: ''
+            };
+
+            const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'suppliers'), newSup);
+            showToast("Lieferant erfolgreich importiert!");
         };
         reader.readAsArrayBuffer(file);
     };
 
-    // --- RENDER DASHBOARD ---
-    if (view === 'dashboard') return (
-        <div className="p-4 space-y-6 pb-32">
-            <div className="flex justify-between items-end">
-                <h2 className="text-3xl font-black italic">BESTELL-HUB</h2>
+    const handleJSONExport = (sup) => {
+        const blob = new Blob([JSON.stringify(sup)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Export_${sup.name}.json`;
+        a.click();
+    };
+
+    // --- LOGIK: BESTELLUNG & PDF ---
+    const sendOrder = () => {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        doc.text(`BESTELLSCHEIN: ${selectedSup.name}`, 14, 20);
+        doc.setFontSize(10);
+        doc.text(`Datum: ${new Date().toLocaleString()} | Filiale: ${appId}`, 14, 28);
+
+        const body = selectedSup.catalog
+            .filter(i => cart[i.sku])
+            .map(i => [cart[i.sku], i.unit, i.name, i.sku, '']);
+
+        doc.autoTable({
+            startY: 35,
+            head: [['Menge', 'Einheit', 'Artikel', 'Art-Nr', 'Check']],
+            body: body
+        });
+        doc.save(`Bestellung_${selectedSup.name}.pdf`);
+        showToast("Bestellschein als PDF gespeichert!");
+        setCart({});
+        setView('dashboard');
+    };
+
+    // --- RENDER: DASHBOARD ---
+    if(view === 'dashboard') return (
+        <div className="p-4 space-y-6 pb-20">
+            <div className="flex justify-between items-center">
+                <h1 className="text-3xl font-black italic tracking-tighter">ORDER-MANAGER</h1>
                 <div className="flex gap-2">
-                    <label className="bg-indigo-600 text-white p-4 rounded-2xl shadow-lg cursor-pointer">
-                        <Database size={24}/><input type="file" className="hidden" onChange={e => handleExcelImport(e.target.files[0])} />
+                    <label className="p-4 bg-indigo-600 text-white rounded-2xl shadow-lg cursor-pointer">
+                        <Database size={24}/><input type="file" className="hidden" onChange={handleImport}/>
                     </label>
-                    <button onClick={() => {setEditSup({name:'', email:'', categories:['Kühlhaus','Tiefkühler','Allgemein']}); setView('setup');}} className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg"><Plus/></button>
+                    <button onClick={() => {setEditSup({name:'', categories:[], catalog:[]}); setView('setup');}} className="p-4 bg-slate-900 text-white rounded-2xl shadow-lg"><Plus/></button>
                 </div>
             </div>
 
-            <div className="grid gap-3">
+            <div className="space-y-4">
+                <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest">Heute fällig ({today})</h2>
                 {suppliers.map(s => (
-                    <div key={s.id} className="bg-white p-5 rounded-[2.5rem] border shadow-sm flex justify-between items-center transition-all active:scale-95">
-                        <div className="flex-1" onClick={() => {setSelectedSupplier(s); setView('order');}}>
-                            <div className="font-black text-xl text-slate-800">{s.name}</div>
-                            <div className="text-[10px] text-indigo-500 font-bold uppercase">{s.catalog?.length || 0} Artikel gelistet</div>
+                    <div key={s.id} className="bg-white p-5 rounded-[2rem] border shadow-sm flex justify-between items-center">
+                        <div className="flex-1" onClick={() => {setSelectedSup(s); setView('order');}}>
+                            <div className="font-black text-xl">{s.name}</div>
+                            <div className="text-[10px] text-indigo-500 font-bold uppercase">{s.catalog?.length} Artikel gelistet</div>
                         </div>
                         <div className="flex gap-2">
-                            <button onClick={() => {setEditSup(s); setView('setup');}} className="p-3 bg-slate-50 text-slate-400 rounded-xl"><Settings size={18}/></button>
+                            <button onClick={() => handleJSONExport(s)} className="p-3 text-indigo-400 bg-indigo-50 rounded-xl"><RefreshCcw size={18}/></button>
+                            <button onClick={() => {setEditSup(s); setView('setup');}} className="p-3 text-slate-400 bg-slate-50 rounded-xl"><Settings size={18}/></button>
                         </div>
                     </div>
                 ))}
@@ -2178,98 +2184,118 @@ const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
         </div>
     );
 
-    // --- VIEW: BESTELLMASKE (Hier werden die Produkte angezeigt) ---
-    if (view === 'order') {
-        // Sicherstellen, dass Kategorien existieren
-        const displayCats = selectedSupplier.categories || ["Allgemein"];
-        
-        return (
-            <div className="pb-40 animate-in">
-                <div className="bg-white p-5 sticky top-0 z-20 border-b flex justify-between items-center rounded-b-3xl">
-                    <div className="font-black italic text-xl">{selectedSupplier.name}</div>
-                    <button onClick={() => setView('dashboard')} className="p-2 bg-slate-100 rounded-full"><X/></button>
-                </div>
-
-                <div className="p-4 space-y-8">
-                    {displayCats.map(cat => {
-                        const items = selectedSupplier.catalog?.filter(i => 
-                            (i.category === cat || (!i.category && cat === "Allgemein")) &&
-                            i.name.toLowerCase().includes(searchTerm.toLowerCase())
-                        );
-                        if (!items || items.length === 0) return null;
-
-                        return (
-                            <div key={cat} className="space-y-3">
-                                <h3 className="text-xs font-black text-indigo-500 uppercase tracking-widest ml-2">{cat}</h3>
-                                {items.map((item, idx) => {
-                                    const cartItem = cart.find(c => c.sku === item.sku);
-                                    const qty = cartItem ? cartItem.qty : 0;
-                                    return (
-                                        <div key={idx} className="bg-white p-4 rounded-3xl border flex justify-between items-center shadow-sm">
-                                            <div className="flex-1" onClick={() => setEditItem({...item, supId: selectedSupplier.id})}>
-                                                <div className="font-black text-slate-800">{item.name}</div>
-                                                <div className="text-[10px] text-slate-400 font-bold uppercase">{item.unit} | Art-Nr: {item.sku}</div>
-                                                <div className="text-[10px] text-indigo-400 font-black mt-1 uppercase">Soll heute: {getTargetForToday(item)}</div>
-                                            </div>
-                                            <div className="flex items-center gap-3 bg-slate-100 p-1 rounded-2xl">
-                                                <button onClick={() => {
-                                                    const newQty = Math.max(0, qty - 1);
-                                                    if(newQty === 0) setCart(cart.filter(c => c.sku !== item.sku));
-                                                    else if(cartItem) setCart(cart.map(c => c.sku === item.sku ? {...c, qty: newQty} : c));
-                                                    else setCart([...cart, {...item, qty: newQty}]);
-                                                }} className="w-10 h-10 bg-white rounded-xl shadow-sm font-black">-</button>
-                                                <span className="w-8 text-center font-black">{qty}</span>
-                                                <button onClick={() => {
-                                                    if(cartItem) setCart(cart.map(c => c.sku === item.sku ? {...c, qty: qty + 1} : c));
-                                                    else setCart([...cart, {...item, qty: 1}]);
-                                                }} className="w-10 h-10 bg-white rounded-xl shadow-sm font-black">+</button>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        );
-                    })}
-                </div>
-
-                {cart.length > 0 && (
-                    <div className="fixed bottom-24 left-4 right-4 z-50">
-                        <button onClick={() => {generateOrderPDF(selectedSupplier, cart); showToast("Bestellschein PDF erstellt!"); setView('dashboard'); setCart([]);}} 
-                                className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black shadow-2xl flex justify-between px-8">
-                            <span>BESTELLUNG ABSCHLIESSEN</span>
-                            <span>{cart.length}</span>
-                        </button>
-                    </div>
-                )}
-            </div>
-        );
-    }
-
-    // --- VIEW: SETUP (Lieferant bearbeiten/löschen) ---
-    if (view === 'setup') return (
+    // --- RENDER: SETUP ---
+    if(view === 'setup') return (
         <div className="p-6 space-y-6">
             <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-black">Lieferant Setup</h2>
                 <button onClick={() => setView('dashboard')} className="p-2 bg-slate-100 rounded-full"><X/></button>
             </div>
-            <div className="bg-white p-6 rounded-3xl border space-y-4">
-                <Input label="Name" value={editSup.name} onChange={e => setEditSup({...editSup, name: e.target.value})} />
-                <Input label="Email" value={editSup.email} onChange={e => setEditSup({...editSup, email: e.target.value})} />
-                <div className="pt-4 space-y-2">
+            <div className="bg-white p-6 rounded-[2rem] border space-y-4 shadow-xl">
+                <Input label="Name des Lieferanten" value={editSup.name} onChange={e=>setEditSup({...editSup, name:e.target.value})}/>
+                <Input label="Bestell-Email" value={editSup.email} onChange={e=>setEditSup({...editSup, email:e.target.value})}/>
+                
+                <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase">Kategorien (z.B. Kühlhaus, Trocken...)</label>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                        {editSup.categories?.map(c => (
+                            <span key={c} className="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+                                {c} <X size={12} onClick={() => setEditSup({...editSup, categories: editSup.categories.filter(x=>x!==c)})}/>
+                            </span>
+                        ))}
+                        <button className="bg-slate-100 px-3 py-1 rounded-full text-xs font-bold" onClick={() => {const n=prompt("Kategorie Name?"); if(n) setEditSup({...editSup, categories: [...editSup.categories, n]})}}>+ NEU</button>
+                    </div>
+                </div>
+
+                <div className="pt-6 space-y-2">
                     <Button onClick={async () => {
-                        if(editSup.id) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', editSup.id), editSup);
-                        else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'suppliers'), {...editSup, catalog: []});
+                        if(editSup.id) await updateDoc(doc(db,'artifacts',appId,'public', 'data', 'suppliers', editSup.id), editSup);
+                        else await addDoc(collection(db,'artifacts',appId,'public', 'data', 'suppliers'), editSup);
                         setView('dashboard');
-                    }} className="w-full bg-slate-900 text-white">Speichern</Button>
-                    {editSup.id && (
-                        <button onClick={async () => {if(confirm("Löschen?")){await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', editSup.id)); setView('dashboard');}}} className="w-full text-red-500 font-bold p-2">Lieferant löschen</button>
-                    )}
+                    }} className="bg-slate-900 text-white w-full h-14 rounded-2xl">SPEICHERN</Button>
+                    {editSup.id && <button onClick={async () => {if(confirm("Löschen?")){await deleteDoc(doc(db,'artifacts',appId,'public', 'data', 'suppliers', editSup.id)); setView('dashboard');}}} className="w-full text-red-500 font-bold p-2 text-sm uppercase">Lieferant löschen</button>}
                 </div>
             </div>
         </div>
     );
-};
 
+    // --- RENDER: BESTELLUNG ---
+    if(view === 'order') return (
+        <div className="pb-40 animate-in">
+            <div className="bg-white/90 backdrop-blur-md p-5 sticky top-0 z-50 border-b flex justify-between items-center rounded-b-[2rem]">
+                <div>
+                    <h2 className="font-black text-xl italic">{selectedSup.name}</h2>
+                    <p className="text-[10px] font-bold text-indigo-500 uppercase">{today} | {selectedSup.catalog.length} Artikel</p>
+                </div>
+                <button onClick={() => setView('dashboard')} className="p-3 bg-slate-100 rounded-full"><X/></button>
+            </div>
+
+            <div className="p-4 px-6"><Input placeholder="Suchen..." onChange={e=>setSearch(e.target.value.toLowerCase())}/></div>
+
+            <div className="p-4 space-y-10">
+                {selectedSup.categories.map(cat => {
+                    const items = selectedSup.catalog.filter(i => i.cat === cat && i.name.toLowerCase().includes(search));
+                    if(items.length === 0) return null;
+                    return (
+                        <div key={cat} className="space-y-4">
+                            <h3 className="text-xs font-black text-indigo-500 uppercase tracking-[0.2em] ml-2">{cat}</h3>
+                            {items.map(item => (
+                                <div key={item.sku} className="bg-white p-5 rounded-[2.5rem] border shadow-sm flex justify-between items-center">
+                                    <div className="flex-1 pr-4" onClick={() => setEditItem(item)}>
+                                        <div className="font-black text-slate-800 leading-tight">{item.name}</div>
+                                        <div className="text-[10px] text-slate-400 font-bold uppercase mt-1">{item.unit} | {item.sku}</div>
+                                        <div className="text-[10px] font-black text-indigo-400 mt-2 uppercase">Soll {today}: {item.targets?.[today] || 0}</div>
+                                    </div>
+                                    <div className="flex items-center gap-3 bg-slate-100 p-1 rounded-2xl">
+                                        <button onClick={() => setCart({...cart, [item.sku]: Math.max(0, (cart[item.sku]||0)-1)})} className="w-10 h-10 bg-white rounded-xl font-black shadow-sm">-</button>
+                                        <span className="w-8 text-center font-black text-lg">{cart[item.sku] || 0}</span>
+                                        <button onClick={() => setCart({...cart, [item.sku]: (cart[item.sku]||0)+1})} className="w-10 h-10 bg-white rounded-xl font-black shadow-sm">+</button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    );
+                })}
+            </div>
+
+            {Object.values(cart).some(v => v > 0) && (
+                <div className="fixed bottom-24 left-4 right-4 z-50">
+                    <button onClick={sendOrder} className="w-full py-5 bg-indigo-600 text-white rounded-[2.5rem] font-black shadow-2xl flex justify-between px-8 border-b-4 border-indigo-800">
+                        <span>BESTELLUNG ABSCHLIESSEN</span>
+                        <span className="bg-white/20 px-3 py-1 rounded-full text-sm">{Object.values(cart).filter(v=>v>0).length}</span>
+                    </button>
+                </div>
+            )}
+
+            {/* MODAL: ARTIKEL EDITIEREN */}
+            {editItem && (
+                <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 space-y-4 shadow-2xl">
+                        <h2 className="font-black text-xl">Artikel bearbeiten</h2>
+                        <Input label="Name" value={editItem.name} onChange={e=>setEditItem({...editItem, name:e.target.value})}/>
+                        <div className="grid grid-cols-2 gap-4">
+                            {weekdays.map(d => (
+                                <div key={d} className="space-y-1">
+                                    <label className="text-[10px] font-black uppercase text-slate-400">{d}</label>
+                                    <input type="number" className="w-full p-2 bg-slate-50 rounded-lg text-sm" value={editItem.targets?.[d] || 0} onChange={e=>setEditItem({...editItem, targets:{...editItem.targets, [d]: e.target.value}})}/>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex gap-2 pt-4">
+                            <Button onClick={() => setEditItem(null)} className="bg-slate-100 text-slate-600">Abbrechen</Button>
+                            <Button onClick={async () => {
+                                const newCat = selectedSup.catalog.map(i => i.sku === editItem.sku ? editItem : i);
+                                await updateDoc(doc(db,'artifacts',appId,'public', 'data', 'suppliers', selectedSup.id), { catalog: newCat });
+                                setEditItem(null);
+                                showToast("Artikel aktualisiert");
+                            }} className="bg-indigo-600 text-white flex-1">Speichern</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 // --- APP CONTROLLER ---
         function App() {
