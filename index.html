@@ -2070,47 +2070,37 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
 */
 
 const SmartOrdering = ({ data, appId, showToast, user }) => {
-    // --- ICON FALLBACK (Verhindert Abstürze) ---
-    const getIcon = (name, size = 20) => {
-        const icons = { Plus: "+", Settings: "⚙", Database: "📁", X: "✕", Search: "🔍", ShoppingBag: "🛒", Download: "⬇", Copy: "📋" };
-        try { if (window[name]) { const LucideIcon = window[name]; return <LucideIcon size={size} />; } } catch (e) {}
-        return <span style={{fontSize: size, fontWeight: 'bold'}}>{icons[name] || "•"}</span>;
+    // Icons Fallback (verhindert Abstürze falls Icons nicht definiert sind)
+    const SafeIcon = ({ icon: IconComp, size = 20, className = "" }) => {
+        try {
+            if (!IconComp) return <span className="w-5 h-5 flex items-center justify-center opacity-30 text-[10px]">●</span>;
+            return <IconComp size={size} className={className} />;
+        } catch (e) { return <span className="w-5 h-5 flex items-center justify-center opacity-30 text-[10px]">●</span>; }
     };
 
-    const [view, setView] = useState('dashboard'); 
+    const [view, setView] = useState('dashboard'); // dashboard, setup, order, edit_item
     const [selectedSup, setSelectedSup] = useState(null);
     const [editSup, setEditSup] = useState(null);
-    const [cart, setCart] = useState({}); 
+    const [activeItem, setActiveItem] = useState(null);
+    const [cart, setCart] = useState({});
     const [search, setSearch] = useState('');
 
     const suppliers = data.suppliers || [];
     const weekdays = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
     const today = weekdays[new Date().getDay()];
 
-    // --- EMAILJS VERSAND LOGIK ---
-    const sendOrderEmail = async (sup, orderText) => {
-        const templateParams = {
-            to_email: sup.email,
-            supplier_name: sup.name,
-            from_name: `${user.name} (Filiale: ${appId})`,
-            order_details: orderText,
-            customer_number: sup.customerNumber || "Nicht angegeben"
-        };
-
-        try {
-            await emailjs.send('service_dejsfye', 'template_mcithcs', templateParams);
-            showToast("Bestellung direkt an Lieferant gesendet!", "success");
-        } catch (error) {
-            console.error("EmailJS Error:", error);
-            showToast("Fehler beim Direktversand. Nutze Backup-Kopie.", "error");
-        }
+    // --- FIREBASE SYNC ---
+    const syncSup = async (id, payload) => {
+        const ref = doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', id);
+        await updateDoc(ref, { ...payload, lastUpdate: serverTimestamp() });
     };
 
-    const finalizeOrder = (sup) => {
+    // --- EMAILJS VERSAND ---
+    const finalizeOrder = async (sup) => {
         const orderItems = sup.catalog.filter(i => cart[i.sku] > 0);
-        let orderText = orderItems.map(i => `${cart[i.sku]}x ${i.unit} - ${i.name} (Art: ${i.sku})`).join('\n');
+        const orderListText = orderItems.map(i => `${cart[i.sku]}x ${i.unit} - ${i.name} (Art: ${i.sku})`).join('\n');
 
-        // 1. PDF für die interne Kontrolle erstellen
+        // 1. PDF für die Kontrolle erstellen
         const { jsPDF } = window.jspdf;
         const docPDF = new jsPDF();
         docPDF.text(`BESTELLUNG: ${sup.name}`, 15, 20);
@@ -2119,16 +2109,28 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
             head: [['Menge', 'Einheit', 'Artikel', 'Art-Nr']], 
             body: orderItems.map(i => [cart[i.sku], i.unit, i.name, i.sku]) 
         });
-        docPDF.save(`Bestellung_${sup.name}.pdf`);
+        docPDF.save(`Order_${sup.name}_${new Date().toLocaleDateString()}.pdf`);
 
-        // 2. Direktversand via EmailJS
-        sendOrderEmail(sup, orderText);
+        // 2. EmailJS Versand
+        try {
+            await emailjs.send("service_dejsfye", "template_mcithcs", {
+                to_email: sup.email,
+                supplier_name: sup.name,
+                from_name: `${user.name} (Filiale: ${appId})`,
+                order_details: orderListText,
+                customer_number: sup.customerNumber || "Nicht hinterlegt"
+            });
+            showToast("Bestellung direkt versendet!", "success");
+        } catch (e) {
+            console.error(e);
+            showToast("Mail-Fehler. PDF wurde aber gespeichert.", "error");
+        }
 
         setCart({});
         setView('dashboard');
     };
 
-    // --- IMPORT LOGIK ---
+    // --- AUTO-IMPORT LOGIK ---
     const handleSmartImport = async (e) => {
         const file = e.target.files[0];
         const reader = new FileReader();
@@ -2155,103 +2157,135 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 }).filter(Boolean);
 
                 const supData = {
-                    name: sName, customerNumber: kndNr, catalog: catalog,
+                    name: sName,
+                    customerNumber: kndNr,
+                    catalog: catalog,
                     categories: [...new Set(catalog.map(i => i.cat))],
-                    email: '', updatedAt: serverTimestamp()
+                    email: '',
+                    updatedAt: serverTimestamp()
                 };
 
                 const existing = suppliers.find(s => s.name === sName);
-                if(existing) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', existing.id), supData);
+                if(existing) await syncSup(existing.id, supData);
                 else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'suppliers'), supData);
-                showToast("Import erfolgreich!");
-            } catch (err) { showToast("Excel-Fehler", "error"); }
+                showToast("Lieferant erkannt & synchronisiert!");
+            } catch (err) { showToast("Import-Fehler", "error"); }
         };
         reader.readAsArrayBuffer(file);
     };
 
-    // --- RENDER VIEWS ---
-    if (view === 'order') return (
-        <div className="min-h-screen bg-slate-50 pb-44 animate-in">
-            <div className="bg-white p-5 sticky top-0 z-50 border-b flex justify-between items-center rounded-b-[2rem] shadow-sm">
-                <div>
-                    <div className="font-black text-xl italic">{selectedSup.name}</div>
-                    <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">{today}</div>
+    // --- VIEWS ---
+    if (view === 'edit_item' && activeItem) return (
+        <div className="p-6 space-y-6 animate-in pb-20">
+            <h2 className="text-2xl font-black italic">ARTIKEL ANPASSEN</h2>
+            <div className="bg-white p-6 rounded-[2.5rem] border shadow-xl space-y-4">
+                <Input label="Name" value={activeItem.name} onChange={e=>setActiveItem({...activeItem, name: e.target.value})} />
+                <Input label="Kategorie / Ort" value={activeItem.cat} onChange={e=>setActiveItem({...activeItem, cat: e.target.value})} />
+                <div className="grid grid-cols-2 gap-2 mt-4">
+                    {weekdays.map(d => (
+                        <div key={d}>
+                            <label className="text-[10px] font-bold uppercase text-slate-400">{d}</label>
+                            <input type="number" className="w-full p-2 bg-slate-50 border rounded-xl text-sm" value={activeItem.targets?.[d] || 0} 
+                                   onChange={e => setActiveItem({...activeItem, targets: {...activeItem.targets, [d]: e.target.value}})} />
+                        </div>
+                    ))}
                 </div>
-                <button onClick={() => setView('dashboard')} className="p-2 bg-slate-100 rounded-full">{getIcon('X')}</button>
+                <div className="flex gap-2 pt-6">
+                    <Button onClick={() => setView('order')} className="bg-slate-100 text-slate-500">Abbrechen</Button>
+                    <Button onClick={async () => {
+                        const newCatalog = selectedSup.catalog.map(i => i.sku === activeItem.sku ? activeItem : i);
+                        await syncSup(selectedSup.id, { catalog: newCatalog });
+                        setSelectedSup({...selectedSup, catalog: newCatalog});
+                        setView('order');
+                        showToast("Gespeichert");
+                    }} className="bg-indigo-600 text-white flex-1">Speichern</Button>
+                </div>
+            </div>
+        </div>
+    );
+
+    if (view === 'order' && selectedSup) return (
+        <div className="min-h-screen bg-slate-50 pb-44 animate-in">
+            <div className="bg-white/90 backdrop-blur-md p-5 sticky top-0 z-50 border-b flex justify-between items-center rounded-b-[2rem] shadow-sm">
+                <div className="flex flex-col">
+                    <span className="font-black text-xl italic">{selectedSup.name}</span>
+                    <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">{today} • BESTELLUNG</span>
+                </div>
+                <button onClick={() => setView('dashboard')} className="p-2 bg-slate-100 rounded-full"><SafeIcon icon={window.X} /></button>
             </div>
 
-            <div className="p-4 space-y-6">
-                <div className="relative px-2">
-                    <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300">{getIcon('Search', 16)}</span>
-                    <input className="w-full bg-white border border-slate-100 p-4 pl-12 rounded-2xl outline-none shadow-sm" placeholder="Artikel suchen..." onChange={e=>setSearch(e.target.value.toLowerCase())}/>
-                </div>
-
+            <div className="p-4 space-y-8">
+                <Input className="shadow-sm" placeholder="Artikel suchen..." onChange={e=>setSearch(e.target.value.toLowerCase())} />
+                
                 {selectedSup.categories?.map(cat => {
                     const items = selectedSup.catalog?.filter(i => i.cat === cat && i.name.toLowerCase().includes(search));
                     if(!items?.length) return null;
                     return (
-                        <div key={cat}>
-                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 mb-2">{cat}</h3>
-                            <div className="grid gap-3 px-2">
-                                {items.map(item => (
-                                    <div key={item.sku} className="bg-white p-4 rounded-[2rem] border shadow-sm flex justify-between items-center">
-                                        <div className="flex-1 pr-2">
-                                            <div className="font-bold text-slate-800 text-sm">{item.name}</div>
-                                            <div className="text-[10px] text-slate-400">{item.unit}</div>
-                                            <div className="text-[9px] font-black text-indigo-400 mt-1">Soll: {item.targets?.[today] || 0}</div>
-                                        </div>
-                                        <div className="flex items-center gap-3 bg-slate-50 p-1.5 rounded-2xl border">
-                                            <button onClick={() => setCart({...cart, [item.sku]: Math.max(0, (cart[item.sku]||0)-1)})} className="w-10 h-10 bg-white rounded-xl font-black shadow-sm">-</button>
-                                            <span className="w-6 text-center font-black">{cart[item.sku] || 0}</span>
-                                            <button onClick={() => setCart({...cart, [item.sku]: (cart[item.sku]||0)+1})} className="w-10 h-10 bg-white rounded-xl font-black shadow-sm">+</button>
-                                        </div>
+                        <div key={cat} className="space-y-3">
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">{cat}</h3>
+                            {items.map(item => (
+                                <div key={item.sku} className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between">
+                                    <div className="flex-1 pr-2" onClick={() => { setActiveItem(item); setView('edit_item'); }}>
+                                        <div className="font-bold text-slate-800 leading-tight">{item.name}</div>
+                                        <div className="text-[10px] text-slate-400">{item.unit} | Art: {item.sku}</div>
+                                        <div className="text-[10px] font-black text-indigo-400 mt-1 uppercase">Soll: {item.targets?.[today] || 0}</div>
                                     </div>
-                                ))}
-                            </div>
+                                    <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-2xl border">
+                                        <button onClick={() => setCart({...cart, [item.sku]: Math.max(0, (cart[item.sku]||0)-1)})} className="w-10 h-10 bg-white rounded-xl font-black shadow-sm active:scale-90 transition-transform">-</button>
+                                        <span className="w-8 text-center font-black text-sm">{cart[item.sku] || 0}</span>
+                                        <button onClick={() => setCart({...cart, [item.sku]: (cart[item.sku]||0)+1})} className="w-10 h-10 bg-white rounded-xl font-black shadow-sm active:scale-90 transition-transform">+</button>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     );
                 })}
             </div>
 
             {Object.values(cart).some(v => v > 0) && (
-                <div className="fixed bottom-6 left-4 right-4 z-[60] space-y-2">
-                    <button onClick={() => finalizeOrder(selectedSup)} className="w-full bg-indigo-600 text-white p-5 rounded-[2.5rem] shadow-2xl flex justify-between items-center active:scale-95 transition-all">
-                        <div className="flex items-center gap-3">{getIcon('ShoppingBag')} <span className="font-black text-sm uppercase">Jetzt Bestellen</span></div>
-                        <span className="bg-white/20 px-3 py-1 rounded-full text-xs">{Object.values(cart).filter(v=>v>0).length}</span>
+                <div className="fixed bottom-6 left-4 right-4 z-50 animate-in-up">
+                    <button onClick={() => finalizeOrder(selectedSup)} className="w-full bg-slate-900 text-white p-5 rounded-[2.5rem] shadow-2xl flex justify-between items-center border-t border-white/10 active:scale-[0.98] transition-all">
+                        <div className="flex items-center gap-3"><SafeIcon icon={window.ShoppingBag} /> <span className="font-black text-sm uppercase">Jetzt Bestellen</span></div>
+                        <span className="bg-indigo-500 text-white px-3 py-1 rounded-full text-xs font-bold">{Object.values(cart).filter(v=>v>0).length}</span>
                     </button>
                 </div>
             )}
         </div>
     );
 
-    // Standard Dashboard Ansicht
     return (
         <div className="p-4 space-y-8 pb-32">
             <div className="flex justify-between items-end pt-6 px-2">
-                <h1 className="text-4xl font-black italic tracking-tighter text-slate-900 leading-none">ORDER-HUB</h1>
+                <div>
+                    <h1 className="text-4xl font-black italic tracking-tighter leading-none">ORDER-HUB</h1>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2 ml-1">Automated Delivery</p>
+                </div>
                 <div className="flex gap-2">
-                    <label className="bg-indigo-600 text-white p-4 rounded-2xl shadow-lg cursor-pointer">
-                        {getIcon('Database', 24)}<input type="file" className="hidden" onChange={handleSmartImport} />
+                    <label className="bg-indigo-600 text-white p-4 rounded-2xl shadow-lg cursor-pointer active:scale-90 transition-transform">
+                        <SafeIcon icon={window.Database} size={24} /><input type="file" className="hidden" onChange={handleSmartImport} />
                     </label>
-                    <button onClick={() => {setEditSup({name:'', email:'', categories:['Lager'], catalog:[]}); setView('setup');}} className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg">{getIcon('Plus', 24)}</button>
+                    <button onClick={() => {setEditSup({name:'', email:'', categories:['Lager'], catalog:[]}); setView('setup');}} className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg active:scale-90 transition-transform">
+                        <SafeIcon icon={window.Plus} size={24}/>
+                    </button>
                 </div>
             </div>
 
             <div className="grid gap-4 px-2">
                 {suppliers.map(s => (
-                    <div key={s.id} className="bg-white p-6 rounded-[3rem] border shadow-sm flex items-center justify-between transition-all active:scale-95">
+                    <div key={s.id} className="bg-white p-6 rounded-[3rem] border shadow-sm flex items-center justify-between active:bg-slate-50 transition-colors">
                         <div className="flex-1 cursor-pointer" onClick={() => {setSelectedSup(s); setView('order');}}>
                             <div className="font-black text-2xl text-slate-800">{s.name}</div>
-                            <div className="text-[10px] text-indigo-500 font-bold uppercase mt-1">{s.catalog?.length || 0} Artikel</div>
+                            <div className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest">{s.catalog?.length || 0} Artikel</div>
                         </div>
-                        <button onClick={() => {setEditSup(s); setView('setup');}} className="p-4 bg-slate-50 text-slate-300 rounded-2xl">{getIcon('Settings')}</button>
+                        <button onClick={() => {setEditSup(s); setView('setup');}} className="p-4 bg-slate-50 text-slate-300 rounded-2xl active:bg-slate-900 active:text-white transition-all">
+                            <SafeIcon icon={window.Settings} size={20}/>
+                        </button>
                     </div>
                 ))}
             </div>
         </div>
     );
 };
-
 
            
 // --- APP CONTROLLER ---
