@@ -2711,21 +2711,22 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
             );
         };
 
-        const LoginScreen = ({ staff, restaurantId, company, onLogoutSystem, yesterdayOil, fryers, onLogin, lang, modulesConfig, workerStatus = {} }) => {
-    const [sel, setSel] = useState(null);
-    const [pin, setPin] = useState("");
+      
+const LoginScreen = ({ staff, restaurantId, company, onLogoutSystem, yesterdayOil, fryers, onLogin, lang, modulesConfig, workerStatus = {} }) => {
+    const [sel, setSel] = React.useState(null);
+    const [pin, setPin] = React.useState("");
     const t = DICTIONARY[lang] || DICTIONARY.de;
 
-    // --- FILTER-LOGIK: Nur aktive Fritteusen anzeigen ---
+    // --- FILTER-LOGIK: Nur aktive Fritteusen ---
     const activeFryers = (fryers || []).filter(f => f.status !== 'defekt');
     const activeFryerIds = activeFryers.map(f => f.id);
     
-    // Nur Logs von Geräten behalten, die noch aktiv (nicht defekt) sind
+    // Nur Logs von aktiven Geräten behalten
     const filteredOilLogs = Object.values(yesterdayOil || {}).filter(log => 
         activeFryerIds.includes(log.deviceId)
     );
 
-    // Prüfung, ob alle aktiven Fritteusen gemessen wurden
+    // Prüfung auf Vollständigkeit
     const oilComplete = activeFryerIds.length > 0 && activeFryerIds.every(id => 
         filteredOilLogs.some(l => l.deviceId === id)
     );
@@ -2735,67 +2736,57 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
             const newPin = pin + n;
             setPin(newPin);
             if (newPin.length === 4) {
-                if (sel.pin === newPin) {
+                // String-Vergleich für Sicherheit bei PINs
+                if (String(sel.pin) === String(newPin)) {
                     onLogin(sel);
                 } else {
                     setPin("");
-                    alert("Falscher PIN");
+                    if (navigator.vibrate) navigator.vibrate(200);
                 }
             }
         }
     };
 
     return (
-        <div className="min-h-screen bg-[#0f172a] text-white p-6 pb-24 flex flex-col">
+        <div className="min-h-screen bg-[#0f172a] text-white p-6 pb-24 flex flex-col animate-in">
+            {/* HEADER - FIX FÜR ERROR #31: company.name statt nur company */}
             <div className="flex justify-between items-start mb-8">
                 <div>
-                    <h1 className="text-4xl font-black tracking-tighter mb-1">{company}</h1>
+                    <h1 className="text-4xl font-black tracking-tighter mb-1">
+                        {company?.name || 'GASTROMASTER'} 
+                    </h1>
                     <div className="flex items-center gap-2 text-slate-400 font-bold text-xs uppercase tracking-widest">
-                        <MapPin size={12} /> {restaurantId}
+                        <Store size={12} /> {restaurantId}
                     </div>
                 </div>
-                <button onClick={onLogoutSystem} className="p-3 bg-slate-800 rounded-2xl text-slate-400">
+                <button onClick={onLogoutSystem} className="p-3 bg-white/5 rounded-2xl text-slate-400 hover:text-white transition-colors">
                     <LogOut size={20} />
                 </button>
             </div>
 
-            {/* Öl-Status Anzeige */}
+            {/* Fritteusen Status-Monitor */}
             {activeFryers.length > 0 && (
                 <div className={`mb-8 p-5 rounded-[2rem] border backdrop-blur-md transition-all ${oilComplete ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
                             <div className={`p-2 rounded-xl ${oilComplete ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white animate-pulse'}`}>
-                                <Droplets size={16} />
+                                <Droplet size={16} />
                             </div>
                             <div>
-                                <div className="text-[10px] font-black uppercase tracking-tighter opacity-50">{t.yesterday}</div>
-                                <div className="text-sm font-bold">Fett-Kontrolle</div>
+                                <div className="text-[10px] font-black uppercase tracking-tighter opacity-50">Fett-Kontrolle</div>
+                                <div className="text-sm font-bold">Vortag</div>
                             </div>
                         </div>
-                        {oilComplete ? 
-                            <span className="text-[10px] font-black bg-emerald-500 px-3 py-1 rounded-full uppercase">Abgeschlossen</span> : 
-                            <span className="text-[10px] font-black bg-red-500 px-3 py-1 rounded-full uppercase">Unvollständig</span>
-                        }
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2">
                         {activeFryers.map(f => {
                             const log = filteredOilLogs.find(l => l.deviceId === f.id);
-                            // Bestimme Status-Farbe basierend auf TPM
-                            const getStatusColor = (tpm) => {
-                                if (!tpm) return "text-red-500";
-                                if (tpm >= 24) return "text-red-500 font-black"; // WECHSELN
-                                if (tpm >= 20) return "text-amber-500 font-black"; // FILTERN
-                                return "text-emerald-400 font-bold"; // OK
-                            };
-
                             return (
                                 <div key={f.id} className="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5">
                                     <span className="text-xs font-medium text-slate-300">{f.name}</span>
-                                    <span className={`text-[10px] uppercase ${getStatusColor(log?.tpm)}`}>
-                                        {log ? (
-                                            log.tpm >= 24 ? "WECHSELN" : log.tpm >= 20 ? "FILTERN" : `OK (${log.tpm}%)`
-                                        ) : "FEHLT!"}
+                                    <span className={`text-[10px] font-black uppercase ${!log ? 'text-red-500' : (log.tpm >= 24 ? 'text-red-500' : (log.tpm >= 20 ? 'text-amber-500' : 'text-emerald-400'))}`}>
+                                        {log ? (log.tpm >= 24 ? "WECHSELN" : (log.tpm >= 20 ? "FILTERN" : `OK (${log.tpm}%)`)) : "FEHLT!"}
                                     </span>
                                 </div>
                             );
@@ -2804,41 +2795,40 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 </div>
             )}
 
-            {/* Mitarbeiter-Auswahl */}
-            <div className="grid grid-cols-2 gap-4 mb-8">
+            {/* Mitarbeiter-Raster */}
+            <div className="grid grid-cols-2 gap-4">
                 {staff.map(s => (
                     <button key={s.id} onClick={() => { setSel(s); setPin(""); }}
-                        className={`p-4 rounded-[2rem] border-2 transition-all flex flex-col items-center text-center gap-3 ${sel?.id === s.id ? 'bg-sky-500 border-sky-400 scale-95 shadow-lg shadow-sky-500/20' : 'bg-slate-800/50 border-slate-700/50'}`}>
-                        <div className="w-12 h-12 bg-slate-700 rounded-2xl flex items-center justify-center text-xl">
-                            {workerStatus[s.name] ? "🏃" : s.name.charAt(0)}
+                        className="w-full bg-white/5 hover:bg-white/10 border border-white/10 p-4 rounded-[2rem] text-white flex flex-col items-center gap-3 transition-all active:scale-95">
+                        <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center relative">
+                            <User size={24} />
+                            {workerStatus[s.id] && <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#0f172a]"></div>}
                         </div>
                         <div className="font-bold text-sm leading-tight">{s.name}</div>
                     </button>
                 ))}
             </div>
 
-            {/* PIN-Pad Modal */}
+            {/* PIN Eingabe Modal */}
             {sel && (
-                <div className="fixed inset-0 bg-[#0f172a]/95 backdrop-blur-md z-50 flex flex-col p-8 animate-in fade-in zoom-in duration-200">
-                    <button onClick={() => setSel(null)} className="absolute top-8 right-8 p-2 text-slate-400"><X /></button>
-                    <div className="flex-1 flex flex-col items-center justify-center">
-                        <div className="text-center mb-8">
-                            <div className="text-slate-400 uppercase text-[10px] font-black tracking-[0.2em] mb-2">Login für</div>
-                            <div className="text-3xl font-black">{sel.name}</div>
-                        </div>
-                        <div className="flex gap-4 mb-12">
-                            {[...Array(4)].map((_, i) => (
-                                <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${pin.length > i ? 'bg-sky-500 border-sky-500 scale-125' : 'border-slate-700'}`} />
-                            ))}
-                        </div>
-                        <div className="grid grid-cols-3 gap-4 w-full max-w-xs">
-                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, "", 0, "C"].map((n, i) => (
-                                <button key={i} onClick={() => n === "C" ? setPin("") : n !== "" && handlePin(n)}
-                                    className={`h-20 rounded-[2rem] flex items-center justify-center text-2xl font-bold transition-active ${n === "" ? 'opacity-0 pointer-events-none' : 'bg-slate-800/50 hover:bg-slate-700 active:scale-90 border border-slate-700/50'}`}>
-                                    {n}
-                                </button>
-                            ))}
-                        </div>
+                <div className="fixed inset-0 bg-[#0f172a]/95 backdrop-blur-md z-[100] flex flex-col items-center justify-center p-8 animate-in">
+                    <button onClick={() => setSel(null)} className="absolute top-8 right-8 text-white/50"><X size={32}/></button>
+                    <div className="text-center mb-8">
+                        <div className="text-3xl font-black">{sel.name}</div>
+                        <div className="text-slate-400 text-xs font-bold uppercase mt-2">PIN Eingeben</div>
+                    </div>
+                    <div className="flex gap-4 mb-10">
+                        {[0,1,2,3].map(i => (
+                            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${pin.length > i ? 'bg-indigo-500 border-indigo-500 scale-125' : 'border-slate-700'}`} />
+                        ))}
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 w-full max-w-xs">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, "C", 0, "X"].map((n, i) => (
+                            <button key={i} onClick={() => n === "C" ? setPin("") : n === "X" ? setPin(pin.slice(0,-1)) : handlePin(n)}
+                                className="h-16 rounded-2xl bg-white/5 border border-white/10 text-xl font-bold active:bg-white/20">
+                                {n}
+                            </button>
+                        ))}
                     </div>
                 </div>
             )}
