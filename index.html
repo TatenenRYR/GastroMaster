@@ -2070,6 +2070,12 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
 */
             
  const SmartOrdering = ({ data, appId, showToast, user }) => {
+    // Icons sicherstellen (Fallback falls Lucide nicht geladen)
+    const { 
+        Plus, Settings, Database, X, Search, ShoppingBag, 
+        ChevronRight, ChevronLeft, Download, Trash2, Copy, Truck, RefreshCw 
+    } = lucide || {};
+
     const [view, setView] = useState('dashboard'); 
     const [selectedSup, setSelectedSup] = useState(null);
     const [editSup, setEditSup] = useState(null);
@@ -2081,59 +2087,82 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
     const weekdays = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
     const today = weekdays[new Date().getDay()];
 
-    // --- SMART SYNC (Echtzeit-Update in Firebase) ---
-    const fastSync = async (supId, payload) => {
-        const ref = doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', supId);
-        await updateDoc(ref, { ...payload, lastUpdate: serverTimestamp() });
+    // --- AUTOMATISCHE ECHTZEIT-SYNCHRONISIERUNG ---
+    const syncWithFirebase = async (supId, payload) => {
+        try {
+            const ref = doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', supId);
+            await updateDoc(ref, payload);
+        } catch (err) {
+            showToast("Sync-Fehler", "error");
+        }
     };
 
-    // --- AUTO-RECOGNITION IMPORT (XLSX) ---
+    // --- AUTO-IMPORT (ERKENNT LIEFERANT + ARTIKEL + KND-NR) ---
     const handleSmartImport = async (e) => {
         const file = e.target.files[0];
+        if(!file) return;
         const reader = new FileReader();
         reader.onload = async (evt) => {
-            const bdata = new Uint8Array(evt.target.result);
-            const wb = XLSX.read(bdata, {type:'array'});
-            const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1});
+            try {
+                const bdata = new Uint8Array(evt.target.result);
+                const wb = XLSX.read(bdata, {type:'array'});
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(ws, {header:1});
 
-            const sName = rows[2]?.[2] || "Unbekannt";
-            const kndNr = rows[3]?.[2] || "";
-            
-            const catalog = rows.slice(6).map(r => {
-                if(!r[2]) return null;
-                return {
-                    cat: r[0] || 'Lager',
-                    sku: r[1]?.toString() || Math.random().toString(36).substr(2, 5),
-                    name: r[2],
-                    unit: r[3] || 'Stk',
-                    targets: { [today]: parseFloat(r[4]) || 0 },
-                    active: true
+                const sName = rows[2]?.[2] || "Unbekannter Lieferant";
+                const kndNr = rows[3]?.[2] || "";
+                
+                const catalog = rows.slice(6).map(r => {
+                    if(!r[2]) return null;
+                    return {
+                        cat: r[0] || 'Lager',
+                        sku: r[1]?.toString() || Math.random().toString(36).substr(2, 5),
+                        name: r[2],
+                        unit: r[3] || 'Stk',
+                        targets: { [today]: parseFloat(r[4]) || 0 },
+                        active: true
+                    };
+                }).filter(Boolean);
+
+                const supData = {
+                    name: sName,
+                    customerNumber: kndNr,
+                    catalog: catalog,
+                    categories: [...new Set(catalog.map(i => i.cat))],
+                    email: '',
+                    phone: ''
                 };
-            }).filter(Boolean);
 
-            const supData = {
-                name: sName,
-                customerNumber: kndNr,
-                catalog: catalog,
-                categories: [...new Set(catalog.map(i => i.cat))],
-                email: '',
-                phone: ''
-            };
-
-            const existing = suppliers.find(s => s.name === sName);
-            if(existing) await fastSync(existing.id, supData);
-            else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'suppliers'), supData);
-            showToast("Lieferant & Artikel automatisch erkannt!");
+                const existing = suppliers.find(s => s.name === sName);
+                if(existing) {
+                    await syncWithFirebase(existing.id, supData);
+                    showToast(`${sName} aktualisiert!`);
+                } else {
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'suppliers'), supData);
+                    showToast(`${sName} neu angelegt!`);
+                }
+            } catch (err) { showToast("Excel-Fehler", "error"); }
         };
         reader.readAsArrayBuffer(file);
     };
 
-    // --- MULTI-CHANNEL VERSAND (PDF, Mail, WhatsApp, Clipboard) ---
-    const finalizeOrder = async (sup) => {
+    // --- EXPORT (NUR IN EINSTELLUNGEN) ---
+    const triggerExport = (sup) => {
+        const dataStr = JSON.stringify(sup, null, 2);
+        const blob = new Blob([dataStr], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Export_${sup.name}.json`;
+        a.click();
+        showToast("Export gestartet");
+    };
+
+    // --- PDF & MAIL VERSAND ---
+    const finalizeOrder = (sup) => {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         
-        // Header Design
         doc.setFillColor(15, 23, 42);
         doc.rect(0, 0, 210, 40, 'F');
         doc.setTextColor(255, 255, 255);
@@ -2149,59 +2178,82 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
             headStyles: { fillColor: [79, 70, 229] }
         });
 
-        const pdfBlob = doc.output('blob');
         doc.save(`Bestellung_${sup.name}.pdf`);
 
-        // E-Mail & WhatsApp Bridge
-        const textMsg = `Bestellung ${appId} - ${new Date().toLocaleDateString()}\n\n` + 
-                        orderItems.map(i => `${cart[i.sku]}x ${i.unit} ${i.name}`).join('\n');
-
-        // Alternative: WhatsApp falls Nummer da
-        if(sup.phone) {
-            window.open(`https://wa.me/${sup.phone}?text=${encodeURIComponent(textMsg)}`);
-        } else {
-            window.location.href = `mailto:${sup.email}?subject=Bestellung&body=${encodeURIComponent(textMsg)}`;
-        }
+        const mailBody = `Hallo ${sup.name},\nanbei unsere Bestellung vom ${new Date().toLocaleDateString()}.\n\n` + 
+                        orderItems.map(i => `- ${cart[i.sku]}x ${i.name}`).join('\n');
+        
+        window.location.href = `mailto:${sup.email}?subject=Bestellung&body=${encodeURIComponent(mailBody)}`;
         
         setCart({});
         setView('dashboard');
     };
 
-    // --- RENDER ORDER SCREEN ---
-    if(view === 'order') return (
-        <div className="min-h-screen bg-slate-50 pb-44 animate-in">
-            <div className="bg-white p-4 sticky top-0 z-50 border-b flex justify-between items-center shadow-sm rounded-b-[2rem]">
-                <div onClick={() => setView('dashboard')} className="flex items-center gap-3 cursor-pointer">
-                    <ChevronLeft className="text-slate-400"/>
-                    <div className="flex flex-col">
-                        <span className="font-black text-lg italic">{selectedSup.name}</span>
-                        <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">{today}</span>
-                    </div>
+    // --- RENDER VIEWS ---
+    if(view === 'setup' && editSup) return (
+        <div className="p-6 space-y-6 animate-in">
+            <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-black italic uppercase">Lieferant Setup</h2>
+                <button onClick={() => setView('dashboard')} className="p-2 bg-slate-100 rounded-full"><X/></button>
+            </div>
+            <div className="bg-white p-6 rounded-[2.5rem] border shadow-xl space-y-4">
+                <Input label="Name" value={editSup.name} onChange={e=>setEditSup({...editSup, name:e.target.value})}/>
+                <Input label="Bestell-Email" value={editSup.email} onChange={e=>setEditSup({...editSup, email:e.target.value})}/>
+                
+                <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100 flex justify-between items-center">
+                    <span className="text-xs font-black text-indigo-700 uppercase">Export für andere Filiale</span>
+                    <button onClick={() => triggerExport(editSup)} className="p-3 bg-indigo-600 text-white rounded-xl shadow-md"><Download size={20}/></button>
                 </div>
-                <Search size={20} className="text-slate-300"/>
+
+                <div className="pt-4 space-y-2">
+                    <Button onClick={async () => {
+                        if(editSup.id) await syncWithFirebase(editSup.id, editSup);
+                        else await addDoc(collection(db,'artifacts',appId,'public','data','suppliers'), editSup);
+                        setView('dashboard');
+                    }} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold">SPEICHERN</Button>
+                    
+                    {editSup.id && (
+                        <button onClick={async () => {if(confirm("Löschen?")){await deleteDoc(doc(db,'artifacts',appId,'public','data','suppliers',editSup.id)); setView('dashboard');}}} className="w-full text-red-500 font-bold p-2 text-xs uppercase">Löschen</button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+
+    if(view === 'order') return (
+        <div className="pb-44 animate-in">
+            <div className="bg-white/90 backdrop-blur-md p-5 sticky top-0 z-50 border-b flex justify-between items-center rounded-b-[2.5rem] shadow-sm">
+                <div className="flex flex-col">
+                    <span className="font-black text-lg italic text-slate-800">{selectedSup.name}</span>
+                    <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">{today}</span>
+                </div>
+                <button onClick={() => setView('dashboard')} className="p-2 bg-slate-100 rounded-full"><X/></button>
             </div>
 
-            <div className="p-4 space-y-10">
+            <div className="p-4">
+                <div className="relative mb-6 px-2">
+                    <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={18}/>
+                    <input className="w-full bg-white border border-slate-100 p-4 pl-12 rounded-2xl outline-none" placeholder="Suchen..." onChange={e=>setSearch(e.target.value.toLowerCase())}/>
+                </div>
+
                 {selectedSup.categories?.map(cat => {
-                    const items = selectedSup.catalog?.filter(i => i.cat === cat);
+                    const items = selectedSup.catalog?.filter(i => i.cat === cat && i.name.toLowerCase().includes(search));
                     if(!items?.length) return null;
                     return (
-                        <div key={cat} className="space-y-4">
-                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2 flex justify-between">
-                                {cat} <span>{items.length}</span>
-                            </h3>
-                            <div className="grid gap-3">
+                        <div key={cat} className="mb-8">
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-4">{cat}</h3>
+                            <div className="grid gap-3 px-2">
                                 {items.map(item => (
-                                    <div key={item.sku} className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between active:scale-[0.98] transition-all">
-                                        <div className="flex-1 pr-2" onClick={() => setEditItem({...item, supId: selectedSup.id})}>
-                                            <div className="font-bold text-slate-800 text-sm leading-tight">{item.name}</div>
-                                            <div className="text-[10px] text-slate-400 mt-1 uppercase">{item.unit} | {item.sku}</div>
+                                    <div key={item.sku} className="bg-white p-4 rounded-[2rem] border border-slate-50 flex justify-between items-center shadow-sm">
+                                        <div className="flex-1 pr-4" onClick={() => setEditItem({...item, supId: selectedSup.id})}>
+                                            <div className="font-bold text-slate-800 text-sm">{item.name}</div>
+                                            <div className="text-[10px] text-slate-400 uppercase">{item.unit}</div>
                                             <div className="text-[9px] font-black text-indigo-400 mt-1">SOLL: {item.targets?.[today] || 0}</div>
                                         </div>
-                                        <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-2xl border border-slate-100">
-                                            <button onClick={() => setCart({...cart, [item.sku]: Math.max(0, (cart[item.sku]||0)-1)})} className="w-11 h-11 bg-white rounded-xl font-black shadow-sm">-</button>
+                                        <div className="flex items-center gap-3 bg-slate-50 p-1 rounded-2xl border">
+                                            <button onClick={() => setCart({...cart, [item.sku]: Math.max(0, (cart[item.sku]||0)-1)})} className="w-10 h-10 bg-white rounded-xl font-black shadow-sm">-</button>
                                             <span className="w-6 text-center font-black text-sm">{cart[item.sku] || 0}</span>
-                                            <button onClick={() => setCart({...cart, [item.sku]: (cart[item.sku]||0)+1})} className="w-11 h-11 bg-white rounded-xl font-black shadow-sm">+</button>
+                                            <button onClick={() => setCart({...cart, [item.sku]: (cart[item.sku]||0)+1})} className="w-10 h-10 bg-white rounded-xl font-black shadow-sm">+</button>
                                         </div>
                                     </div>
                                 ))}
@@ -2211,20 +2263,19 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
                 })}
             </div>
 
-            {/* FLOATING ACTION BAR */}
             {Object.values(cart).some(v => v > 0) && (
-                <div className="fixed bottom-6 left-4 right-4 z-[60] space-y-2 animate-in-up">
+                <div className="fixed bottom-6 left-4 right-4 z-[60] space-y-2">
                     <button 
                         onClick={() => {
                             const txt = selectedSup.catalog.filter(i => cart[i.sku] > 0).map(i => `${cart[i.sku]}x ${i.name}`).join('\n');
                             navigator.clipboard.writeText(txt);
-                            showToast("Kopiert!");
+                            showToast("Bestellung kopiert!");
                         }}
-                        className="w-full bg-slate-200/80 backdrop-blur text-slate-600 p-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2"
+                        className="w-full bg-slate-100 text-slate-500 p-3 rounded-2xl text-[10px] font-black uppercase flex justify-center gap-2"
                     >
                         <Copy size={14}/> Text kopieren (Backup)
                     </button>
-                    <button onClick={() => finalizeOrder(selectedSup)} className="w-full bg-indigo-600 text-white p-5 rounded-[2.5rem] shadow-2xl flex justify-between items-center border-b-4 border-indigo-800 active:translate-y-1 transition-all">
+                    <button onClick={() => finalizeOrder(selectedSup)} className="w-full bg-indigo-600 text-white p-5 rounded-[2.5rem] shadow-2xl flex justify-between items-center border-b-4 border-indigo-800">
                         <div className="flex items-center gap-3"><ShoppingBag size={20}/><span className="font-black text-sm uppercase">Bestellung abschicken</span></div>
                         <ChevronRight/>
                     </button>
@@ -2233,41 +2284,31 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
         </div>
     );
 
-    // --- DASHBOARD ---
     return (
         <div className="p-4 space-y-8 pb-32">
-            <div className="flex justify-between items-end pt-6">
+            <div className="flex justify-between items-end pt-6 px-2">
                 <div>
-                    <h1 className="text-4xl font-black italic tracking-tighter text-slate-900 leading-none">Order-Hub</h1>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2 ml-1">Automated Gastro Ordering</p>
+                    <h1 className="text-4xl font-black italic tracking-tighter text-slate-900 leading-none">ORDER-HUB</h1>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2 ml-1">v37.0 Gastro Management</p>
                 </div>
                 <div className="flex gap-2">
-                    <label className="bg-indigo-600 text-white p-4 rounded-2xl shadow-lg active:scale-90 transition-all cursor-pointer">
+                    <label className="bg-indigo-600 text-white p-4 rounded-2xl shadow-lg cursor-pointer">
                         <Database size={24}/><input type="file" className="hidden" onChange={handleSmartImport}/>
                     </label>
-                    <button onClick={() => {setEditSup({name:'', categories:['Kühlhaus','Trocken','Tiefkühl'], catalog:[], email:''}); setView('setup');}} className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg active:scale-90 transition-all"><Plus/></button>
+                    <button onClick={() => {setEditSup({name:'', categories:['Lager'], catalog:[]}); setView('setup');}} className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg"><Plus size={24}/></button>
                 </div>
             </div>
 
-            <div className="grid gap-4">
+            <div className="grid gap-4 px-2">
                 {suppliers.map(s => (
-                    <div key={s.id} className="bg-white p-6 rounded-[3rem] border border-slate-100 shadow-sm flex items-center justify-between group active:scale-[0.98] transition-all">
+                    <div key={s.id} className="bg-white p-6 rounded-[3rem] border border-slate-50 shadow-sm flex items-center justify-between group">
                         <div className="flex-1 cursor-pointer" onClick={() => {setSelectedSup(s); setView('order');}}>
-                            <div className="font-black text-2xl text-slate-800 tracking-tight group-hover:text-indigo-600 transition-colors">{s.name}</div>
-                            <div className="flex gap-3 mt-1 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                                <span>{s.catalog?.length || 0} Artikel</span>
-                                <span>{s.customerNumber}</span>
-                            </div>
+                            <div className="font-black text-2xl text-slate-800 tracking-tight">{s.name}</div>
+                            <div className="text-[10px] text-indigo-500 font-bold uppercase mt-1 tracking-widest">{s.catalog?.length || 0} Artikel gelistet</div>
                         </div>
-                        <div className="flex gap-2">
-                            <button onClick={() => {
-                                const dataStr = JSON.stringify(s);
-                                const blob = new Blob([dataStr], {type:'application/json'});
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement('a'); a.href = url; a.download = `Export_${s.name}.json`; a.click();
-                            }} className="p-4 bg-indigo-50 text-indigo-400 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all"><Download size={20}/></button>
-                            <button onClick={() => {setEditSup(s); setView('setup');}} className="p-4 bg-slate-50 text-slate-300 rounded-2xl hover:bg-slate-900 hover:text-white transition-all"><Settings size={20}/></button>
-                        </div>
+                        <button onClick={() => {setEditSup(s); setView('setup');}} className="p-4 bg-slate-50 text-slate-300 rounded-2xl hover:bg-slate-900 hover:text-white transition-all shadow-sm">
+                            <Settings size={20}/>
+                        </button>
                     </div>
                 ))}
             </div>
