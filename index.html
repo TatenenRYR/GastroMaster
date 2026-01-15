@@ -2065,16 +2065,24 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
 */
     
 
+    
+
     const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
-    // Views: dashboard, manage_supplier, today_check, cart_review
     const [view, setView] = useState('dashboard'); 
     const [selectedSupplier, setSelectedSupplier] = useState(null);
     const [editSup, setEditSup] = useState({ name: '', email: '', catalog: [] });
-    const [cart, setCart] = useState([]); // Unser Warenkorb
+    const [cart, setCart] = useState([]); 
 
     const suppliers = data.suppliers || [];
+    const weekdays = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+    const todayStr = weekdays[new Date().getDay()]; // z.B. "Do"
 
-    // --- EXCEL (.xlsx) IMPORT LOGIK ---
+    // --- LOGIK: WER MUSS HEUTE BESTELLT WERDEN? ---
+    // Ein Lieferant ist "heute fällig", wenn mindestens ein Artikel im Katalog für heute geplant ist
+    const dueToday = suppliers.filter(s => 
+        s.catalog?.some(item => item.schedule && item.schedule[todayStr] === true)
+    );
+
     const handleExcelImport = async (file) => {
         const reader = new FileReader();
         reader.onload = async (e) => {
@@ -2084,189 +2092,117 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
                 const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                 const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
 
-                // Spaltenzuordnung basierend auf deiner Vierlande-Datei
-                // Zeile 3 (Index 2), Spalte 3 (Index 2): Lieferant Name
                 const supplierNameFromFile = rows[2]?.[2] || "Neuer Lieferant";
-                // Zeile 4 (Index 3), Spalte 3 (Index 2): Kundennummer
-                const customerNum = rows[3]?.[2]?.toString() || "";
-
-                // Produkte starten ab Zeile 7 (Index 6)
                 const productRows = rows.slice(6);
                 const newCatalog = productRows.map(row => {
-                    if (!row[2]) return null; // Überspringe leere Zeilen
+                    if (!row[2]) return null;
                     return {
-                        category: row[0]?.toString() || "Allgemein", // Spalte A: Category
-                        sku: row[1]?.toString() || "",              // Spalte B: product_id (Artikelnummer)
-                        name: row[2]?.toString() || "",             // Spalte C: product_name
-                        unit: row[3]?.toString() || "",             // Spalte D: unit (Verpackungseinheit)
-                        target: parseFloat(row[4]) || 0,            // Spalte E: par (Soll-Wert)
+                        category: row[0]?.toString() || "Allgemein",
+                        sku: row[1]?.toString() || "",
+                        name: row[2]?.toString() || "",
+                        unit: row[3]?.toString() || "",
+                        target: parseFloat(row[4]) || 0,
                         schedule: { Mo:true, Di:true, Mi:true, Do:true, Fr:true, Sa:true, So:true }
                     };
                 }).filter(Boolean);
 
-                if (newCatalog.length === 0) throw new Error("Keine Artikel gefunden");
-
-                // Check: Gibt es den Lieferanten schon?
                 let targetSup = suppliers.find(s => s.name.toLowerCase() === supplierNameFromFile.toLowerCase());
-                
                 if (targetSup) {
-                    // Update
-                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', targetSup.id), {
-                        catalog: newCatalog,
-                        customerNumber: customerNum
-                    });
-                    showToast(`Katalog für ${supplierNameFromFile} aktualisiert!`);
+                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', targetSup.id), { catalog: newCatalog });
+                    showToast(`${supplierNameFromFile} aktualisiert!`);
                 } else {
-                    // Neu anlegen
                     await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'suppliers'), {
-                        name: supplierNameFromFile,
-                        email: '',
-                        customerNumber: customerNum,
-                        catalog: newCatalog,
-                        createdAt: serverTimestamp()
+                        name: supplierNameFromFile, email: '', catalog: newCatalog
                     });
-                    showToast(`Lieferant ${supplierNameFromFile} automatisch erstellt!`);
+                    showToast(`Neu angelegt: ${supplierNameFromFile}`);
                 }
                 setView('dashboard');
-            } catch (err) {
-                console.error(err);
-                showToast("Excel-Import fehlgeschlagen", "error");
-            }
+            } catch (err) { showToast("Import Fehler", "error"); }
         };
         reader.readAsArrayBuffer(file);
     };
 
-    // --- WARENKORB FUNKTIONEN ---
     const updateCart = (item, qty) => {
         const newCart = [...cart];
         const idx = newCart.findIndex(c => c.sku === item.sku);
         if (qty > 0) {
             const entry = { ...item, qty };
             if (idx > -1) newCart[idx] = entry; else newCart.push(entry);
-        } else if (idx > -1) {
-            newCart.splice(idx, 1);
-        }
+        } else if (idx > -1) newCart.splice(idx, 1);
         setCart(newCart);
     };
 
-    // --- ANSICHT: BESTELLMASKE ---
-    if (view === 'today_check') return (
-        <div className="animate-in space-y-4 pb-40">
-            <div className="flex justify-between items-center bg-white p-5 sticky top-0 z-20 border-b rounded-b-3xl shadow-sm">
-                <div>
-                    <h2 className="text-xl font-black">{selectedSupplier.name}</h2>
-                    <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">Bestellung aufgeben</p>
-                </div>
-                <button onClick={() => { setView('dashboard'); setCart([]); }} className="p-3 bg-slate-100 rounded-full"><X/></button>
+    // --- VIEW: LIEFERANT EDITIEREN (FIX) ---
+    if (view === 'manage_supplier') return (
+        <div className="animate-in pb-40 px-4">
+            <div className="flex justify-between items-center py-6">
+                <h2 className="text-2xl font-black italic">LIEFERANT SETUP</h2>
+                <button onClick={()=>setView('dashboard')} className="p-2 bg-slate-100 rounded-full"><X/></button>
             </div>
-            
-            <div className="space-y-3 px-3">
-                {selectedSupplier.catalog?.map((item, i) => {
-                    const currentInCart = cart.find(c => c.sku === item.sku)?.qty || "";
-                    return (
-                        <div key={i} className="bg-white p-4 rounded-3xl border border-slate-100 flex justify-between items-center shadow-sm">
-                            <div className="flex-1 pr-4">
-                                <div className="font-black text-slate-800 leading-tight">{item.name}</div>
-                                <div className="text-[10px] text-slate-400 font-bold uppercase mt-1">{item.unit} | Art: {item.sku}</div>
-                                <div className="inline-block bg-indigo-50 text-indigo-600 text-[9px] font-black px-2 py-0.5 rounded mt-2">SOLL: {item.target}</div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <input 
-                                    type="number" 
-                                    value={currentInCart}
-                                    placeholder="0"
-                                    className="w-16 h-12 bg-slate-50 rounded-2xl text-center font-black text-lg outline-none border-2 border-transparent focus:border-indigo-500 transition-all"
-                                    onChange={(e) => updateCart(item, parseFloat(e.target.value))}
-                                />
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-
-            {cart.length > 0 && (
-                <div className="fixed bottom-24 left-4 right-4 z-30 animate-in">
-                    <button onClick={() => setView('cart_review')} className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black shadow-2xl flex justify-between px-8 items-center border-4 border-indigo-400">
-                        <span className="flex items-center gap-2"><ShoppingBag/> WARENKORB</span>
-                        <span className="bg-white text-indigo-600 px-3 py-1 rounded-full text-sm">{cart.length}</span>
-                    </button>
-                </div>
-            )}
-        </div>
-    );
-
-    // --- ANSICHT: WARENKORB PRÜFUNG ---
-    if (view === 'cart_review') return (
-        <div className="animate-in space-y-6 pb-40 px-3">
-            <div className="pt-6">
-                <h2 className="text-3xl font-black italic">PRÜFEN</h2>
-                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Deine Bestellung bei {selectedSupplier.name}</p>
-            </div>
-            
-            <div className="bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden shadow-xl">
-                {cart.map((c, i) => (
-                    <div key={i} className="p-5 border-b border-slate-50 flex justify-between items-center last:border-0">
-                        <div>
-                            <div className="font-black text-slate-800">{c.name}</div>
-                            <div className="text-xs text-indigo-500 font-bold">{c.qty}x {c.unit}</div>
-                        </div>
-                        <button onClick={() => updateCart(c, 0)} className="text-red-400 p-2 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={20}/></button>
-                    </div>
-                ))}
-            </div>
-
-            <div className="space-y-3">
-                <button onClick={() => { showToast("Bestellung wurde simuliert versendet!"); setView('dashboard'); setCart([]); }} className="w-full py-5 bg-emerald-600 text-white rounded-[2rem] font-black text-lg shadow-xl shadow-emerald-200 flex items-center justify-center gap-2">
-                    <Truck size={24}/> JETZT BESTELLEN
-                </button>
-                <button onClick={() => setView('today_check')} className="w-full py-4 bg-slate-100 text-slate-500 rounded-[2rem] font-bold">ZURÜCK</button>
+            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 space-y-4 shadow-sm">
+                <Input label="Name" value={editSup.name} onChange={e=>setEditSup({...editSup, name:e.target.value})} />
+                <Input label="E-Mail für Bestellungen" value={editSup.email} onChange={e=>setEditSup({...editSup, email:e.target.value})} />
+                <Button onClick={async()=>{
+                    if(editSup.id) await updateDoc(doc(db,'artifacts',appId,'public','data','suppliers',editSup.id), editSup);
+                    else await addDoc(collection(db,'artifacts',appId,'public','data','suppliers'), { ...editSup, catalog: [] });
+                    showToast("Gespeichert!");
+                    setView('dashboard');
+                }} className="bg-slate-900 text-white w-full py-4 rounded-2xl">SPEICHERN</Button>
             </div>
         </div>
     );
 
-    // --- ANSICHT: DASHBOARD (ÜBERSICHT) ---
+    // --- VIEW: DASHBOARD ---
     return (
-        <div className="animate-in space-y-6 pb-40 px-2">
-            <div className="flex justify-between items-end pt-4">
+        <div className="animate-in space-y-8 pb-40 px-4 pt-4">
+            <div className="flex justify-between items-end">
                 <div>
-                    <h2 className="text-3xl font-black italic uppercase tracking-tighter">Bestellzentrum</h2>
-                    <p className="text-slate-400 text-[10px] font-bold uppercase ml-1">Katalog & Einkauf</p>
+                    <h2 className="text-3xl font-black italic uppercase leading-none">Bestellzentrum</h2>
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-2">Heute ist {todayStr === 'Do' ? 'Donnerstag' : todayStr}</p>
                 </div>
                 <div className="flex gap-2">
-                    {/* AUTOMATISCHER EXCEL-IMPORT BUTTON */}
-                    <label className="bg-indigo-600 text-white p-4 rounded-2xl shadow-lg cursor-pointer active:scale-95 transition-all flex items-center justify-center border-b-4 border-indigo-800">
-                        <Database size={24}/>
-                        <input type="file" accept=".xlsx, .xls" className="hidden" onChange={(e) => handleExcelImport(e.target.files[0])} />
-                    </label>
-                    <button onClick={() => {setEditSup({name:'',email:'',catalog:[]}); setView('manage_supplier');}} className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg border-b-4 border-slate-700"><Plus/></button>
+                    <label className="bg-indigo-600 text-white p-4 rounded-2xl shadow-lg cursor-pointer"><Database/><input type="file" accept=".xlsx" className="hidden" onChange={(e) => handleExcelImport(e.target.files[0])} /></label>
+                    <button onClick={() => {setEditSup({name:'',email:'',catalog:[]}); setView('manage_supplier');}} className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg"><Plus/></button>
                 </div>
             </div>
 
-            <div className="grid gap-3">
-                {suppliers.map(s => (
-                    <div key={s.id} onClick={() => { setSelectedSupplier(s); setView('today_check'); }} className="group bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm relative cursor-pointer active:scale-[0.98] transition-all hover:border-indigo-200">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 group-hover:text-indigo-500 group-hover:bg-indigo-50 transition-all">
-                                <Truck size={24}/>
-                            </div>
+            {/* SEKTION: HEUTE FÄLLIG */}
+            <div className="space-y-4">
+                <h3 className="text-xs font-black text-indigo-500 uppercase tracking-[0.2em]">Heute fällige Bestellungen</h3>
+                <div className="grid gap-3">
+                    {dueToday.length > 0 ? dueToday.map(s => (
+                        <div key={s.id} onClick={() => { setSelectedSupplier(s); setView('today_check'); }} className="bg-gradient-to-r from-indigo-600 to-indigo-700 p-5 rounded-[2rem] text-white shadow-xl flex justify-between items-center active:scale-95 transition-all">
                             <div>
-                                <div className="font-black text-xl text-slate-800">{s.name}</div>
-                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{s.catalog?.length || 0} Artikel im Katalog</div>
+                                <div className="font-black text-xl italic">{s.name}</div>
+                                <div className="text-[10px] opacity-70 font-bold uppercase">Jetzt Bestand prüfen</div>
                             </div>
+                            <ChevronRight/>
                         </div>
-                        <button onClick={(e) => { e.stopPropagation(); setEditSup({...s}); setView('manage_supplier'); }} className="absolute top-5 right-5 p-2 bg-slate-50 text-slate-300 rounded-xl hover:bg-slate-900 hover:text-white transition-all"><Settings size={18}/></button>
-                    </div>
-                ))}
-                {suppliers.length === 0 && (
-                    <div className="text-center py-20 bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200">
-                        <Database size={48} className="mx-auto text-slate-200 mb-4"/>
-                        <p className="text-slate-400 font-bold text-sm uppercase">Noch keine Lieferanten.<br/>Lade eine Excel-Liste hoch!</p>
-                    </div>
-                )}
+                    )) : (
+                        <div className="p-6 bg-slate-50 rounded-[2rem] border-2 border-dashed text-center text-slate-400 text-xs font-bold uppercase">Keine geplanten Touren für heute</div>
+                    )}
+                </div>
+            </div>
+
+            {/* SEKTION: ALLE LIEFERANTEN */}
+            <div className="space-y-4">
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Alle Lieferanten</h3>
+                <div className="grid gap-3">
+                    {suppliers.map(s => (
+                        <div key={s.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 flex justify-between items-center shadow-sm">
+                            <div onClick={() => { setSelectedSupplier(s); setView('today_check'); }} className="flex-1 cursor-pointer">
+                                <div className="font-bold text-slate-800 text-lg">{s.name}</div>
+                                <div className="text-[10px] text-slate-400 font-bold uppercase">{s.catalog?.length || 0} Artikel gelistet</div>
+                            </div>
+                            <button onClick={() => { setEditSup({...s}); setView('manage_supplier'); }} className="p-3 bg-slate-50 text-slate-400 rounded-xl hover:bg-slate-900 hover:text-white transition-all"><Settings size={18}/></button>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );
 };
+
 
 
     
