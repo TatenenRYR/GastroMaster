@@ -175,7 +175,7 @@
             Users, Languages, Ticket, ListChecks, Clock, PlayCircle, StopCircle, Palette, Megaphone, Power, Monitor, Check,
             MessageCircle, LayoutGrid, ToggleLeft, ToggleRight, Brush, ClipboardCheck, Utensils,
             Palmtree, Wrench, Link, Sun, Cloud, BookOpen, // Vorherige
-            Euro, Video, Coins, Wallet, Calculator, Briefcase, MapPin, Droplets
+            Euro, Video, Coins, Wallet, Calculator, Briefcase // <--- NEU HINZUGEFÜGT FÜR KASSE
         } from "https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0";
         const { useState, useEffect, useRef, useMemo } = React;
 
@@ -2711,133 +2711,175 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
             );
         };
 
-      
-const LoginScreen = ({ staff, restaurantId, company, onLogoutSystem, yesterdayOil, fryers, onLogin, lang, modulesConfig, workerStatus = {} }) => {
-    const [sel, setSel] = React.useState(null);
-    const [pin, setPin] = React.useState("");
-    const t = DICTIONARY[lang] || DICTIONARY.de;
+        const LoginScreen = ({ 
+            staff, restaurantId, company, onLogoutSystem, yesterdayOil, fryers, 
+            onSeed, onLogin, showToast, lang, onMasterRecovery, tempMasterPw, 
+            themeColor, workerStatus = {}, modulesConfig
+        }) => {
+            const [selectedUser, setSelectedUser] = useState(null); 
+            const [showPin, setShowPin] = useState(false); 
+            const [recoveryMode, setRecoveryMode] = useState(false);
+            const [showTerminal, setShowTerminal] = useState(false);
 
-    // --- FILTER-LOGIK: Nur aktive Fritteusen ---
-    const activeFryers = (fryers || []).filter(f => f.status !== 'defekt');
-    const activeFryerIds = activeFryers.map(f => f.id);
-    
-    // Nur Logs von aktiven Geräten behalten
-    const filteredOilLogs = Object.values(yesterdayOil || {}).filter(log => 
-        activeFryerIds.includes(log.deviceId)
-    );
-
-    // Prüfung auf Vollständigkeit
-    const oilComplete = activeFryerIds.length > 0 && activeFryerIds.every(id => 
-        filteredOilLogs.some(l => l.deviceId === id)
-    );
-
-    const handlePin = (n) => {
-        if (pin.length < 4) {
-            const newPin = pin + n;
-            setPin(newPin);
-            if (newPin.length === 4) {
-                // String-Vergleich für Sicherheit bei PINs
-                if (String(sel.pin) === String(newPin)) {
-                    onLogin(sel);
-                } else {
-                    setPin("");
-                    if (navigator.vibrate) navigator.vibrate(200);
-                }
-            }
-        }
-    };
-
-    return (
-        <div className="min-h-screen bg-[#0f172a] text-white p-6 pb-24 flex flex-col animate-in">
-            {/* HEADER - FIX FÜR ERROR #31: company.name statt nur company */}
-            <div className="flex justify-between items-start mb-8">
-                <div>
-                    <h1 className="text-4xl font-black tracking-tighter mb-1">
-                        {company?.name || 'GASTROMASTER'} 
-                    </h1>
-                    <div className="flex items-center gap-2 text-slate-400 font-bold text-xs uppercase tracking-widest">
-                        <Store size={12} /> {restaurantId}
-                    </div>
-                </div>
-                <button onClick={onLogoutSystem} className="p-3 bg-white/5 rounded-2xl text-slate-400 hover:text-white transition-colors">
-                    <LogOut size={20} />
-                </button>
-            </div>
-
-            {/* Fritteusen Status-Monitor */}
-            {activeFryers.length > 0 && (
-                <div className={`mb-8 p-5 rounded-[2rem] border backdrop-blur-md transition-all ${oilComplete ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                            <div className={`p-2 rounded-xl ${oilComplete ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white animate-pulse'}`}>
-                                <Droplet size={16} />
-                            </div>
-                            <div>
-                                <div className="text-[10px] font-black uppercase tracking-tighter opacity-50">Fett-Kontrolle</div>
-                                <div className="text-sm font-bold">Vortag</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-2">
-                        {activeFryers.map(f => {
-                            const log = filteredOilLogs.find(l => l.deviceId === f.id);
-                            return (
-                                <div key={f.id} className="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5">
-                                    <span className="text-xs font-medium text-slate-300">{f.name}</span>
-                                    <span className={`text-[10px] font-black uppercase ${!log ? 'text-red-500' : (log.tpm >= 24 ? 'text-red-500' : (log.tpm >= 20 ? 'text-amber-500' : 'text-emerald-400'))}`}>
-                                        {log ? (log.tpm >= 24 ? "WECHSELN" : (log.tpm >= 20 ? "FILTERN" : `OK (${log.tpm}%)`)) : "FEHLT!"}
-                                    </span>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-
-            {/* Mitarbeiter-Raster */}
-            <div className="grid grid-cols-2 gap-4">
-                {staff.map(s => (
-                    <button key={s.id} onClick={() => { setSel(s); setPin(""); }}
-                        className="w-full bg-white/5 hover:bg-white/10 border border-white/10 p-4 rounded-[2rem] text-white flex flex-col items-center gap-3 transition-all active:scale-95">
-                        <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center relative">
-                            <User size={24} />
-                            {workerStatus[s.id] && <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#0f172a]"></div>}
-                        </div>
-                        <div className="font-bold text-sm leading-tight">{s.name}</div>
-                    </button>
-                ))}
-            </div>
-
-            {/* PIN Eingabe Modal */}
-            {sel && (
-                <div className="fixed inset-0 bg-[#0f172a]/95 backdrop-blur-md z-[100] flex flex-col items-center justify-center p-8 animate-in">
-                    <button onClick={() => setSel(null)} className="absolute top-8 right-8 text-white/50"><X size={32}/></button>
-                    <div className="text-center mb-8">
-                        <div className="text-3xl font-black">{sel.name}</div>
-                        <div className="text-slate-400 text-xs font-bold uppercase mt-2">PIN Eingeben</div>
-                    </div>
-                    <div className="flex gap-4 mb-10">
-                        {[0,1,2,3].map(i => (
-                            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${pin.length > i ? 'bg-indigo-500 border-indigo-500 scale-125' : 'border-slate-700'}`} />
-                        ))}
-                    </div>
-                    <div className="grid grid-cols-3 gap-4 w-full max-w-xs">
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, "C", 0, "X"].map((n, i) => (
-                            <button key={i} onClick={() => n === "C" ? setPin("") : n === "X" ? setPin(pin.slice(0,-1)) : handlePin(n)}
-                                className="h-16 rounded-2xl bg-white/5 border border-white/10 text-xl font-bold active:bg-white/20">
-                                {n}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
-
+            const oilLogs = Object.values(yesterdayOil || {});
+            const showOilWarning = (fryers||[]).length > 0;
+            const t = DICTIONARY[lang] || DICTIONARY.de;
             
-            // --- DASHBOARD & MODULES ---
+            const handleUserClick = (u) => { 
+                const pin = String(u.pin || ''); 
+                if(pin.length > 0) { 
+                    setSelectedUser({...u, pin}); 
+                    setShowPin(true); 
+                    setRecoveryMode(false); 
+                } else { 
+                    onLogin(u); 
+                } 
+            };
+            
+            const onPinSuccess = (inputPin) => { 
+                setShowPin(false); 
+                if(recoveryMode) onMasterRecovery(inputPin); 
+                else onLogin(selectedUser); 
+            };
+            
+            const getRoleName = (r) => { 
+                if(r==='admin') return 'Filialleitung'; 
+                if(r==='kitchen_lead') return 'Küchenleitung'; 
+                if(r==='service_lead') return 'Serviceleitung'; 
+                return 'Mitarbeiter'; 
+            };
+
+            return (
+                <div className="min-h-screen bg-slate-900 flex flex-col justify-center p-6 relative overflow-hidden text-slate-800">
+                    {/* Hintergrund Effekt */}
+                    <div className="absolute top-[-20%] right-[-20%] w-[80%] h-[80%] rounded-full blur-[150px] opacity-20 animate-pulse" style={{backgroundColor: themeColor}}></div>
+                    
+                    {/* MODALS */}
+                    {showTerminal && <TerminalClock staff={staff} appId={restaurantId} onClose={()=>setShowTerminal(false)} />}
+                    
+                    {showPin && (
+                        <PinPad 
+                            title={recoveryMode ? "Master-Schlüssel" : `${t.pin} für ${selectedUser.name}`} 
+                            targetPin={recoveryMode ? null : selectedUser.pin} 
+                            onClose={()=>setShowPin(false)} 
+                            onSuccess={onPinSuccess} 
+                        />
+                    )}
+                    
+                    {/* MAIN CONTENT */}
+                    <div className="z-10 w-full max-w-sm mx-auto space-y-6 animate-in">
+                        
+                        {/* HEADER */}
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <AppLogo company={company} large design={company?.design}/>
+                                <p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.3em] flex items-center gap-1 mt-2">
+                                    <Store size={10}/> {restaurantId}
+                                </p>
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={()=>{setRecoveryMode(true); setShowPin(true);}} className="text-amber-500 hover:text-amber-400 transition-colors bg-white/5 p-2 rounded-full"><Key size={20}/></button>
+                                <button onClick={onLogoutSystem} className="text-slate-500 hover:text-white transition-colors bg-white/5 p-2 rounded-full"><LogOut size={20}/></button>
+                            </div>
+                        </div>
+
+                        {/* TERMINAL BUTTON (GROSS) - Wird nur angezeigt, wenn Modul 'time' aktiv ist */}
+{modulesConfig?.time?.enabled !== false && (
+    <button onClick={()=>setShowTerminal(true)} className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-6 rounded-[2rem] shadow-2xl shadow-indigo-900/50 flex items-center justify-between group active:scale-95 transition-transform border border-white/10 hover:border-white/30">
+        <div className="text-left">
+            <div className="font-black text-xl mb-1 flex items-center gap-2"><Clock size={24}/> STEMPELUHR</div>
+            <div className="text-indigo-200 text-xs font-bold uppercase tracking-widest">Zum Ein-/Ausstempeln</div>
+        </div>
+        <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center group-hover:rotate-90 transition-transform">
+            <ChevronRight size={24} className="text-white"/>
+        </div>
+    </button>
+)}
+
+
+                        <div className="border-t border-white/10 my-2"></div>
+
+                        {/* OIL WARNING (Fritteusen Check) */}
+                        {showOilWarning && (
+                            <div className={`p-4 rounded-2xl backdrop-blur-sm shadow-xl border ${oilLogs.length === 0 ? 'bg-red-500/20 border-red-500/30 text-red-200' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                                <div className="text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1"><AlertTriangle size={10}/> {t.yesterday}</div>
+                                {oilLogs.length === 0 ? (
+                                    <div className="text-sm font-bold flex items-center gap-2"><X size={16}/> {t.missing}</div>
+                                ) : (
+                                    <div className="space-y-1">
+                                        {oilLogs.map((l,i) => { 
+                                            const fname = (fryers||[]).find(f=>f.id===l.deviceId)?.name || 'Fritteuse'; 
+                                            return <div key={i} className="text-xs flex justify-between"><span>{fname}</span><span className="font-bold">OK ({l.tpm}%)</span></div> 
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        
+                        {/* MITARBEITER LISTE */}
+                        <div className="space-y-3">
+                            <div className="text-slate-500 text-xs font-bold uppercase ml-2 tracking-widest">{t.login}</div>
+                            {(staff||[]).map(s => {
+                                // STATUS PRÜFUNG
+                                const status = workerStatus[s.id]; // 'active' | 'break' | undefined
+                                const isActive = status === 'active';
+                                const isBreak = status === 'break';
+
+                                return (
+                                    <button 
+                                        type="button" 
+                                        key={s.id} 
+                                        onClick={() => handleUserClick(s)} 
+                                        className="w-full bg-white/5 hover:bg-white/10 border border-white/10 p-4 rounded-2xl text-white flex items-center gap-4 transition-all active:scale-95 group backdrop-blur-sm relative overflow-hidden"
+                                    >
+                                        {/* Linker Rand Indikator */}
+                                        {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 shadow-[0_0_15px_#10b981]"></div>}
+                                        {isBreak && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 shadow-[0_0_15px_#f59e0b]"></div>}
+
+                                        <div className="p-2.5 rounded-xl bg-white/10 relative">
+                                            <User size={20} className="text-white group-hover:text-white"/>
+                                            {/* Avatar Dot */}
+                                            {isActive && <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-800"></div>}
+                                            {isBreak && <div className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full border-2 border-slate-800"></div>}
+                                        </div>
+                                        
+                                        <div className="flex-1 text-left">
+                                            <div className="font-bold text-lg flex items-center gap-2">
+                                                {s.name}
+                                                {/* STATUS BADGES */}
+                                                {isActive && (
+                                                    <span className="bg-emerald-500/20 text-emerald-400 text-[9px] px-2 py-0.5 rounded-lg flex items-center gap-1 border border-emerald-500/30 animate-pulse font-bold tracking-wider">
+                                                        <Clock size={10} /> IM DIENST
+                                                    </span>
+                                                )}
+                                                {isBreak && (
+                                                    <span className="bg-amber-500/20 text-amber-400 text-[9px] px-2 py-0.5 rounded-lg flex items-center gap-1 border border-amber-500/30 font-bold tracking-wider">
+                                                        <Coffee size={10} /> PAUSE
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="text-[11px] opacity-60 uppercase font-medium">{getRoleName(s.role)}</div>
+                                        </div>
+                                        
+                                        {/* Schloss Icon */}
+                                        {s.pin && String(s.pin).length>0 ? <Lock size={16} className="opacity-30 group-hover:opacity-100 transition-opacity"/> : <Unlock size={16} className="opacity-30 text-red-400"/>}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* INITIAL SEED BUTTON */}
+                        {(staff||[]).length===0 && (
+                            <div className="text-center pt-8">
+                                <p className="text-slate-500 text-sm mb-4">Erster Start?</p>
+                                <button onClick={onSeed} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg">Datenbank Initialisieren</button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+        // --- DASHBOARD & MODULES ---
         const TeamBoard = ({ messages, user, appId, showToast }) => {
     const [newMsg, setNewMsg] = useState('');
     // Prüfen, ob der User Admin oder eine Leitung ist
@@ -3223,27 +3265,35 @@ const LoginScreen = ({ staff, restaurantId, company, onLogoutSystem, yesterdayOi
             ); 
         };
 
-
-
-const Oil = ({ data, status, user, appId, showToast, lang }) => { 
+        const Oil = ({ data, status, user, appId, showToast, lang }) => { 
     const [inp, setInp] = useState({}); 
-    // Filtert defekte Geräte direkt aus
-    const active = (data.fryers || []).filter(d => d.status !== 'defekt'); 
+    const active = (data.fryers || []).filter(d => d.status!=='defekt'); 
     const signature = (status.signatures || {})['oil']; 
     const t = DICTIONARY[lang]; 
     const oilLogs = status.oilLogs || {}; 
     const canSign = active.length > 0 && active.every(d => oilLogs[d.id]); 
 
+    // --- BEARBEITETE LÖSCH-FUNKTION ---
     const deleteLog = async (logId, devId) => { 
         if(confirm("Eintrag wirklich löschen?")) { 
             try {
+                // 1. In der Datenbank löschen (falls logId vorhanden)
                 if (logId) {
                     await deleteDoc(doc(db,'artifacts',appId,'public', 'data', 'logs_oil', logId)); 
                 }
-                // Felder lokal leeren
+                
+                // 2. FELDER LEEREN: Setzt Temperatur und TPM für diese Fritteuse zurück
+                setInp(prev => ({
+                    ...prev,
+                    [devId]: { t: '', p: '' }
+                }));
+
+                showToast("Eintrag gelöscht & Felder geleert"); 
+            } catch (e) {
+                console.error("Löschfehler:", e);
+                // Sicherheitshalber Felder trotzdem leeren bei Fehler
                 setInp(prev => ({ ...prev, [devId]: { t: '', p: '' } }));
-                showToast("Eintrag entfernt"); 
-            } catch (e) { console.error(e); }
+            }
         }
     }; 
 
@@ -3251,25 +3301,30 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
         const tempVal = inp[dev.id]?.t, tpmVal = inp[dev.id]?.p; 
         if(!tempVal || !tpmVal) return; 
         await addDoc(collection(db,'artifacts',appId,'public','data','logs_oil'), { 
-            deviceId:dev.id, deviceName:dev.name, temp:tempVal, tpm:parseFloat(tpmVal), 
+            deviceId:dev.id, deviceName:dev.name, temp:tempVal, tpm:tpmVal, 
             user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() 
         }); 
         showToast("Gespeichert"); 
     }; 
 
+    const sign = async () => { 
+        if(confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) { 
+            await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_oil`), { 
+                module:'oil', user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() 
+            }); 
+            showToast("Protokoll signiert!"); 
+        } 
+    }; 
+
     return (
         <div className="animate-in space-y-6">
-            <div><h2 className="text-3xl font-black text-inherit">{t.oil}</h2><p className="opacity-60 text-sm font-medium">Fettqualität & TPM Messung</p></div>
+            <div><h2 className="text-3xl font-black text-inherit">{t.oil}</h2><p className="text-inherit opacity-60 text-sm font-medium">TPM Messung</p></div>
             <div className="space-y-4">
                 {active.map(dev => { 
                     const l = oilLogs[dev.id]; 
-                    // Logik für Farben und Texte
-                    const quality = l ? (l.tpm >= 24 ? 'bad' : l.tpm >= 20 ? 'warn' : 'good') : null; 
-                    const config = {
-                        bad:  { col: 'bg-red-600 shadow-red-200', txt: 'FETT WECHSELN' },
-                        warn: { col: 'bg-amber-500 shadow-amber-200', txt: 'FILTERN' },
-                        good: { col: 'bg-emerald-500 shadow-emerald-200', txt: 'ALLES OK' }
-                    };
+                    const quality = l ? (l.tpm>=24?'bad':l.tpm>=20?'warn':'good') : null; 
+                    const colors = { bad: 'bg-red-500 shadow-red-200', warn: 'bg-amber-500 shadow-amber-200', good: 'bg-emerald-500 shadow-emerald-200' }; 
+                    const labels = { bad: 'Wechseln', warn: 'Filtern', good: 'OK' }; 
                     
                     return (
                         <div key={dev.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
@@ -3277,54 +3332,68 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
                                 <span className="font-bold text-lg text-slate-700">{dev.name}</span>
                                 {l ? (
                                     <div className="flex items-center gap-2">
-                                        <span className={`text-white text-[10px] font-black px-3 py-2 rounded-xl shadow-lg ${config[quality].col}`}>
-                                            {config[quality].txt}
-                                        </span>
-                                        <button onClick={() => deleteLog(l.id, dev.id)} className="p-2 bg-slate-50 text-slate-300 rounded-full hover:text-red-500">
-                                            <Trash2 size={16}/>
+                                        <span className={`text-white text-xs font-black px-3 py-1.5 rounded-xl uppercase shadow-lg ${colors[quality]}`}>{labels[quality]}</span>
+                                        {/* Button ruft angepasste deleteLog mit dev.id auf */}
+                                        <button onClick={() => deleteLog(l.id, dev.id)} className="p-2 bg-slate-100 rounded-full hover:bg-red-100 hover:text-red-500 transition-colors">
+                                            <Trash2 size={14}/>
                                         </button>
                                     </div>
                                 ) : (
-                                    <span className="text-slate-300 text-[10px] font-bold uppercase tracking-widest">Messung fehlt</span>
+                                    <span className="bg-slate-100 text-slate-400 text-xs font-bold px-2 py-1 rounded-lg">Messung offen</span>
                                 )}
                             </div>
                             
                             {!l ? (
                                 <div className="flex gap-3">
-                                    <div className="flex-1">
-                                        <Input type="number" placeholder="°C" value={inp[dev.id]?.t || ''} 
-                                               onChange={e => setInp({...inp, [dev.id]: {...inp[dev.id], t: e.target.value}})} />
+                                    <div className="flex-1 space-y-1">
+                                        <div className="text-[10px] uppercase font-bold text-slate-400 ml-1">Temp</div>
+                                        <Input 
+                                            type="number" 
+                                            inputMode="decimal" 
+                                            placeholder="°C" 
+                                            className="text-center h-14 font-bold text-xl" 
+                                            value={inp[dev.id]?.t || ''} 
+                                            onChange={e => setInp({...inp, [dev.id]: {...inp[dev.id], t: e.target.value}})} 
+                                        />
                                     </div>
-                                    <div className="flex-1">
-                                        <Input type="number" placeholder="TPM %" value={inp[dev.id]?.p || ''} 
-                                               onChange={e => setInp({...inp, [dev.id]: {...inp[dev.id], p: e.target.value}})} />
+                                    <div className="flex-1 space-y-1">
+                                        <div className="text-[10px] uppercase font-bold text-slate-400 ml-1">TPM %</div>
+                                        <Input 
+                                            type="number" 
+                                            inputMode="decimal" 
+                                            placeholder="%" 
+                                            className="text-center h-14 font-bold text-xl" 
+                                            value={inp[dev.id]?.p || ''} 
+                                            onChange={e => setInp({...inp, [dev.id]: {...inp[dev.id], p: e.target.value}})} 
+                                        />
                                     </div>
-                                    <button onClick={() => save(dev)} className="bg-slate-900 text-white w-14 rounded-2xl flex items-center justify-center">
-                                        <Save size={20}/>
-                                    </button>
+                                    <div className="space-y-1">
+                                        <div className="h-[17px]"></div>
+                                        <button onClick={() => save(dev)} className="bg-slate-900 text-white h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg">
+                                            <Save size={24}/>
+                                        </button>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div className="bg-slate-50 p-3 rounded-2xl text-center border">
-                                        <div className="text-[10px] font-bold text-slate-400">TEMP</div>
-                                        <div className="font-black text-xl">{l.temp}°C</div>
-                                    </div>
-                                    <div className="bg-slate-50 p-3 rounded-2xl text-center border">
-                                        <div className="text-[10px] font-bold text-slate-400">TPM</div>
-                                        <div className="font-black text-xl">{l.tpm}%</div>
-                                    </div>
+                                    <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Temp</div><div className="font-black text-xl text-slate-700">{l.temp}°C</div></div>
+                                    <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">TPM</div><div className="font-black text-xl text-slate-700">{l.tpm}%</div></div>
                                 </div>
                             )}
                         </div>
                     ); 
                 })}
             </div>
-            {/* Signatur-Bereich bleibt wie gehabt... */}
+            <div className="mt-8 pt-6 border-t border-slate-200">
+                {signature ? (
+                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold"><PenTool size={20}/><div className="flex-1"><div className="text-xs uppercase opacity-70">Digital Signiert von</div><div className="text-lg">{signature.user}</div></div></div>
+                ) : (
+                    <div className="space-y-2"><Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18}/> {t.sign}</Button></div>
+                )}
+            </div>
         </div>
     ); 
 };
-
-            
 const Editor = ({ type, data, close, appId, showToast, btnStyle }) => { 
             const [form, setForm] = useState({...data}); 
             const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); 
