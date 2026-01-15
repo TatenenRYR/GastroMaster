@@ -63,7 +63,10 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+        
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 
 </head>
 
@@ -2063,234 +2066,267 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
         const EMAILJS_PUBLIC_KEY = "TMFx2hP-RUgy_g9LC";    // <--- ÄNDERN
 
 */
-    
-
-    
-
 const SmartOrdering = ({ data, appId, showToast, user, lang }) => {
-    // State-Management für Ansichten und Daten
     const [view, setView] = useState('dashboard'); 
     const [selectedSupplier, setSelectedSupplier] = useState(null);
-    const [editSup, setEditSup] = useState({ name: '', email: '', catalog: [], customerNumber: '' });
+    const [editSup, setEditSup] = useState({ name: '', email: '', catalog: [], categories: ['Kühlhaus', 'Trockenlager', 'Tiefkühler', 'Mittagstisch'] });
+    const [editItem, setEditItem] = useState(null);
     const [cart, setCart] = useState([]); 
     const [searchTerm, setSearchTerm] = useState('');
 
     const suppliers = data.suppliers || [];
     const weekdays = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
-    const todayStr = weekdays[new Date().getDay()]; // Erkennt z.B. "Do"
+    const todayStr = weekdays[new Date().getDay()];
 
-    // Filter: Welche Lieferanten haben heute eine geplante Tour?
-    const dueToday = suppliers.filter(s => 
-        s.catalog?.some(item => item.schedule && item.schedule[todayStr] === true)
-    );
+    // --- NEU: EXPORT FUNKTION FÜR ANDERE FILIALEN ---
+    const exportSupplier = (supplier) => {
+        const dataStr = JSON.stringify(supplier);
+        const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+        const exportFileDefaultName = `Export_${supplier.name}_${appId}.json`;
+        const linkElement = document.createElement('a');
+        linkElement.setAttribute('href', dataUri);
+        linkElement.setAttribute('download', exportFileDefaultName);
+        linkElement.click();
+        showToast("Export bereit");
+    };
 
-    // --- EXCEL IMPORT LOGIK ---
+    // --- NEU: BESTELLSCHEIN PDF (KOPIE ZUR KONTROLLE) ---
+    const generateOrderPDF = (supplier, items) => {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        doc.setFontSize(18);
+        doc.text(`Bestellschein: ${supplier.name}`, 14, 20);
+        doc.setFontSize(10);
+        doc.text(`Datum: ${new Date().toLocaleString()} | Besteller: ${user.name}`, 14, 28);
+        
+        const tableData = items.map(i => [i.qty, i.unit, i.name, i.sku, ""]);
+        doc.autoTable({
+            startY: 35,
+            head: [['Menge', 'Einheit', 'Artikel', 'Art-Nr.', 'GELIEFERT?']],
+            body: tableData,
+            theme: 'grid',
+            headStyles: { fillColor: [40, 40, 40] }
+        });
+        doc.save(`Bestellung_${supplier.name}_${new Date().toISOString().slice(0,10)}.pdf`);
+    };
+
+    // --- EXCEL IMPORT MIT TAG-AUSWAHL ---
     const handleExcelImport = async (file) => {
+        const targetDay = prompt("Für welchen Tag ist diese Liste? (Mo, Di, Mi, Do, Fr, Sa, So oder 'Alle')", "Alle");
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
                 const bdata = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(bdata, { type: 'array' });
-                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-
-                // Metadaten-Extraktion aus deiner spezifischen Vorlage
-                const supplierNameFromFile = rows[2]?.[2] || "Neuer Lieferant";
-                const customerNum = rows[3]?.[2]?.toString() || "";
-
-                // Artikel-Extraktion ab Zeile 7
+                const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+                
+                const supName = rows[2]?.[2] || "Neuer Lieferant";
                 const productRows = rows.slice(6);
                 const newCatalog = productRows.map(row => {
                     if (!row[2]) return null;
+                    const baseSchedule = { Mo:false, Di:false, Mi:false, Do:false, Fr:false, Sa:false, So:false };
+                    if(targetDay === "Alle") Object.keys(baseSchedule).forEach(k => baseSchedule[k] = true);
+                    else if(baseSchedule.hasOwnProperty(targetDay)) baseSchedule[targetDay] = true;
+
                     return {
                         category: row[0]?.toString() || "Allgemein",
-                        sku: row[1]?.toString() || "",      // Artikelnummer
-                        name: row[2]?.toString() || "",     // Produktname
-                        unit: row[3]?.toString() || "",     // Verpackungseinheit
-                        target: parseFloat(row[4]) || 0,    // Soll-Wert (PAR)
-                        schedule: { Mo:true, Di:true, Mi:true, Do:true, Fr:true, Sa:true, So:true }
+                        sku: row[1]?.toString() || "",
+                        name: row[2]?.toString() || "",
+                        unit: row[3]?.toString() || "",
+                        // Flexiblere Soll-Mengen: Wir speichern den Wert für den gewählten Tag
+                        targets: { [targetDay]: parseFloat(row[4]) || 0 },
+                        schedule: baseSchedule
                     };
                 }).filter(Boolean);
 
-                // Datenbank-Abgleich
-                let targetSup = suppliers.find(s => s.name.toLowerCase() === supplierNameFromFile.toLowerCase());
+                let targetSup = suppliers.find(s => s.name.toLowerCase() === supName.toLowerCase());
                 if (targetSup) {
-                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', targetSup.id), { 
-                        catalog: newCatalog, 
-                        customerNumber: customerNum 
-                    });
-                    showToast(`${supplierNameFromFile} aktualisiert!`);
+                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', targetSup.id), { catalog: newCatalog });
                 } else {
                     await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'suppliers'), {
-                        name: supplierNameFromFile, 
-                        email: '', 
-                        customerNumber: customerNum,
-                        catalog: newCatalog 
+                        name: supName, catalog: newCatalog, categories: ['Kühlhaus', 'Trockenlager', 'Tiefkühler']
                     });
-                    showToast(`Neu angelegt: ${supplierNameFromFile}`);
                 }
-                setView('dashboard');
-            } catch (err) { showToast("Excel-Fehler: Format prüfen", "error"); }
+                showToast("Import erfolgreich");
+            } catch (err) { showToast("Excel-Fehler", "error"); }
         };
         reader.readAsArrayBuffer(file);
     };
 
-    // --- WARENKORB LOGIK ---
     const updateCart = (item, qty) => {
         const newCart = [...cart];
         const idx = newCart.findIndex(c => c.sku === item.sku);
         if (qty > 0) {
-            const entry = { ...item, qty };
-            if (idx > -1) newCart[idx] = entry; else newCart.push(entry);
+            if (idx > -1) newCart[idx].qty = qty; else newCart.push({ ...item, qty });
         } else if (idx > -1) newCart.splice(idx, 1);
         setCart(newCart);
     };
 
     // --- VIEW: SETUP ---
     if (view === 'manage_supplier') return (
-        <div className="animate-in pb-40 px-4">
+        <div className="animate-in pb-40 px-4 space-y-6">
             <div className="flex justify-between items-center py-6">
-                <h2 className="text-2xl font-black italic tracking-tighter">LIEFERANT SETUP</h2>
+                <h2 className="text-2xl font-black italic">LIEFERANT SETUP</h2>
                 <button onClick={()=>setView('dashboard')} className="p-2 bg-slate-100 rounded-full"><X/></button>
             </div>
-            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 space-y-5 shadow-xl">
+            
+            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 space-y-4 shadow-xl">
+                <Input label="Name" value={editSup.name} onChange={e=>setEditSup({...editSup, name:e.target.value})} />
+                <Input label="Bestell-Email" value={editSup.email} onChange={e=>setEditSup({...editSup, email:e.target.value})} />
+                
                 <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Stammdaten</label>
-                    <div className="space-y-3 mt-1">
-                        <Input placeholder="Lieferant Name" value={editSup.name} onChange={e=>setEditSup({...editSup, name:e.target.value})} />
-                        <Input placeholder="Bestell-Email" value={editSup.email} onChange={e=>setEditSup({...editSup, email:e.target.value})} />
-                        <Input placeholder="Kundennummer" value={editSup.customerNumber} onChange={e=>setEditSup({...editSup, customerNumber:e.target.value})} />
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Kategorien verwalten</label>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                        {editSup.categories?.map(cat => (
+                            <span key={cat} className="bg-slate-100 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2">
+                                {cat} <button onClick={()=>setEditSup({...editSup, categories: editSup.categories.filter(c=>c!==cat)})}><X size={12}/></button>
+                            </span>
+                        ))}
+                        <button onClick={()=>{const n=prompt("Neue Kategorie:"); if(n) setEditSup({...editSup, categories: [...(editSup.categories||[]), n]})}} className="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full text-xs font-black">+ NEU</button>
                     </div>
                 </div>
-                <Button onClick={async()=>{
-                    const sData = { name: editSup.name, email: editSup.email, customerNumber: editSup.customerNumber };
-                    if(editSup.id) await updateDoc(doc(db,'artifacts',appId,'public','data','suppliers',editSup.id), sData);
-                    else await addDoc(collection(db,'artifacts',appId,'public','data','suppliers'), { ...sData, catalog: [] });
-                    showToast("Erfolgreich gespeichert!");
-                    setView('dashboard');
-                }} className="bg-slate-900 text-white w-full py-4 rounded-2xl shadow-lg">SPEICHERN</Button>
+
+                <div className="pt-4 flex flex-col gap-2">
+                    <Button onClick={async()=>{
+                        if(editSup.id) await updateDoc(doc(db,'artifacts',appId,'public','data','suppliers',editSup.id), editSup);
+                        else await addDoc(collection(db,'artifacts',appId,'public','data','suppliers'), { ...editSup, catalog: [] });
+                        setView('dashboard');
+                    }} className="bg-slate-900 text-white">SPEICHERN</Button>
+                    
+                    {editSup.id && (
+                        <button onClick={async()=>{if(confirm("Löschen?")){await deleteDoc(doc(db,'artifacts',appId,'public','data','suppliers',editSup.id)); setView('dashboard');}}} className="text-red-500 font-bold text-sm py-2">LIEFERANT LÖSCHEN</button>
+                    )}
+                </div>
             </div>
         </div>
     );
 
-    // --- VIEW: BESTELLMASKE ---
+    // --- VIEW: BESTELLMASKE MIT RAUF/RUNTER BUTTONS ---
     if (view === 'today_check') return (
         <div className="animate-in space-y-4 pb-40">
-            <div className="flex justify-between items-center bg-white/90 backdrop-blur p-5 sticky top-0 z-20 border-b rounded-b-[2rem] shadow-sm">
-                <div>
-                    <h2 className="text-xl font-black italic">{selectedSupplier.name}</h2>
-                    <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">Bestand & Bestellung</p>
-                </div>
-                <button onClick={() => { setView('dashboard'); setCart([]); }} className="p-3 bg-slate-100 rounded-full"><X/></button>
+            <div className="bg-white p-5 sticky top-0 z-20 border-b flex justify-between items-center">
+                <div><h2 className="text-xl font-black italic">{selectedSupplier.name}</h2></div>
+                <button onClick={() => setView('dashboard')} className="p-3 bg-slate-100 rounded-full"><X/></button>
             </div>
             
-            <div className="px-4 mb-4">
-                <div className="relative">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18}/>
-                    <input 
-                        className="w-full bg-white border border-slate-100 p-4 pl-12 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20" 
-                        placeholder="Artikel suchen..." 
-                        onChange={e => setSearchTerm(e.target.value.toLowerCase())}
-                    />
-                </div>
-            </div>
+            <div className="px-4"><Input placeholder="Suche..." onChange={e=>setSearchTerm(e.target.value.toLowerCase())} /></div>
 
-            <div className="space-y-3 px-4">
-                {selectedSupplier.catalog?.filter(i => i.name.toLowerCase().includes(searchTerm)).map((item, i) => {
-                    const qtyInCart = cart.find(c => c.sku === item.sku)?.qty || "";
-                    return (
-                        <div key={i} className="bg-white p-5 rounded-[2rem] border border-slate-50 flex justify-between items-center shadow-sm hover:border-indigo-100 transition-colors">
-                            <div className="flex-1 pr-4">
-                                <div className="font-black text-slate-800 leading-tight">{item.name}</div>
-                                <div className="text-[10px] text-slate-400 font-bold uppercase mt-1">{item.unit} | SKU: {item.sku}</div>
-                                <div className="inline-block bg-slate-50 text-slate-500 text-[9px] font-black px-2 py-0.5 rounded mt-2">SOLL: {item.target}</div>
-                            </div>
-                            <input 
-                                type="number" 
-                                value={qtyInCart}
-                                placeholder="0"
-                                className="w-16 h-14 bg-indigo-50/50 rounded-2xl text-center font-black text-lg outline-none border-2 border-transparent focus:border-indigo-500 focus:bg-white transition-all"
-                                onChange={(e) => updateCart(item, parseFloat(e.target.value))}
-                            />
-                        </div>
-                    );
-                })}
+            <div className="space-y-8 px-4">
+                {selectedSupplier.categories?.map(cat => (
+                    <div key={cat} className="space-y-3">
+                        <h3 className="text-sm font-black text-indigo-500 uppercase tracking-widest bg-indigo-50 p-2 rounded-xl inline-block">{cat}</h3>
+                        {selectedSupplier.catalog?.filter(i => i.category === cat && i.name.toLowerCase().includes(searchTerm)).map((item, i) => {
+                            const qty = cart.find(c => c.sku === item.sku)?.qty || 0;
+                            return (
+                                <div key={i} className="bg-white p-4 rounded-3xl border flex justify-between items-center shadow-sm">
+                                    <div className="flex-1" onClick={()=>setEditItem({...item, index: i})}>
+                                        <div className="font-black text-slate-800">{item.name}</div>
+                                        <div className="text-[10px] text-slate-400 font-bold uppercase">{item.unit}</div>
+                                        <div className="text-[9px] font-black text-indigo-400 mt-1">SOLL ({todayStr}): {item.targets?.[todayStr] || item.target || 0}</div>
+                                    </div>
+                                    <div className="flex items-center gap-3 bg-slate-100 p-1 rounded-2xl">
+                                        <button onClick={()=>updateCart(item, Math.max(0, qty-1))} className="w-10 h-10 bg-white rounded-xl shadow-sm font-black">-</button>
+                                        <span className="w-8 text-center font-black text-lg">{qty}</span>
+                                        <button onClick={()=>updateCart(item, qty+1)} className="w-10 h-10 bg-white rounded-xl shadow-sm font-black">+</button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ))}
             </div>
 
             {cart.length > 0 && (
                 <div className="fixed bottom-24 left-4 right-4 z-30">
-                    <button onClick={() => setView('cart_review')} className="w-full py-5 bg-indigo-600 text-white rounded-[2.5rem] font-black shadow-2xl flex justify-between px-8 items-center border-b-4 border-indigo-800 active:translate-y-1 transition-all">
-                        <span className="flex items-center gap-2"><ShoppingBag size={20}/> WARENKORB PRÜFEN</span>
-                        <span className="bg-white/20 px-3 py-1 rounded-full text-sm">{cart.length}</span>
+                    <button onClick={() => setView('cart_review')} className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black shadow-2xl flex justify-between px-8">
+                        <span>WARENKORB</span>
+                        <span>{cart.length} ARTIKEL</span>
                     </button>
+                </div>
+            )}
+
+            {/* MODAL: ARTIKEL BEARBEITEN */}
+            {editItem && (
+                <div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 space-y-4">
+                        <h3 className="font-black">Artikel bearbeiten</h3>
+                        <Input label="Name" value={editItem.name} onChange={e=>setEditItem({...editItem, name:e.target.value})} />
+                        <Input label="Einheit" value={editItem.unit} onChange={e=>setEditItem({...editItem, unit:e.target.value})} />
+                        <Select label="Kategorie" value={editItem.category} onChange={e=>setEditItem({...editItem, category: e.target.value})}>
+                            {selectedSupplier.categories?.map(c => <option key={c} value={c}>{cat}</option>)}
+                        </Select>
+                        <div className="grid grid-cols-2 gap-2">
+                             {weekdays.map(d => (
+                                 <div key={d} className="flex flex-col">
+                                     <label className="text-[8px] font-bold uppercase">{d}</label>
+                                     <input type="number" className="p-2 bg-slate-50 rounded-lg text-xs" value={editItem.targets?.[d] || ""} onChange={e=>setEditItem({...editItem, targets: {...(editItem.targets||{}), [d]: e.target.value}})} />
+                                 </div>
+                             ))}
+                        </div>
+                        <Button onClick={async()=>{
+                            const newCat = [...selectedSupplier.catalog];
+                            newCat[editItem.index] = editItem;
+                            await updateDoc(doc(db,'artifacts',appId,'public','data','suppliers',selectedSupplier.id), { catalog: newCat });
+                            setEditItem(null);
+                            showToast("Artikel aktualisiert");
+                        }}>SPEICHERN</Button>
+                        <button onClick={()=>setEditItem(null)} className="w-full text-slate-400 text-xs font-bold">ABBRECHEN</button>
+                    </div>
                 </div>
             )}
         </div>
     );
 
-    // --- VIEW: DASHBOARD ---
+    // --- ANSICHT: WARENKORB & PDF ---
+    if (view === 'cart_review') return (
+        <div className="animate-in space-y-6 pb-40 px-4">
+            <h2 className="text-3xl font-black italic mt-6">BESTELLUNG PRÜFEN</h2>
+            <div className="bg-white rounded-[2.5rem] border shadow-xl overflow-hidden">
+                {cart.map((c, i) => (
+                    <div key={i} className="p-5 border-b flex justify-between items-center">
+                        <div><div className="font-black">{c.name}</div><div className="text-xs text-indigo-500">{c.qty}x {c.unit}</div></div>
+                        <button onClick={() => updateCart(c, 0)} className="text-red-400 p-2"><Trash2 size={20}/></button>
+                    </div>
+                ))}
+            </div>
+            <Button onClick={() => { 
+                generateOrderPDF(selectedSupplier, cart);
+                showToast("Bestellung & PDF erstellt!"); 
+                setView('dashboard'); setCart([]); 
+            }} className="bg-emerald-600 text-white py-5 rounded-[2rem] font-black">BESTELLUNG ABSCHICKEN & PDF KOPIE</Button>
+            <button onClick={()=>setView('today_check')} className="w-full text-slate-400 font-bold">ZURÜCK</button>
+        </div>
+    );
+
+    // --- DASHBOARD ---
     return (
         <div className="animate-in space-y-8 pb-40 px-4 pt-4">
             <div className="flex justify-between items-end">
-                <div>
-                    <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none">Bestell-Hub</h2>
-                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-[0.3em] mt-2">Status: {todayStr} / {new Date().toLocaleDateString()}</p>
-                </div>
+                <div><h2 className="text-3xl font-black italic uppercase leading-none">Bestellzentrum</h2></div>
                 <div className="flex gap-2">
-                    <label className="bg-indigo-600 text-white p-4 rounded-2xl shadow-lg cursor-pointer active:scale-95 transition-all border-b-4 border-indigo-800">
-                        <Database size={24}/>
-                        <input type="file" accept=".xlsx" className="hidden" onChange={(e) => handleExcelImport(e.target.files[0])} />
-                    </label>
-                    <button onClick={() => {setEditSup({name:'',email:'',catalog:[], customerNumber:''}); setView('manage_supplier');}} className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg active:scale-95 transition-all border-b-4 border-slate-700">
-                        <Plus size={24}/>
-                    </button>
+                    <label className="bg-indigo-600 text-white p-4 rounded-2xl shadow-lg cursor-pointer"><Database size={24}/><input type="file" accept=".xlsx" className="hidden" onChange={(e) => handleExcelImport(e.target.files[0])} /></label>
+                    <button onClick={() => {setEditSup({name:'',email:'',catalog:[], categories:['Kühlhaus','Trockenlager']}); setView('manage_supplier');}} className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg"><Plus size={24}/></button>
                 </div>
             </div>
 
-            {/* SEKTION: HEUTE FÄLLIG */}
-            <div className="space-y-4">
-                <div className="flex items-center gap-2 ml-2">
-                    <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
-                    <h3 className="text-xs font-black text-indigo-500 uppercase tracking-widest">Heute fällig</h3>
-                </div>
-                <div className="grid gap-3">
-                    {dueToday.length > 0 ? dueToday.map(s => (
-                        <div key={s.id} onClick={() => { setSelectedSupplier(s); setView('today_check'); }} className="bg-gradient-to-br from-indigo-600 to-indigo-800 p-6 rounded-[2.5rem] text-white shadow-xl flex justify-between items-center group active:scale-[0.98] transition-all">
-                            <div>
-                                <div className="font-black text-2xl italic tracking-tight">{s.name}</div>
-                                <div className="text-[10px] opacity-70 font-bold uppercase tracking-widest mt-1">Tour: {todayStr} • Bestand prüfen</div>
-                            </div>
-                            <div className="bg-white/10 p-3 rounded-full group-hover:translate-x-1 transition-transform"><ChevronRight/></div>
+            <div className="grid gap-3">
+                {suppliers.map(s => (
+                    <div key={s.id} className="bg-white p-5 rounded-[2.5rem] border shadow-sm flex justify-between items-center">
+                        <div onClick={() => { setSelectedSupplier(s); setView('today_check'); }} className="flex-1 cursor-pointer">
+                            <div className="font-black text-xl text-slate-800">{s.name}</div>
+                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{s.catalog?.length || 0} Artikel</div>
                         </div>
-                    )) : (
-                        <div className="p-8 bg-slate-100/50 rounded-[2.5rem] border-2 border-dashed border-slate-200 text-center text-slate-400 text-[10px] font-black uppercase tracking-widest">Keine geplanten Bestellungen für heute</div>
-                    )}
-                </div>
-            </div>
-
-            {/* SEKTION: ALLE LIEFERANTEN */}
-            <div className="space-y-4">
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest ml-2">Katalog-Management</h3>
-                <div className="grid gap-3">
-                    {suppliers.map(s => (
-                        <div key={s.id} className="bg-white p-5 rounded-[2.5rem] border border-slate-100 flex justify-between items-center shadow-sm group hover:border-indigo-100 transition-all">
-                            <div onClick={() => { setSelectedSupplier(s); setView('today_check'); }} className="flex-1 cursor-pointer">
-                                <div className="font-black text-slate-700 text-xl">{s.name}</div>
-                                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{s.catalog?.length || 0} Artikel gelistet</div>
-                            </div>
-                            <button onClick={() => { setEditSup({...s}); setView('manage_supplier'); }} className="p-4 bg-slate-50 text-slate-300 rounded-2xl hover:bg-slate-900 hover:text-white transition-all">
-                                <Settings size={20}/>
-                            </button>
+                        <div className="flex gap-2">
+                            <button onClick={()=>exportSupplier(s)} className="p-3 bg-slate-50 text-indigo-500 rounded-xl"><RefreshCcw size={18}/></button>
+                            <button onClick={() => { setEditSup({...s}); setView('manage_supplier'); }} className="p-3 bg-slate-50 text-slate-400 rounded-xl"><Settings size={18}/></button>
                         </div>
-                    ))}
-                </div>
+                    </div>
+                ))}
             </div>
         </div>
     );
 };
 
-
-    
 
 // --- APP CONTROLLER ---
         function App() {
