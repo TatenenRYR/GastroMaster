@@ -1,3 +1,10 @@
+// 1. React Funktionen explizit aus dem globalen Fenster-Objekt holen
+const { useState, useEffect, useRef } = React;
+
+// 2. Lucide Icons importieren (wie bisher)
+import { ShoppingBag, Database, Plus, X, ChevronRight, PenTool, Trash2, Save, ClipboardList, Check } 
+from "https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0";
+
 const SmartOrdering = ({ data, appId, showToast, user }) => {
     // --- KONFIGURATION ---
     const EMAILJS_SERVICE_ID = "service_dejsfye";
