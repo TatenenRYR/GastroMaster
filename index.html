@@ -3382,19 +3382,29 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
 
        const Cooling = ({ data, status, user, appId, showToast, lang }) => {
     const [val, setVal] = useState({});
-    const [editingId, setEditingId] = useState(null); // Speichert, welches Gerät gerade korrigiert wird
+    const [editingId, setEditingId] = useState(null);
 
     const active = (data.cooling || []).filter(d => d.status !== 'defekt');
     const t = DICTIONARY[lang];
     const signature = (status.signatures || {})['cooling'];
     const tempLogs = status.tempLogs || [];
-    
-    // Prüfen, ob alle Geräte einen Eintrag haben (für Signatur)
     const canSign = active.length > 0 && active.every(d => tempLogs.find(l => l.deviceId === d.id));
 
-    // Funktion zum Starten der Bearbeitung
+    // Prüft, ob ein Wert kritisch ist (außerhalb des definierten Bereichs)
+    const checkCritical = (value, dev) => {
+        if (!value) return false;
+        const num = parseFloat(value);
+        // Falls keine Werte hinterlegt sind, nehmen wir Standardwerte an (TK-Logik vs Kühl-Logik raten wir hier nicht, lieber sicherheitshalber keine Warnung wenn nichts eingestellt ist)
+        if (dev.minTemp === undefined || dev.maxTemp === undefined) return false;
+        
+        const min = parseFloat(dev.minTemp);
+        const max = parseFloat(dev.maxTemp);
+        
+        return num < min || num > max;
+    };
+
     const startEdit = (dev, currentLog) => {
-        if(signature) return showToast("Bereits unterschrieben! Keine Änderungen mehr möglich.", "error");
+        if(signature) return showToast("Bereits unterschrieben!", "error");
         setEditingId(dev.id);
         setVal(prev => ({ ...prev, [dev.id]: currentLog.temp }));
     };
@@ -3403,167 +3413,135 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         const inputVal = val[dev.id];
         if (!inputVal) return;
 
-        // Prüfen, ob wir gerade bearbeiten (Update) oder neu eintragen (Create)
+        const isCritical = checkCritical(inputVal, dev);
         const existingLog = tempLogs.find(l => l.deviceId === dev.id);
         const isUpdate = editingId === dev.id && existingLog;
 
         try {
-            if (isUpdate) {
-                // 1. UPDATE: Vorherigen Wert sichern für die Nachricht
-                const oldTemp = existingLog.temp;
+            // ALARM NACHRICHT SENDEN (Wenn kritisch ODER Update)
+            if (isCritical || isUpdate) {
+                let msgText = "";
+                let msgType = "INFO";
 
-                // Datenbank Eintrag aktualisieren (Wir suchen das Doc anhand der ID, die wir im State haben müssten, 
-                // aber da tempLogs aus Firestore kommt, müssen wir sicherstellen, dass wir die Doc-ID haben.
-                // ACHTUNG: In deinem Dashboard-Code scheinst du die Doc-ID in tempLogs evtl. nicht mitzuspeichern?
-                // Wir nutzen hier einen Query-Workaround oder die bekannte ID-Struktur, falls vorhanden.
-                // Da deine App Logs oft einfach abruft, nutzen wir hier einen Query um das exakte Doc zu finden, falls ID fehlt.
-                // ABER: In deiner App Logik oben (Dashboard) speicherst du Logs oft ohne explizite ID im State.
-                // Wir nutzen hier einen Query um sicherzugehen:
-                
-                const q = query(
-                    collection(db, 'artifacts', appId, 'public', 'data', 'logs_temp'), 
-                    where('deviceId', '==', dev.id), 
-                    where('dateStr', '==', getTodayStr())
-                );
-                const querySnapshot = await getDocs(q);
-                
-                if (!querySnapshot.empty) {
-                    const docRef = querySnapshot.docs[0].ref;
-                    await updateDoc(docRef, {
-                        temp: inputVal,
-                        updatedBy: user.name,
-                        updatedAt: serverTimestamp()
-                    });
-
-                    // 2. NACHRICHT AN ALLE LEITUNGEN (Via Team Board)
-                    const alertMsg = `⚠️ KORREKTUR KÜHLUNG: ${dev.name} wurde von ${oldTemp}°C auf ${inputVal}°C geändert. (Durch: ${user.name})`;
-                    
-                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), {
-                        text: alertMsg,
-                        user: "SYSTEM-ALARM",
-                        role: "admin",
-                        internal: true, // <--- Markiert die Nachricht als "Nur für Leitung"
-                        createdAt: serverTimestamp()
-                    });
-
-                    showToast("Wert korrigiert & Leitungen informiert!", "success");
+                if (isUpdate) {
+                    msgText = `⚠️ KORREKTUR: ${dev.name} geändert auf ${inputVal}°C (von ${existingLog.temp}°C).`;
+                    msgType = "SYSTEM-KORREKTUR";
+                } else if (isCritical) {
+                    msgText = `🚨 ALARM KÜHLUNG: ${dev.name} hat ${inputVal}°C! (Soll: ${dev.minTemp} bis ${dev.maxTemp}°C)`;
+                    msgType = "SYSTEM-ALARM";
                 }
-                
-                setEditingId(null); // Edit Modus beenden
 
-            } else {
-                // 3. NEU EINTRAKEN
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_temp'), {
-                    deviceId: dev.id,
-                    deviceName: dev.name,
-                    temp: inputVal,
-                    user: user.name,
-                    dateStr: getTodayStr(),
+                // Nachricht an Leitungen senden (internal: true)
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), {
+                    text: msgText + ` (User: ${user.name})`,
+                    user: msgType,
+                    role: "admin",
+                    internal: true,
                     createdAt: serverTimestamp()
                 });
-                await logBranchAction(appId, user.name, 'TEMP_LOG', `${dev.name}: ${inputVal}°C`);
-                showToast("Temperatur erfasst");
             }
 
-            // Input leeren
+            // DATEN SPEICHERN
+            const logData = {
+                deviceId: dev.id,
+                deviceName: dev.name,
+                temp: inputVal,
+                user: user.name,
+                dateStr: getTodayStr(),
+                createdAt: serverTimestamp(),
+                // Wir speichern auch, ob es kritisch war, für die Historie
+                isCritical: isCritical
+            };
+
+            if (isUpdate) {
+                // Update Logik (Suche via Query, da wir Doc-ID brauchen)
+                const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs_temp'), where('deviceId', '==', dev.id), where('dateStr', '==', getTodayStr()));
+                const querySnapshot = await getDocs(q);
+                if (!querySnapshot.empty) {
+                    await updateDoc(querySnapshot.docs[0].ref, { ...logData, updatedBy: user.name });
+                    showToast("Korrigiert & Leitung informiert");
+                }
+                setEditingId(null);
+            } else {
+                // Create Logik
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_temp'), logData);
+                await logBranchAction(appId, user.name, 'TEMP_LOG', `${dev.name}: ${inputVal}°C`);
+                showToast(isCritical ? "Wert gespeichert (ALARM GESENDET!)" : "Gespeichert");
+            }
+
             setVal(p => ({ ...p, [dev.id]: '' }));
 
-        } catch (e) { 
-            console.error(e); 
-            showToast("Fehler beim Speichern", "error"); 
-        }
+        } catch (e) { console.error(e); showToast("Fehler", "error"); }
     };
 
     const sign = async () => {
-        if (confirm(`Ich, ${user.name}, bestätige die Richtigkeit aller Werte.`)) {
+        if (confirm(`Hiermit bestätige ich, ${user.name}, die Prüfung.`)) {
             await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_signatures', `${getTodayStr()}_cooling`), {
-                module: 'cooling',
-                user: user.name,
-                dateStr: getTodayStr(),
-                createdAt: serverTimestamp()
+                module: 'cooling', user: user.name, dateStr: getTodayStr(), createdAt: serverTimestamp()
             });
-            await logBranchAction(appId, user.name, 'SIGNATURE', 'Cooling protocol signed');
-            showToast("Protokoll signiert!");
+            showToast("Unterschrieben!");
         }
     };
 
     return (
         <div className="animate-in space-y-6">
-            <div>
-                <h2 className="text-3xl font-black text-inherit">{t.temp}</h2>
-                <p className="text-inherit opacity-60 text-sm font-medium">HACCP Dokumentation</p>
-            </div>
+            <div><h2 className="text-3xl font-black text-inherit">{t.temp}</h2><p className="opacity-60 text-sm font-medium">Bereichskontrolle</p></div>
             <div className="grid gap-4">
                 {active.map(dev => {
                     const done = tempLogs.find(l => l.deviceId === dev.id);
-                    // Wir sind im Edit-Modus, wenn die ID übereinstimmt ODER wenn noch nichts eingetragen ist
                     const isEditing = editingId === dev.id;
-                    const showInput = !done || isEditing;
-
                     const v = val[dev.id] || '';
-                    const maxLimit = dev.maxTemp ? parseFloat(dev.maxTemp) : 8;
-                    const isHigh = v && parseFloat(v) > maxLimit;
+                    
+                    // Live-Prüfung während der Eingabe
+                    const isCriticalInput = checkCritical(v, dev);
+                    // Prüfung des gespeicherten Wertes
+                    const isCriticalSaved = done && checkCritical(done.temp, dev);
 
                     return (
-                        <div key={dev.id} className={`p-6 rounded-[2rem] border shadow-sm transition-all ${done && !isEditing ? 'bg-emerald-50/50 border-emerald-100' : 'bg-white border-slate-100'}`}>
-                            
+                        <div key={dev.id} className={`p-6 rounded-[2rem] border shadow-sm transition-all ${done && !isEditing ? (isCriticalSaved ? 'bg-red-50 border-red-200' : 'bg-emerald-50/50 border-emerald-100') : 'bg-white border-slate-100'}`}>
                             <div className="flex justify-between mb-4 font-black text-lg text-slate-700 items-center">
                                 <div>
                                     <span>{dev.name}</span>
-                                    <span className="block text-[10px] text-slate-400 font-normal uppercase mt-0.5">
-                                        Max: {maxLimit}°C
-                                    </span>
+                                    {dev.minTemp && dev.maxTemp && (
+                                        <span className="block text-[10px] text-slate-400 font-normal uppercase mt-0.5">
+                                            Soll: {dev.minTemp}° bis {dev.maxTemp}°
+                                        </span>
+                                    )}
                                 </div>
-                                
-                                {/* ANZEIGE WENN FERTIG (und nicht im Edit Modus) */}
                                 {done && !isEditing ? (
                                     <div className="flex items-center gap-3">
-                                        <span className="text-emerald-600 bg-emerald-100 px-3 py-1 rounded-xl text-sm shadow-sm">
+                                        <span className={`px-3 py-1 rounded-xl text-sm shadow-sm font-bold ${isCriticalSaved ? 'bg-red-500 text-white animate-pulse' : 'bg-emerald-100 text-emerald-600'}`}>
                                             {done.temp}°C
                                         </span>
-                                        {/* DER BEARBEITEN BUTTON - Nur sichtbar wenn noch nicht unterschrieben */}
                                         {!signature && (
-                                            <button 
-                                                onClick={() => startEdit(dev, done)} 
-                                                className="bg-white border border-slate-200 text-slate-400 p-2 rounded-full hover:text-indigo-600 hover:border-indigo-200 transition-colors"
-                                                title="Wert korrigieren"
-                                            >
+                                            <button onClick={() => startEdit(dev, done)} className="bg-white border p-2 rounded-full text-slate-400 hover:text-indigo-600">
                                                 <PenTool size={14} />
                                             </button>
                                         )}
                                     </div>
-                                ) : (
-                                    <Thermometer size={20} className="text-slate-300" />
-                                )}
+                                ) : <Thermometer size={20} className="text-slate-300" />}
                             </div>
-                            
-                            {/* EINGABEFELD (Sichtbar wenn neu ODER beim Bearbeiten) */}
-                            {showInput && (
-                                <div className="flex gap-3 h-14 animate-in fade-in">
-                                    <div className="relative flex-1 h-full">
-                                        <input 
-                                            type="number" 
-                                            inputMode="decimal" 
-                                            value={v} 
-                                            onChange={e => setVal({ ...val, [dev.id]: e.target.value })} 
-                                            placeholder={isEditing ? "Neuer Wert..." : "0.0"} 
-                                            className={`w-full h-full rounded-2xl border-2 font-black text-2xl text-center outline-none transition-colors ${isHigh ? 'border-red-300 bg-red-50 text-red-600 placeholder-red-300' : 'border-slate-100 focus:border-indigo-500 placeholder-slate-200'}`} 
-                                        />
-                                    </div>
-                                    <button onClick={() => save(dev)} className={`text-white w-16 h-full rounded-2xl flex items-center justify-center shadow-lg transition-colors ${isEditing ? 'bg-indigo-600 shadow-indigo-200' : 'bg-slate-900 shadow-slate-900/20'}`}>
+
+                            {(!done || isEditing) && (
+                                <div className="flex gap-3 h-14">
+                                    <input 
+                                        type="number" 
+                                        inputMode="decimal" // Wichtig für Minuszeichen auf Handy
+                                        value={v} 
+                                        onChange={e => setVal({ ...val, [dev.id]: e.target.value })} 
+                                        placeholder={isEditing ? "Korrektur..." : "Temp..."} 
+                                        className={`flex-1 rounded-2xl border-2 font-black text-2xl text-center outline-none ${isCriticalInput ? 'border-red-300 bg-red-50 text-red-600' : 'border-slate-100 focus:border-indigo-500'}`} 
+                                    />
+                                    <button onClick={() => save(dev)} className={`text-white w-16 h-full rounded-2xl flex items-center justify-center shadow-lg ${isCriticalInput ? 'bg-red-600' : 'bg-slate-900'}`}>
                                         <Save size={24} />
                                     </button>
-                                    {isEditing && (
-                                        <button onClick={() => setEditingId(null)} className="w-14 h-full rounded-2xl border border-slate-200 text-slate-400 flex items-center justify-center hover:bg-slate-50">
-                                            <X size={24}/>
-                                        </button>
-                                    )}
+                                    {isEditing && <button onClick={() => setEditingId(null)} className="w-14 rounded-2xl border text-slate-400"><X size={24}/></button>}
                                 </div>
                             )}
                             
-                            {isHigh && showInput && (
-                                <div className="text-red-500 text-xs font-bold mt-2 flex items-center gap-1 animate-pulse">
-                                    <AlertTriangle size={12} /> Limit ({maxLimit}°C) überschritten!
+                            {(isCriticalInput || isCriticalSaved) && (
+                                <div className="text-red-500 text-xs font-bold mt-2 flex items-center gap-1">
+                                    <AlertTriangle size={12} /> Temperatur außerhalb des Soll-Bereichs!
                                 </div>
                             )}
                         </div>
@@ -3575,19 +3553,10 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 {signature ? (
                     <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold">
                         <PenTool size={20} />
-                        <div className="flex-1">
-                            <div className="text-xs uppercase opacity-70">Digital Signiert von</div>
-                            <div className="text-lg">{signature.user}</div>
-                        </div>
-                        <div className="text-[10px] uppercase bg-white/50 px-2 py-1 rounded">Locked</div>
+                        <div className="flex-1"><div className="text-xs uppercase opacity-70">Signiert von</div><div className="text-lg">{signature.user}</div></div>
                     </div>
                 ) : (
-                    <div className="space-y-2">
-                        <Button onClick={sign} disabled={!canSign} className="shadow-indigo-200">
-                            <PenTool size={18} /> {t.sign}
-                        </Button>
-                        <p className="text-center text-[10px] text-slate-400">Nach dem Signieren sind keine Änderungen mehr möglich.</p>
-                    </div>
+                    <Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18} /> {t.sign}</Button>
                 )}
             </div>
         </div>
@@ -3760,32 +3729,28 @@ const Editor = ({ type, data, close, appId, showToast, btnStyle }) => {
                     </div>
                     {type === 'cooling' && (
                         <div className="space-y-4">
-                            {/* Name des Geräts */}
                             <div className="space-y-2">
                                 <span className="text-xs font-bold uppercase text-slate-400 ml-1">Gerätename</span>
-                                <Input 
-                                    value={form.name || ''} 
-                                    onChange={e => setForm({ ...form, name: e.target.value })} 
-                                    placeholder="z.B. Kühlhaus Küche" 
-                                />
+                                <Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="z.B. TK Schrank 1" />
                             </div>
-
-                            {/* NEU: Maximaltemperatur */}
-                            <div className="space-y-2">
-                                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Max. Temperatur (°C)</span>
-                                <Input 
-                                    type="number" 
-                                    value={form.maxTemp || ''} 
-                                    onChange={e => setForm({ ...form, maxTemp: e.target.value })} 
-                                    placeholder="Standard: 8" 
-                                />
-                                <p className="text-[10px] text-slate-400 ml-1">
-                                    Ab diesem Wert wird die Eingabe rot markiert (z.B. -18 für TK, 7 für Kühlschrank).
-                                </p>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Min. Temp (°C)</span>
+                                    <Input type="number" value={form.minTemp||''} onChange={e=>setForm({...form,minTemp:e.target.value})} placeholder="z.B. -24" />
+                                </div>
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Max. Temp (°C)</span>
+                                    <Input type="number" value={form.maxTemp||''} onChange={e=>setForm({...form,maxTemp:e.target.value})} placeholder="z.B. -18" />
+                                </div>
                             </div>
+                            <p className="text-[10px] text-slate-400 bg-slate-50 p-2 rounded">
+                                Beispiel TK: Min -24, Max -18.<br/>
+                                Beispiel Kühlung: Min 2, Max 7.<br/>
+                                Werte außerhalb lösen einen Alarm aus.
+                            </p>
                         </div>
                     )}
-
                     {type==='prep' && (
                         <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-3">
