@@ -3003,8 +3003,9 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         // --- DASHBOARD & MODULES ---
         const TeamBoard = ({ messages, user, appId, showToast }) => {
     const [newMsg, setNewMsg] = useState('');
-    // Prüfen, ob der User Admin oder eine Leitung ist
-    const canManage = user.role === 'admin' || user.role.includes('lead');
+    
+    // Prüfen, ob der User zur Führungsebene gehört
+    const isManager = ['admin', 'kitchen_lead', 'service_lead'].includes(user.role);
 
     const post = async () => {
         if(!newMsg.trim()) return;
@@ -3028,13 +3029,18 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         } catch(e) { showToast("Fehler beim Löschen", "error"); }
     };
 
+    // --- FILTER LOGIK ---
+    // Zeige Nachricht WENN: (Nachricht ist NICHT intern) ODER (User ist Manager)
+    const visibleMessages = messages.filter(m => !m.internal || isManager);
+
     return (
         <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden animate-in">
             <div className="flex justify-between items-center mb-4">
                 <h3 className="font-black text-slate-800 flex items-center gap-2"><MessageCircle size={20}/> Team Board</h3>
             </div>
             
-            {canManage && (
+            {/* Nur Manager dürfen schreiben */}
+            {isManager && (
                 <div className="flex gap-2 mb-4">
                     <input 
                         value={newMsg} 
@@ -3049,20 +3055,21 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
             )}
 
             <div className="space-y-3 max-h-60 overflow-y-auto custom-scrollbar">
-                {messages.length === 0 && (
+                {visibleMessages.length === 0 && (
                     <div className="text-center text-slate-400 text-xs italic py-4">Keine Nachrichten vorhanden.</div>
                 )}
-                {messages.map(m => (
-                    <div key={m.id} className="bg-slate-50 p-3 rounded-xl text-sm border border-slate-100 group">
+                {visibleMessages.map(m => (
+                    <div key={m.id} className={`p-3 rounded-xl text-sm border group ${m.internal ? 'bg-red-50 border-red-100' : 'bg-slate-50 border-slate-100'}`}>
                         <div className="flex justify-between items-start mb-1">
-                            <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${m.role==='admin'?'bg-indigo-100 text-indigo-700':'bg-slate-200 text-slate-600'}`}>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${m.user === 'SYSTEM-ALARM' ? 'bg-red-600 text-white' : m.role==='admin'?'bg-indigo-100 text-indigo-700':'bg-slate-200 text-slate-600'}`}>
+                                {m.internal && <span className="mr-1">🔒</span>}
                                 {m.user}
                             </span>
                             <div className="flex items-center gap-2">
                                 <span className="text-[9px] text-slate-400 font-bold">
                                     {m.createdAt?.seconds ? new Date(m.createdAt.seconds*1000).toLocaleDateString() : 'Jetzt'}
                                 </span>
-                                {canManage && (
+                                {isManager && (
                                     <button 
                                         onClick={() => deleteMessage(m.id)} 
                                         className="text-slate-300 hover:text-red-500 p-1 bg-white rounded-md shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
@@ -3072,13 +3079,15 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                                 )}
                             </div>
                         </div>
-                        <div className="text-slate-700 ml-1 font-medium leading-relaxed">{m.text}</div>
+                        <div className={`ml-1 font-medium leading-relaxed ${m.internal ? 'text-red-800' : 'text-slate-700'}`}>
+                            {m.text}
+                        </div>
                     </div>
                 ))}
             </div>
         </div>
     );
-};
+    };
 
         const DashCard = ({ title, val, icon, col, onClick, sub, customStatus }) => {
             // Berechne einen fiktiven Fortschritt oder nutze Werte, falls verfügbar
@@ -3432,7 +3441,8 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                     await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), {
                         text: alertMsg,
                         user: "SYSTEM-ALARM",
-                        role: "admin", // Damit es hervorgehoben wird
+                        role: "admin",
+                        internal: true, // <--- Markiert die Nachricht als "Nur für Leitung"
                         createdAt: serverTimestamp()
                     });
 
