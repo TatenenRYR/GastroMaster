@@ -3856,29 +3856,117 @@ const Editor = ({ type, data, close, appId, showToast, btnStyle }) => {
             ); 
         };
         // --- ADMIN SECTION ---
+      
         const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView, onLogoutSystem, deleteBranch, isRemote, currentUser, lang, btnStyle }) => { 
-            const [tab, setTab] = useState('staff'); const [edit, setEdit] = useState(null); const [deleteMath, setDeleteMath] = useState(null); const [deleteInput, setDeleteInput] = useState('');
-            const t = DICTIONARY[lang] || DICTIONARY.de;
-            const role = currentUser?.role;
-            let availableTabs = {};
-            if(role === 'admin') { 
-                // Fügen Sie 'cash: "Kasse"' hinzu:
-                availableTabs = { staff: t.login, design: 'Design', modules: 'Module', settings: 'Setup', audit: 'Audit', cash: 'Kasse', prep: t.prep, tasks: t.clean, cooling: t.temp, fryers: t.oil, suppliers: 'Lief', company: 'Firma', system: 'Sys' }; 
-            } else { availableTabs = { prep: t.prep, tasks: t.clean, cooling: t.temp, fryers: t.oil, suppliers: 'Lief' }; }
+    const [tab, setTab] = useState('staff'); 
+    const [edit, setEdit] = useState(null); 
+    const [deleteMath, setDeleteMath] = useState(null); 
+    const [deleteInput, setDeleteInput] = useState('');
+    
+    const t = DICTIONARY[lang] || DICTIONARY.de;
+    const role = currentUser?.role;
+    
+    let availableTabs = {};
+    if(role === 'admin') { 
+        availableTabs = { staff: t.login, design: 'Design', modules: 'Module', settings: 'Setup', audit: 'Audit', cash: 'Kasse', prep: t.prep, tasks: t.clean, cooling: t.temp, fryers: t.oil, suppliers: 'Lief', company: 'Firma', system: 'Sys' }; 
+    } else { 
+        availableTabs = { prep: t.prep, tasks: t.clean, cooling: t.temp, fryers: t.oil, suppliers: 'Lief' }; 
+    }
+    
+    const delItem = async (id) => { 
+        if(!confirm("Löschen?")) return; 
+        const col = tab==='tasks'?'cleaning_tasks':tab==='cooling'?'cooling_devices':tab==='fryers'?'fryers':tab==='suppliers'?'suppliers':tab==='prep'?'prep_tasks':'staff'; 
+        await deleteDoc(doc(db,'artifacts',appId,'public','data',col,id)); 
+        showToast("Gelöscht"); 
+    }; 
+    
+    const initDeleteBranch = () => { const a=Math.floor(Math.random()*10)+1; const b=Math.floor(Math.random()*10)+1; setDeleteMath({q:`${a} + ${b}`, a:a+b}); };
+    const confirmDeleteBranch = async () => { if(parseInt(deleteInput) === deleteMath.a) { deleteBranch(); } else { showToast("Rechnung falsch!", "error"); } };
+
+    // --- NEU: EXCEL EXPORT FÜR KÜHLUNG ---
+    const exportCooling = () => {
+        if (!window.XLSX) return showToast("Excel-Modul lädt noch...", "error");
+        
+        const devices = data.cooling || [];
+        const exportData = devices.map(d => ({
+            ID: d.id, // WICHTIG: Nicht ändern in Excel, wenn man überschreiben will!
+            Name: d.name,
+            MinTemp: d.minTemp || '',
+            MaxTemp: d.maxTemp || '',
+            Status: d.status || 'active'
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Kühlgeräte");
+        XLSX.writeFile(wb, `Kuehlgeraete_Export_${getTodayStr()}.xlsx`);
+        showToast("Export gestartet!");
+    };
+
+    // --- NEU: EXCEL IMPORT FÜR KÜHLUNG ---
+    const importCooling = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // WARNUNG VOR DEM ÜBERSCHREIBEN
+        if (!confirm("⚠️ ACHTUNG: Importierte Daten überschreiben vorhandene Einstellungen, wenn die ID übereinstimmt!\n\nLeere IDs legen neue Geräte an.\n\nMöchten Sie fortfahren?")) {
+            e.target.value = null; // Reset Input
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const bdata = new Uint8Array(evt.target.result);
+                const wb = XLSX.read(bdata, { type: 'array' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(ws);
+
+                if (rows.length === 0) return showToast("Datei scheint leer zu sein.", "error");
+
+                let countUpdate = 0;
+                let countNew = 0;
+
+                for (const row of rows) {
+                    // Daten vorbereiten
+                    const payload = {
+                        name: row.Name,
+                        minTemp: row.MinTemp,
+                        maxTemp: row.MaxTemp,
+                        status: row.Status || 'active',
+                        updatedAt: serverTimestamp()
+                    };
+
+                    if (row.ID) {
+                        // UPDATE: Existierendes Gerät überschreiben
+                        const ref = doc(db, 'artifacts', appId, 'public', 'data', 'cooling_devices', row.ID);
+                        await setDoc(ref, payload, { merge: true });
+                        countUpdate++;
+                    } else {
+                        // NEU: Neues Gerät anlegen
+                        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'cooling_devices'), payload);
+                        countNew++;
+                    }
+                }
+
+                showToast(`Import fertig: ${countUpdate} aktualisiert, ${countNew} neu.`);
+                e.target.value = null; // Reset Input
+            } catch (err) {
+                console.error(err);
+                showToast("Fehler beim Import", "error");
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
+    return (
+        <div className="animate-in space-y-6">
+            <h2 className="text-3xl font-black text-inherit">Verwaltung</h2>
             
-            const delItem = async (id) => { if(!confirm("Löschen?")) return; const col = tab==='tasks'?'cleaning_tasks':tab==='cooling'?'cooling_devices':tab==='fryers'?'fryers':tab==='suppliers'?'suppliers':tab==='prep'?'prep_tasks':'staff'; await deleteDoc(doc(db,'artifacts',appId,'public','data',col,id)); showToast("Gelöscht"); }; 
-            const initDeleteBranch = () => { const a=Math.floor(Math.random()*10)+1; const b=Math.floor(Math.random()*10)+1; setDeleteMath({q:`${a} + ${b}`, a:a+b}); };
-            const confirmDeleteBranch = async () => { if(parseInt(deleteInput) === deleteMath.a) { deleteBranch(); } else { showToast("Rechnung falsch!", "error"); } };
-            
-            return (<div className="animate-in space-y-6"><h2 className="text-3xl font-black text-inherit">Verwaltung</h2>
+            {/* TABS */}
             <div 
                 className="flex gap-2 overflow-x-auto no-scrollbar pb-4 -mx-5 px-5 select-none" 
-                style={{ 
-                    WebkitOverflowScrolling: 'touch',
-                    scrollbarWidth: 'none',
-                    msOverflowStyle: 'none',
-                    cursor: 'grab'
-                }}
+                style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none', cursor: 'grab' }}
             >
                 {Object.entries(availableTabs).map(([k, l]) => (
                     <button 
@@ -3895,54 +3983,98 @@ const Editor = ({ type, data, close, appId, showToast, btnStyle }) => {
                     </button>
                 ))}
             </div>
-                    <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 min-h-[400px]">
-                {tab === 'system' ? (
-    <div className="space-y-4 animate-in">
-        <div className="text-sm font-bold uppercase text-slate-400 tracking-wider">Erweiterte Tools</div>
-        
-        {/* 1. HACCP Protokolle Button */}
-        <button onClick={()=>setView('history')} className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-5 rounded-2xl flex items-center justify-between group transition-all">
-            <div className="flex items-center gap-3 font-bold"><History size={20}/> HACCP Protokolle (PDF)</div>
-            <ChevronRight className="opacity-50 group-hover:translate-x-1 transition-transform"/>
-        </button>
 
-        {/* 2. NEUER Support Button */}
-        <button onClick={async ()=>{
-            const msg = prompt("Problem beschreiben:");
-            if(msg) {
-                try {
-                    await addDoc(collection(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'support_tickets'), {
-                        branchId: appId,
-                        user: currentUser.name,
-                        message: msg,
-                        createdAt: serverTimestamp()
-                    });
-                    showToast("Ticket an Head Admin gesendet!");
-                } catch (e) {
-                    console.error(e);
-                    showToast("Fehler beim Senden", "error");
-                }
-            }
-        }} className="w-full p-4 border border-indigo-200 bg-indigo-50 text-indigo-600 rounded-2xl font-bold flex justify-center items-center gap-2">
-            <MessageCircle size={18}/> Hilfe anfordern
-        </button>
+            <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 min-h-[400px]">
+                {/* INHALT JE NACH TAB */}
+                
+                {/* 1. KÜHLUNG SPEZIALANSICHT MIT IMPORT/EXPORT */}
+                {tab === 'cooling' && !edit ? (
+                    <div className="space-y-4 animate-in">
+                        {/* Import / Export Buttons */}
+                        <div className="flex gap-3 mb-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                            <button onClick={exportCooling} className="flex-1 bg-white border border-slate-200 text-slate-600 py-3 rounded-xl font-bold text-xs shadow-sm flex items-center justify-center gap-2 hover:bg-slate-50">
+                                <FileText size={16}/> Excel Export
+                            </button>
+                            <label className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold text-xs shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 cursor-pointer hover:bg-indigo-500">
+                                <Database size={16}/> Excel Import
+                                <input type="file" accept=".xlsx, .xls" onChange={importCooling} className="hidden" />
+                            </label>
+                        </div>
+                        
+                        <Button variant="ghost" onClick={()=>setEdit({isNew:true})} className="border-dashed py-5 text-slate-400 bg-slate-50 hover:bg-slate-100 hover:text-slate-600">
+                            <Plus size={20}/> Neues Gerät hinzufügen
+                        </Button>
 
-        {/* 3. Abmelden Button */}
-        <button onClick={onLogoutSystem} className="w-full mt-4 p-4 border border-slate-200 bg-slate-50 text-slate-600 rounded-2xl font-bold flex justify-center items-center gap-2">
-            <LogOut size={18}/> Abmelden
-        </button>
-    </div>
-)
-
+                        <div className="divide-y divide-slate-100">
+                            {(data[tab]||[]).map(item => (
+                                <div key={item.id} className="py-4 flex justify-between items-center group">
+                                    <div>
+                                        <div className="font-bold text-slate-700 text-lg">{item.name}</div>
+                                        <div className="text-[10px] text-slate-400 font-mono">
+                                            {item.minTemp && item.maxTemp ? `Soll: ${item.minTemp}° bis ${item.maxTemp}°` : 'Keine Limits'}
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={()=>setEdit(item)} className="p-3 bg-indigo-50 text-indigo-500 rounded-xl hover:bg-indigo-100"><Settings size={18}/></button>
+                                        <button onClick={()=>delItem(item.id)} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-100"><Trash2 size={18}/></button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ) : 
+                
+                // 2. ANDERE TABS (STANDARD)
+                tab === 'system' ? (
+                    <div className="space-y-4 animate-in">
+                        <div className="text-sm font-bold uppercase text-slate-400 tracking-wider">Erweiterte Tools</div>
+                        <button onClick={()=>setView('history')} className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-5 rounded-2xl flex items-center justify-between group transition-all">
+                            <div className="flex items-center gap-3 font-bold"><History size={20}/> HACCP Protokolle (PDF)</div>
+                            <ChevronRight className="opacity-50 group-hover:translate-x-1 transition-transform"/>
+                        </button>
+                        <button onClick={async ()=>{ const msg = prompt("Problem beschreiben:"); if(msg) { try { await addDoc(collection(db, 'artifacts', SYSTEM_ID, 'public', 'data', 'support_tickets'), { branchId: appId, user: currentUser.name, message: msg, createdAt: serverTimestamp() }); showToast("Ticket gesendet!"); } catch (e) { showToast("Fehler", "error"); } } }} className="w-full p-4 border border-indigo-200 bg-indigo-50 text-indigo-600 rounded-2xl font-bold flex justify-center items-center gap-2">
+                            <MessageCircle size={18}/> Hilfe anfordern
+                        </button>
+                        <button onClick={onLogoutSystem} className="w-full mt-4 p-4 border border-slate-200 bg-slate-50 text-slate-600 rounded-2xl font-bold flex justify-center items-center gap-2">
+                            <LogOut size={18}/> Abmelden
+                        </button>
+                    </div>
+                ) 
                 : tab==='design' ? (<DesignEditor data={data.company?.design || {}} appId={appId} showToast={showToast} btnStyle={btnStyle}/>) 
                 : tab==='modules' ? (<ModuleConfigurator data={data.settings?.modules} appId={appId} showToast={showToast} btnStyle={btnStyle}/>)
                 : tab==='audit' ? (<AuditLog appId={appId} />) 
                 : tab==='company' ? (<CompanyEditor data={data.company} appId={appId} showToast={showToast}/>) 
                 : tab==='settings' ? (<SettingsEditor data={data.settings} appId={appId} showToast={showToast} btnStyle={btnStyle} deleteBranch={deleteBranch} lang={lang} />)
-                : tab==='settings' ? (<SettingsEditor data={data.settings} appId={appId} showToast={showToast} btnStyle={btnStyle} />) 
+                
+                // 3. EDITOR MODUS
                 : edit ? (<Editor type={tab} data={edit} close={()=>setEdit(null)} appId={appId} showToast={showToast} btnStyle={btnStyle} />) 
-                : (<div className="space-y-4 animate-in"><Button variant="ghost" onClick={()=>setEdit({isNew:true})} className="border-dashed py-5 text-slate-400 bg-slate-50 hover:bg-slate-100 hover:text-slate-600"><Plus size={20}/> Neuen Eintrag hinzufügen</Button><div className="divide-y divide-slate-100">{(data[tab]||[]).map(item => (<div key={item.id} className="py-4 flex justify-between items-center group"><div><div className="font-bold text-slate-700 text-lg">{item.name}</div></div><div className="flex gap-2"><button onClick={()=>setEdit(item)} className="p-3 bg-indigo-50 text-indigo-500 rounded-xl hover:bg-indigo-100"><Settings size={18}/></button><button onClick={()=>delItem(item.id)} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-100"><Trash2 size={18}/></button></div></div>))}</div></div>)}</div></div>); };
-        
+                
+                // 4. STANDARD LISTE (Für Personal, Aufgaben, etc.)
+                : (
+                    <div className="space-y-4 animate-in">
+                        <Button variant="ghost" onClick={()=>setEdit({isNew:true})} className="border-dashed py-5 text-slate-400 bg-slate-50 hover:bg-slate-100 hover:text-slate-600">
+                            <Plus size={20}/> Neuen Eintrag hinzufügen
+                        </Button>
+                        <div className="divide-y divide-slate-100">
+                            {(data[tab]||[]).map(item => (
+                                <div key={item.id} className="py-4 flex justify-between items-center group">
+                                    <div>
+                                        <div className="font-bold text-slate-700 text-lg">{item.name}</div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={()=>setEdit(item)} className="p-3 bg-indigo-50 text-indigo-500 rounded-xl hover:bg-indigo-100"><Settings size={18}/></button>
+                                        <button onClick={()=>delItem(item.id)} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-100"><Trash2 size={18}/></button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    ); 
+};
+
         const ModuleConfigurator = ({ data, appId, showToast, btnStyle }) => {
             // HIER IST DER FIX: Wir laden Standards UND gespeicherte Daten zusammen
             const [modules, setModules] = useState({ ...DEFAULT_MODULES_CONFIG, ...(data || {}) });
