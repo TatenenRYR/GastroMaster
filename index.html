@@ -2069,7 +2069,7 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
 
 */
 
-  const SmartOrdering = ({ data, appId, showToast, user }) => {
+ const SmartOrdering = ({ data, appId, showToast, user }) => {
     const EMAILJS_SERVICE_ID = "service_dejsfye";
     const EMAILJS_TEMPLATE_ID = "template_mcithcs";
     const EMAILJS_PUBLIC_KEY = "TMFx2hP-RUgy_g9LC";
@@ -2089,6 +2089,53 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
         const ref = doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', id);
         await updateDoc(ref, { ...payload, lastUpdate: serverTimestamp() });
     };
+
+    // --- HIER WURDE DIE FEHLENDE FUNKTION EINGEFÜGT ---
+    const handleSmartImport = async (e) => {
+        const file = e.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const bdata = new Uint8Array(evt.target.result);
+                const wb = XLSX.read(bdata, {type:'array'});
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(ws, {header: 1});
+                const sName = rows[0]?.[1] || "Unbekannt";
+                
+                const existing = suppliers.find(s => s.name === sName);
+                let baseCatalog = existing ? [...existing.catalog] : [];
+
+                const newItems = rows.slice(2).map(r => ({
+                    cat: r[0] || 'Allgemein', 
+                    sku: r[1]?.toString() || 'N/A', 
+                    name: r[2], 
+                    unit: r[3],
+                    targets: { Mo:r[4]||0, Di:r[5]||0, Mi:r[6]||0, Do:r[7]||0, Fr:r[8]||0, Sa:r[9]||0, So:r[10]||0 }
+                })).filter(i => i.name);
+
+                // Merge-Logik: Vorhandene SKUs aktualisieren, neue hinzufügen
+                newItems.forEach(newItem => {
+                    const idx = baseCatalog.findIndex(item => item.sku === newItem.sku);
+                    if (idx > -1) baseCatalog[idx].targets = { ...baseCatalog[idx].targets, ...newItem.targets };
+                    else baseCatalog.push(newItem);
+                });
+
+                const supData = { 
+                    name: sName, 
+                    customerNumber: rows[0]?.[3] || "", 
+                    catalog: baseCatalog, 
+                    categories: [...new Set(baseCatalog.map(i => i.cat))] 
+                };
+
+                if(existing) await syncSup(existing.id, supData);
+                else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'suppliers'), supData);
+                showToast("Import & Merge erfolgreich!");
+            } catch (err) { console.error(err); showToast("Import-Fehler", "error"); }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+    // --------------------------------------------------
 
     const finalizeOrder = async () => {
         const orderItems = selectedSup.catalog.filter(i => cart[i.sku] > 0);
