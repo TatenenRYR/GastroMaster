@@ -2069,8 +2069,7 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
 
 */
 
-const SmartOrdering = ({ data, appId, showToast, user }) => {
-    // EmailJS Konfiguration
+  const SmartOrdering = ({ data, appId, showToast, user }) => {
     const EMAILJS_SERVICE_ID = "service_dejsfye";
     const EMAILJS_TEMPLATE_ID = "template_mcithcs";
     const EMAILJS_PUBLIC_KEY = "TMFx2hP-RUgy_g9LC";
@@ -2091,43 +2090,10 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         await updateDoc(ref, { ...payload, lastUpdate: serverTimestamp() });
     };
 
-    const handleSmartImport = async (e) => {
-        const file = e.target.files[0];
-        if(!file) return;
-        const reader = new FileReader();
-        reader.onload = async (evt) => {
-            try {
-                const bdata = new Uint8Array(evt.target.result);
-                const wb = XLSX.read(bdata, {type:'array'});
-                const ws = wb.Sheets[wb.SheetNames[0]];
-                const rows = XLSX.utils.sheet_to_json(ws, {header: 1});
-                const sName = rows[0]?.[1] || "Unbekannt";
-                
-                const existing = suppliers.find(s => s.name === sName);
-                let baseCatalog = existing ? [...existing.catalog] : [];
-
-                const newItems = rows.slice(2).map(r => ({
-                    cat: r[0] || 'Allgemein', sku: r[1]?.toString() || 'N/A', name: r[2], unit: r[3],
-                    targets: { Mo:r[4]||0, Di:r[5]||0, Mi:r[6]||0, Do:r[7]||0, Fr:r[8]||0, Sa:r[9]||0, So:r[10]||0 }
-                })).filter(i => i.name);
-
-                newItems.forEach(newItem => {
-                    const idx = baseCatalog.findIndex(item => item.sku === newItem.sku);
-                    if (idx > -1) baseCatalog[idx].targets = { ...baseCatalog[idx].targets, ...newItem.targets };
-                    else baseCatalog.push(newItem);
-                });
-
-                const supData = { name: sName, customerNumber: rows[0]?.[3] || "", catalog: baseCatalog, categories: [...new Set(baseCatalog.map(i => i.cat))] };
-                if(existing) await syncSup(existing.id, supData);
-                else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'suppliers'), supData);
-                showToast("Import & Merge erfolgreich!");
-            } catch (err) { showToast("Fehler", "error"); }
-        };
-        reader.readAsArrayBuffer(file);
-    };
-
     const finalizeOrder = async () => {
         const orderItems = selectedSup.catalog.filter(i => cart[i.sku] > 0);
+        if (orderItems.length === 0) return showToast("Warenkorb leer", "error");
+        
         const orderListText = orderItems.map(i => `${cart[i.sku]}x ${i.unit} - ${i.name}`).join('\n');
         try {
             await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
@@ -2136,43 +2102,45 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 order_details: orderListText,
                 customer_number: selectedSup.customerNumber || "N/A"
             }, EMAILJS_PUBLIC_KEY);
-            showToast("Bestellung versendet!");
+            showToast("Bestellung direkt versendet!");
             setCart({}); setView('dashboard');
         } catch (e) { showToast("Sende-Fehler", "error"); }
     };
 
+    // --- VIEW: PRODUKT EDITOR ---
     if (view === 'edit_item' && activeItem) return (
         <div className="p-6 space-y-4 animate-in bg-white h-full overflow-y-auto">
-            <div className="flex justify-between items-center"><h2 className="text-xl font-black">Wochen-Sollmengen</h2><button onClick={()=>setView('order')}><X/></button></div>
-            <div className="bg-slate-50 p-4 rounded-2xl mb-4">
+            <div className="flex justify-between items-center"><h2 className="text-xl font-black">Mengen-Setup</h2><button onClick={()=>setView('order')}><X/></button></div>
+            <div className="bg-slate-50 p-4 rounded-2xl mb-4 border border-slate-100">
                 <div className="font-black text-lg text-indigo-600">{activeItem.name}</div>
-                <div className="text-xs text-slate-400 font-bold uppercase">{activeItem.unit} | SKU: {activeItem.sku}</div>
+                <div className="text-[10px] text-slate-400 font-bold uppercase">{activeItem.unit} | SKU: {activeItem.sku}</div>
             </div>
             <div className="space-y-2">
                 {weekdays.map(d => (
-                    <div key={d} className={`flex items-center justify-between p-3 rounded-2xl border ${d === today ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-100'}`}>
+                    <div key={d} className={`flex items-center justify-between p-3 rounded-2xl border ${d === today ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'bg-white border-slate-100'}`}>
                         <span className="font-bold text-sm w-12">{d}</span>
                         <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
                             <button onClick={()=>setActiveItem({...activeItem, targets:{...activeItem.targets, [d]:Math.max(0, (parseFloat(activeItem.targets?.[d])||0)-1)}})} className="w-8 h-8 bg-white rounded-lg font-black shadow-sm">-</button>
-                            <input type="number" className="bg-transparent w-12 text-center font-bold outline-none" value={activeItem.targets?.[d]||0} onChange={e=>setActiveItem({...activeItem, targets:{...activeItem.targets, [d]:e.target.value}})} />
+                            <input type="number" className="bg-transparent w-10 text-center font-bold outline-none" value={activeItem.targets?.[d]||0} onChange={e=>setActiveItem({...activeItem, targets:{...activeItem.targets, [d]:e.target.value}})} />
                             <button onClick={()=>setActiveItem({...activeItem, targets:{...activeItem.targets, [d]:(parseFloat(activeItem.targets?.[d])||0)+1}})} className="w-8 h-8 bg-white rounded-lg font-black shadow-sm">+</button>
                         </div>
                     </div>
                 ))}
             </div>
             <div className="flex gap-2 pt-6">
-                <button onClick={async ()=>{if(confirm("Produkt löschen?")){const n = selectedSup.catalog.filter(i=>i.sku !== activeItem.sku); await syncSup(selectedSup.id, {catalog: n}); setSelectedSup({...selectedSup, catalog: n}); setView('order');}}} className="bg-red-50 text-red-500 p-4 rounded-2xl flex-1 font-bold">Löschen</button>
-                <button onClick={async ()=>{const n = selectedSup.catalog.map(i=>i.sku === activeItem.sku ? activeItem : i); await syncSup(selectedSup.id, {catalog: n}); setSelectedSup({...selectedSup, catalog: n}); setView('order');}} className="bg-slate-900 text-white p-4 rounded-2xl flex-1 font-bold">Speichern</button>
+                <button onClick={async ()=>{if(confirm("Produkt löschen?")){const n = selectedSup.catalog.filter(i=>i.sku !== activeItem.sku); await syncSup(selectedSup.id, {catalog: n}); setSelectedSup({...selectedSup, catalog: n}); setView('order');}}} className="bg-red-50 text-red-500 p-4 rounded-2xl flex-1 font-bold uppercase text-xs">Löschen</button>
+                <button onClick={async ()=>{const n = selectedSup.catalog.map(i=>i.sku === activeItem.sku ? activeItem : i); await syncSup(selectedSup.id, {catalog: n}); setSelectedSup({...selectedSup, catalog: n}); setView('order');}} className="bg-slate-900 text-white p-4 rounded-2xl flex-1 font-black uppercase text-xs shadow-lg">Speichern</button>
             </div>
         </div>
     );
 
+    // --- VIEW: BESTELLUNG ---
     if (view === 'order' && selectedSup) return (
-        <div className="min-h-screen bg-slate-50 pb-32">
+        <div className="min-h-screen bg-slate-50 pb-40">
             <div className="bg-white p-5 sticky top-0 z-50 border-b flex justify-between items-center shadow-sm">
                 <span className="font-black text-xl italic">{selectedSup.name}</span>
                 <div className="flex gap-2">
-                    <button onClick={()=>setIsEditMode(!isEditMode)} className={`p-2 rounded-xl transition-all ${isEditMode ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}><PenTool size={20}/></button>
+                    <button onClick={()=>setIsEditMode(!isEditMode)} className={`p-2 rounded-xl transition-all ${isEditMode ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400'}`}><PenTool size={20}/></button>
                     <button onClick={() => setView('dashboard')} className="p-2 bg-slate-100 rounded-full"><X/></button>
                 </div>
             </div>
@@ -2184,16 +2152,16 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                         <div key={cat} className="space-y-2">
                             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 pt-4">{cat}</h3>
                             {items.map(item => (
-                                <div key={item.sku} className={`bg-white p-4 rounded-[2rem] border flex items-center justify-between shadow-sm transition-all ${isEditMode ? 'border-dashed border-indigo-300' : 'border-slate-100'}`}>
+                                <div key={item.sku} className={`bg-white p-4 rounded-[2rem] border flex items-center justify-between shadow-sm transition-all ${isEditMode ? 'border-dashed border-indigo-300 bg-indigo-50/20' : 'border-slate-100'}`}>
                                     <div onClick={()=>{if(isEditMode){setActiveItem(item); setView('edit_item');}}} className="flex-1 cursor-pointer">
                                         <div className="font-bold text-slate-800">{item.name}</div>
                                         <div className="text-[10px] font-black uppercase text-indigo-500">Soll {today}: {item.targets?.[today]||0} {item.unit}</div>
                                     </div>
                                     {!isEditMode && (
-                                        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-2xl border">
-                                            <button onClick={()=>setCart({...cart, [item.sku]:Math.max(0,(cart[item.sku]||0)-1)})} className="w-10 h-10 bg-white rounded-xl font-bold">-</button>
-                                            <span className="w-8 text-center font-bold">{cart[item.sku]||0}</span>
-                                            <button onClick={()=>setCart({...cart, [item.sku]:(cart[item.sku]||0)+1})} className="w-10 h-10 bg-white rounded-xl font-bold">+</button>
+                                        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-2xl border border-slate-200">
+                                            <button onClick={()=>setCart({...cart, [item.sku]:Math.max(0,(cart[item.sku]||0)-1)})} className="w-10 h-10 bg-white rounded-xl font-bold shadow-sm">-</button>
+                                            <span className="w-8 text-center font-bold text-sm">{cart[item.sku]||0}</span>
+                                            <button onClick={()=>setCart({...cart, [item.sku]:(cart[item.sku]||0)+1})} className="w-10 h-10 bg-white rounded-xl font-bold shadow-sm">+</button>
                                         </div>
                                     )}
                                 </div>
@@ -2202,31 +2170,39 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                     );
                 })}
             </div>
+            {/* WARENKORB / DIREKT ABSCHICKEN BAR */}
             {!isEditMode && Object.values(cart).some(v=>v>0) && (
                 <div className="fixed bottom-6 left-4 right-4 flex gap-2 animate-in-up">
-                    <button onClick={finalizeOrder} className="w-full bg-slate-900 text-white p-5 rounded-[2rem] font-black shadow-xl">BESTELLUNG ABSENDEN</button>
+                    <div className="flex-1 bg-white border-2 border-slate-900 p-4 rounded-[2rem] flex items-center justify-center gap-2 shadow-2xl">
+                        <ShoppingBag size={18} />
+                        <span className="font-black text-sm">{Object.values(cart).reduce((a, b) => a + b, 0)} Art.</span>
+                    </div>
+                    <button onClick={finalizeOrder} className="flex-[2] bg-slate-900 text-white p-4 rounded-[2rem] font-black shadow-2xl uppercase tracking-tighter text-sm flex items-center justify-center gap-2">
+                        Direkt Abschicken <SafeIcon name="ChevronRight" />
+                    </button>
                 </div>
             )}
         </div>
     );
 
+    // --- DASHBOARD ---
     return (
         <div className="p-4 space-y-6 pb-32">
             <div className="flex justify-between items-end pt-6 px-2">
                 <h1 className="text-3xl font-black italic tracking-tighter">ORDER-HUB</h1>
                 <div className="flex gap-2">
-                    <label className="bg-indigo-600 text-white p-3 rounded-2xl shadow-lg cursor-pointer"><Database/><input type="file" className="hidden" onChange={handleSmartImport}/></label>
-                    <button onClick={()=>{setEditSup({name:'', email:'', customerNumber:'', catalog:[], categories:[]}); setView('setup')}} className="bg-slate-900 text-white p-3 rounded-2xl shadow-lg"><Plus/></button>
+                    <label className="bg-indigo-600 text-white p-3 rounded-2xl shadow-lg cursor-pointer flex items-center"><Database size={24}/><input type="file" className="hidden" onChange={handleSmartImport}/></label>
+                    <button onClick={()=>{setEditSup({name:'', email:'', customerNumber:'', catalog:[], categories:[]}); setView('setup')}} className="bg-slate-900 text-white p-3 rounded-2xl shadow-lg"><Plus size={24}/></button>
                 </div>
             </div>
             <div className="grid gap-4">
                 {suppliers.map(s => (
-                    <div key={s.id} className={`bg-white p-6 rounded-[2.5rem] border border-slate-100 flex items-center justify-between shadow-sm`}>
+                    <div key={s.id} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 flex items-center justify-between shadow-sm">
                         <div onClick={()=>{setSelectedSup(s); setView('order'); setIsEditMode(false);}} className="flex-1 cursor-pointer">
                             <div className="font-black text-2xl text-slate-800">{s.name}</div>
-                            <div className="text-[10px] text-indigo-500 font-black uppercase tracking-widest">{s.catalog?.length || 0} Produkte</div>
+                            <div className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest">{s.catalog?.length || 0} Produkte</div>
                         </div>
-                        <button onClick={()=>{setEditSup(s); setView('setup')}} className="p-4 bg-slate-50 text-slate-300 rounded-2xl hover:bg-slate-900"><Settings/></button>
+                        <button onClick={()=>{setEditSup(s); setView('setup')}} className="p-4 bg-slate-50 text-slate-300 rounded-2xl hover:bg-slate-900 hover:text-white transition-all"><Settings size={20}/></button>
                     </div>
                 ))}
             </div>
@@ -2234,12 +2210,12 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
                     <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 space-y-4 shadow-2xl">
                         <div className="flex justify-between items-center"><h2 className="font-black italic uppercase">Lieferant Setup</h2><button onClick={()=>setView('dashboard')}><X/></button></div>
-                        <Input label="Name" value={editSup.name} onChange={e=>setEditSup({...editSup, name:e.target.value})} placeholder="z.B. Vierlande, Metro, EDEKA" />
+                        <Input label="Name" value={editSup.name} onChange={e=>setEditSup({...editSup, name:e.target.value})} placeholder="Vierlande, Metro..." />
                         <Input label="Email" value={editSup.email} onChange={e=>setEditSup({...editSup, email:e.target.value})} placeholder="bestellung@lieferant.de" />
-                        <Input label="Kunden-ID" value={editSup.customerNumber} onChange={e=>setEditSup({...editSup, customerNumber:e.target.value})} placeholder="Deine ID beim Lieferanten" />
+                        <Input label="Kunden-ID" value={editSup.customerNumber} onChange={e=>setEditSup({...editSup, customerNumber:e.target.value})} placeholder="ID beim Großhändler" />
                         <div className="flex gap-2 pt-4">
-                            <button onClick={async ()=>{if(confirm("Lieferant löschen?")){await deleteDoc(doc(db,'artifacts',appId,'public','data','suppliers',editSup.id)); setView('dashboard');}}} className="bg-red-50 text-red-500 p-3 rounded-xl font-bold flex-1">Löschen</button>
-                            <button onClick={async ()=>{if(editSup.id) await syncSup(editSup.id, editSup); else await addDoc(collection(db,'artifacts',appId,'public','data','suppliers'), {...editSup, updatedAt:serverTimestamp()}); setView('dashboard');}} className="bg-slate-900 text-white p-3 rounded-xl font-black flex-[2]">Speichern</button>
+                            <button onClick={async ()=>{if(confirm("Lieferant löschen?")){await deleteDoc(doc(db,'artifacts',appId,'public','data','suppliers',editSup.id)); setView('dashboard');}}} className="bg-red-50 text-red-500 p-4 rounded-2xl font-bold flex-1 uppercase text-xs">Löschen</button>
+                            <button onClick={async ()=>{if(editSup.id) await syncSup(editSup.id, editSup); else await addDoc(collection(db,'artifacts',appId,'public','data','suppliers'), {...editSup, updatedAt:serverTimestamp()}); setView('dashboard');}} className="bg-slate-900 text-white p-4 rounded-2xl font-black flex-[2] shadow-lg uppercase text-xs">Speichern</button>
                         </div>
                     </div>
                 </div>
@@ -2247,8 +2223,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         </div>
     );
 };
-
-           
+         
 // --- APP CONTROLLER ---
         function App() {
             // --- STATE DEFINITIONS ---
