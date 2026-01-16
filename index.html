@@ -2074,13 +2074,18 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
     const EMAILJS_TEMPLATE_ID = "template_mcithcs";
     const EMAILJS_PUBLIC_KEY = "TMFx2hP-RUgy_g9LC";
 
-    // --- HELFER: SafeIcon (Verhindert Abstürze bei fehlenden Icons) ---
+    // --- HELFER: SafeIcon (Repariert verschwundene Icons) ---
     const SafeIcon = ({ name, size = 20, className = "" }) => {
         try {
-            const Icon = window[name] || (window.Lucide && window.Lucide[name]);
+            // Versucht Icon aus verschiedenen Quellen zu laden
+            const Icon = window[name] || 
+                         (window.Lucide && window.Lucide[name]) || 
+                         (window.Lucide && window.Lucide.icons && window.Lucide.icons[name]);
+            
             if (Icon) return <Icon size={size} className={className} />;
         } catch (e) {}
-        return <span className={className}>•</span>;
+        // Fallback, falls Icon nicht gefunden wird
+        return <span className="text-xs font-bold">●</span>;
     };
 
     // --- STATE ---
@@ -2091,11 +2096,12 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
     const [isEditMode, setIsEditMode] = useState(false);
     const [cart, setCart] = useState({});
 
-    // Daten sicher laden
+    // Daten laden
     const suppliers = data?.suppliers || [];
     const weekdays = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-    // JS getDay(): 0=Sonntag, 1=Montag...
-    const today = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][new Date().getDay()];
+    // JS getDay(): 0=Sonntag (deshalb Indexanpassung)
+    const todayIndex = new Date().getDay(); 
+    const today = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][todayIndex];
 
     // --- DB SYNC ---
     const syncSup = async (id, payload) => {
@@ -2105,10 +2111,10 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         } catch (e) { console.error("Sync Error", e); }
     };
 
-    // --- EXCEL EXPORT (Ersetzt PDF Export) ---
+    // --- EXCEL EXPORT (Statt PDF - Verhindert den Crash) ---
     const exportToExcel = (sup) => {
         try {
-            if (!window.XLSX) return showToast("Excel Library lädt noch...", "error");
+            if (!window.XLSX) return showToast("Excel System lädt noch...", "error");
             
             const wsData = [
                 ["LIEFERANT", sup.name, "KUNDEN-NR", sup.customerNumber],
@@ -2133,7 +2139,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         const reader = new FileReader();
         reader.onload = async (evt) => {
             try {
-                if (!window.XLSX) return showToast("Excel Library fehlt", "error");
+                if (!window.XLSX) return showToast("Excel System fehlt", "error");
 
                 const bdata = new Uint8Array(evt.target.result);
                 const wb = XLSX.read(bdata, {type:'array'});
@@ -2149,7 +2155,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
 
                 let baseCatalog = existing ? [...existing.catalog] : [];
 
-                // Importiert ab Zeile 3 (Index 2). Spalten 4-10 sind die Tage Mo-So
+                // Spalten: 4-10 sind die Tage Mo-So
                 const newItems = rows.slice(2).map(r => ({
                     cat: r[0] || 'Allgemein', 
                     sku: r[1]?.toString() || 'N/A', 
@@ -2161,7 +2167,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 newItems.forEach(newItem => {
                     const idx = baseCatalog.findIndex(item => item.sku === newItem.sku);
                     if (idx > -1) {
-                        // Merge: Bestehende Ziele mit neuen überschreiben/ergänzen
+                        // Merge: Bestehende Ziele mit neuen überschreiben
                         baseCatalog[idx].targets = { ...baseCatalog[idx].targets, ...newItem.targets };
                     } else {
                         baseCatalog.push(newItem);
@@ -2193,7 +2199,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         const dateStr = new Date().toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         const timeStr = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
-        // HTML Template für die E-Mail
+        // HTML Template
         const orderTableHTML = `
         <div style="font-family: Arial, sans-serif; color: #333; max-width: 800px; margin: 0 auto; background-color: #ffffff;">
             <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-bottom: 2px solid #e2e8f0;">
@@ -2310,7 +2316,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                     );
                 })}
             </div>
-            {/* WARENKORB BAR - Schwebend über Navigation */}
+            {/* WARENKORB BAR */}
             {!isEditMode && Object.values(cart).some(v=>v>0) && (
                 <div className="fixed bottom-24 left-4 right-4 flex gap-2 animate-in-up z-[100]">
                     <div className="flex-1 bg-white border-2 border-slate-900 p-4 rounded-[2rem] flex items-center justify-center gap-2 shadow-2xl">
@@ -2337,7 +2343,6 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
             </div>
             <div className="grid gap-4">
                 {suppliers.map(s => {
-                    // Prüfen, an welchen Tagen dieser Lieferant bestellt wird (Sollmenge > 0)
                     const activeDays = weekdays.filter(d => s.catalog?.some(i => parseFloat(i.targets?.[d]) > 0));
                     const isTodayActive = activeDays.includes(today);
 
@@ -2355,7 +2360,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                                 <button onClick={()=>{setEditSup(s); setView('setup')}} className="p-3 bg-slate-50 text-slate-300 rounded-2xl hover:bg-slate-900 hover:text-white"><SafeIcon name="Settings" size={20}/></button>
                             </div>
                             
-                            {/* TAG ANZEIGE */}
+                            {/* WOCHENTAGS-ANZEIGE */}
                             <div className="flex gap-1">
                                 {weekdays.map(d => (
                                     <div key={d} className={`text-[9px] font-black px-2 py-1 rounded-md ${activeDays.includes(d) ? (d === today ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-white') : 'bg-slate-100 text-slate-300'}`}>
@@ -2393,7 +2398,6 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         </div>
     );
 };
-
 
 // --- APP CONTROLLER ---
         function App() {
