@@ -2146,40 +2146,158 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         reader.readAsArrayBuffer(file);
     };
 
-    // --- HTML TABELLE FÜR EMAIL ERSTELLEN ---
+    Das ist eine großartige Erweiterung. Damit die E-Mail professionell aussieht, habe ich die finalizeOrder-Funktion so umgebaut, dass sie:
+
+Das Logo und den Firmennamen aus den data-Einstellungen lädt.
+
+Ein sauberes Header-Design mit Datum erstellt.
+
+Die Tabelle übersichtlicher gestaltet (Zeilen abwechselnd grau/weiß für bessere Lesbarkeit).
+
+Hier ist die vollständige, angepasste SmartOrdering-Komponente:
+
+JavaScript
+const SmartOrdering = ({ data, appId, showToast, user }) => {
+    const EMAILJS_SERVICE_ID = "service_dejsfye";
+    const EMAILJS_TEMPLATE_ID = "template_mcithcs";
+    const EMAILJS_PUBLIC_KEY = "TMFx2hP-RUgy_g9LC";
+
+    // Hilfs-Komponente für Icons
+    const SafeIcon = ({ name, size = 20, className = "" }) => {
+        try {
+            const Icon = window[name] || (window.Lucide && window.Lucide[name]);
+            if (Icon) return <Icon size={size} className={className} />;
+        } catch (e) {}
+        return <span className={className}>•</span>;
+    };
+
+    const [view, setView] = useState('dashboard'); 
+    const [selectedSup, setSelectedSup] = useState(null);
+    const [editSup, setEditSup] = useState(null);
+    const [activeItem, setActiveItem] = useState(null);
+    const [isEditMode, setIsEditMode] = useState(false);
+    const [cart, setCart] = useState({});
+
+    const suppliers = data.suppliers || [];
+    const weekdays = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+    const today = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][new Date().getDay()];
+
+    const syncSup = async (id, payload) => {
+        const ref = doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', id);
+        await updateDoc(ref, { ...payload, lastUpdate: serverTimestamp() });
+    };
+
+    const handleSmartImport = async (e) => {
+        const file = e.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const bdata = new Uint8Array(evt.target.result);
+                const wb = XLSX.read(bdata, {type:'array'});
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(ws, {header: 1});
+                const sName = rows[0]?.[1] || "Unbekannt";
+                
+                const existing = suppliers.find(s => s.name === sName);
+                let baseCatalog = existing ? [...existing.catalog] : [];
+
+                const newItems = rows.slice(2).map(r => ({
+                    cat: r[0] || 'Allgemein', 
+                    sku: r[1]?.toString() || 'N/A', 
+                    name: r[2], 
+                    unit: r[3],
+                    targets: { Mo:r[4]||0, Di:r[5]||0, Mi:r[6]||0, Do:r[7]||0, Fr:r[8]||0, Sa:r[9]||0, So:r[10]||0 }
+                })).filter(i => i.name);
+
+                newItems.forEach(newItem => {
+                    const idx = baseCatalog.findIndex(item => item.sku === newItem.sku);
+                    if (idx > -1) baseCatalog[idx].targets = { ...baseCatalog[idx].targets, ...newItem.targets };
+                    else baseCatalog.push(newItem);
+                });
+
+                const supData = { 
+                    name: sName, 
+                    customerNumber: rows[0]?.[3] || "", 
+                    catalog: baseCatalog, 
+                    categories: [...new Set(baseCatalog.map(i => i.cat))] 
+                };
+
+                if(existing) await syncSup(existing.id, supData);
+                else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'suppliers'), supData);
+                showToast("Import & Merge erfolgreich!");
+            } catch (err) { console.error(err); showToast("Import-Fehler", "error"); }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
+    // --- HTML EMAIL GENERIERUNG MIT LOGO UND DESIGN ---
     const finalizeOrder = async () => {
         const orderItems = selectedSup.catalog.filter(i => cart[i.sku] > 0);
         if (orderItems.length === 0) return showToast("Warenkorb leer", "error");
         
-        // Erstelle eine HTML Tabelle für die E-Mail
+        // Firmendaten abrufen
+        const companyName = data?.company?.name || "Ihr Gastronomiebetrieb";
+        const companyLogo = data?.company?.logoUrl || "";
+        const dateStr = new Date().toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+        // HTML Email Template
         const orderTableHTML = `
-        <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; border-color: #ddd;">
-            <thead style="background-color: #f3f4f6;">
-                <tr>
-                    <th style="text-align: left;">Menge</th>
-                    <th style="text-align: left;">Einheit</th>
-                    <th style="text-align: left;">Artikel</th>
-                    <th style="text-align: left; color: #888;">Art-Nr.</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${orderItems.map(i => `
+        <div style="font-family: Arial, sans-serif; color: #333; max-width: 800px; margin: 0 auto; background-color: #ffffff;">
+            <div style="background-color: #f8fafc; padding: 20px; border-radius: 12px 12px 0 0; text-align: center; border-bottom: 2px solid #e2e8f0;">
+                ${companyLogo ? `<img src="${companyLogo}" style="height: 70px; object-fit: contain; margin-bottom: 15px;" alt="Logo"/>` : ''}
+                <h2 style="margin: 0; color: #0f172a; font-size: 24px; text-transform: uppercase; letter-spacing: 1px;">Bestellung</h2>
+                <p style="margin: 5px 0 0 0; font-weight: bold; color: #475569; font-size: 16px;">${companyName}</p>
+                <p style="margin: 5px 0 0 0; font-size: 14px; color: #94a3b8;">${dateStr}</p>
+            </div>
+
+            <div style="background-color: #ffffff; padding: 20px; border: 1px solid #e2e8f0; border-top: none;">
+                <table width="100%">
                     <tr>
-                        <td style="font-weight: bold; font-size: 14px;">${cart[i.sku]}</td>
-                        <td>${i.unit}</td>
-                        <td>${i.name}</td>
-                        <td style="color: #888; font-size: 12px;">${i.sku}</td>
+                        <td valign="top">
+                            <p style="margin: 0; font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: bold;">Lieferant:</p>
+                            <p style="margin: 2px 0 0 0; font-size: 16px; font-weight: bold;">${selectedSup.name}</p>
+                        </td>
+                        <td valign="top" style="text-align: right;">
+                            <p style="margin: 0; font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: bold;">Kundennummer:</p>
+                            <p style="margin: 2px 0 0 0; font-size: 16px; font-weight: bold;">${selectedSup.customerNumber || "N/A"}</p>
+                        </td>
                     </tr>
-                `).join('')}
-            </tbody>
-        </table>
+                </table>
+            </div>
+
+            <table width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; border: 1px solid #e2e8f0; border-top: none;">
+                <thead style="background-color: #f1f5f9;">
+                    <tr>
+                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0; color: #475569; font-size: 12px; text-transform: uppercase;">Menge</th>
+                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0; color: #475569; font-size: 12px; text-transform: uppercase;">Einh.</th>
+                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0; color: #475569; font-size: 12px; text-transform: uppercase;">Artikel</th>
+                        <th style="text-align: right; border-bottom: 2px solid #e2e8f0; color: #475569; font-size: 12px; text-transform: uppercase;">Art-Nr.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${orderItems.map((i, index) => `
+                        <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                            <td style="border-bottom: 1px solid #e2e8f0; font-weight: bold; font-size: 16px; color: #0f172a;">${cart[i.sku]}</td>
+                            <td style="border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #64748b;">${i.unit}</td>
+                            <td style="border-bottom: 1px solid #e2e8f0; font-size: 14px;"><strong>${i.name}</strong></td>
+                            <td style="border-bottom: 1px solid #e2e8f0; text-align: right; font-family: monospace; color: #94a3b8; font-size: 12px;">${i.sku}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+
+            <div style="text-align: center; padding: 20px; font-size: 11px; color: #cbd5e1; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+                Automatisch erstellt via ORDER-HUB
+            </div>
+        </div>
         `;
 
         try {
             await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
                 supplier_name: selectedSup.name,
                 to_email: selectedSup.email,
-                order_details: orderTableHTML, // Hier wird jetzt HTML gesendet
+                order_details: orderTableHTML,
                 customer_number: selectedSup.customerNumber || "N/A"
             }, EMAILJS_PUBLIC_KEY);
             showToast("Bestellung direkt versendet!");
