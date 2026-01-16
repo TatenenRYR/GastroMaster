@@ -3371,33 +3371,101 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
             ); 
         };
 
-        const Cooling = ({ data, status, user, appId, showToast, lang }) => {
+       const Cooling = ({ data, status, user, appId, showToast, lang }) => {
     const [val, setVal] = useState({});
+    const [editingId, setEditingId] = useState(null); // Speichert, welches Gerät gerade korrigiert wird
+
     const active = (data.cooling || []).filter(d => d.status !== 'defekt');
     const t = DICTIONARY[lang];
     const signature = (status.signatures || {})['cooling'];
     const tempLogs = status.tempLogs || [];
+    
+    // Prüfen, ob alle Geräte einen Eintrag haben (für Signatur)
     const canSign = active.length > 0 && active.every(d => tempLogs.find(l => l.deviceId === d.id));
 
+    // Funktion zum Starten der Bearbeitung
+    const startEdit = (dev, currentLog) => {
+        if(signature) return showToast("Bereits unterschrieben! Keine Änderungen mehr möglich.", "error");
+        setEditingId(dev.id);
+        setVal(prev => ({ ...prev, [dev.id]: currentLog.temp }));
+    };
+
     const save = async (dev) => {
-        if (!val[dev.id]) return;
+        const inputVal = val[dev.id];
+        if (!inputVal) return;
+
+        // Prüfen, ob wir gerade bearbeiten (Update) oder neu eintragen (Create)
+        const existingLog = tempLogs.find(l => l.deviceId === dev.id);
+        const isUpdate = editingId === dev.id && existingLog;
+
         try {
-            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_temp'), {
-                deviceId: dev.id,
-                deviceName: dev.name,
-                temp: val[dev.id],
-                user: user.name,
-                dateStr: getTodayStr(),
-                createdAt: serverTimestamp()
-            });
-            await logBranchAction(appId, user.name, 'TEMP_LOG', `${dev.name}: ${val[dev.id]}°C`);
+            if (isUpdate) {
+                // 1. UPDATE: Vorherigen Wert sichern für die Nachricht
+                const oldTemp = existingLog.temp;
+
+                // Datenbank Eintrag aktualisieren (Wir suchen das Doc anhand der ID, die wir im State haben müssten, 
+                // aber da tempLogs aus Firestore kommt, müssen wir sicherstellen, dass wir die Doc-ID haben.
+                // ACHTUNG: In deinem Dashboard-Code scheinst du die Doc-ID in tempLogs evtl. nicht mitzuspeichern?
+                // Wir nutzen hier einen Query-Workaround oder die bekannte ID-Struktur, falls vorhanden.
+                // Da deine App Logs oft einfach abruft, nutzen wir hier einen Query um das exakte Doc zu finden, falls ID fehlt.
+                // ABER: In deiner App Logik oben (Dashboard) speicherst du Logs oft ohne explizite ID im State.
+                // Wir nutzen hier einen Query um sicherzugehen:
+                
+                const q = query(
+                    collection(db, 'artifacts', appId, 'public', 'data', 'logs_temp'), 
+                    where('deviceId', '==', dev.id), 
+                    where('dateStr', '==', getTodayStr())
+                );
+                const querySnapshot = await getDocs(q);
+                
+                if (!querySnapshot.empty) {
+                    const docRef = querySnapshot.docs[0].ref;
+                    await updateDoc(docRef, {
+                        temp: inputVal,
+                        updatedBy: user.name,
+                        updatedAt: serverTimestamp()
+                    });
+
+                    // 2. NACHRICHT AN ALLE LEITUNGEN (Via Team Board)
+                    const alertMsg = `⚠️ KORREKTUR KÜHLUNG: ${dev.name} wurde von ${oldTemp}°C auf ${inputVal}°C geändert. (Durch: ${user.name})`;
+                    
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), {
+                        text: alertMsg,
+                        user: "SYSTEM-ALARM",
+                        role: "admin", // Damit es hervorgehoben wird
+                        createdAt: serverTimestamp()
+                    });
+
+                    showToast("Wert korrigiert & Leitungen informiert!", "success");
+                }
+                
+                setEditingId(null); // Edit Modus beenden
+
+            } else {
+                // 3. NEU EINTRAKEN
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_temp'), {
+                    deviceId: dev.id,
+                    deviceName: dev.name,
+                    temp: inputVal,
+                    user: user.name,
+                    dateStr: getTodayStr(),
+                    createdAt: serverTimestamp()
+                });
+                await logBranchAction(appId, user.name, 'TEMP_LOG', `${dev.name}: ${inputVal}°C`);
+                showToast("Temperatur erfasst");
+            }
+
+            // Input leeren
             setVal(p => ({ ...p, [dev.id]: '' }));
-            showToast("Temperatur erfasst");
-        } catch (e) { console.error(e); }
+
+        } catch (e) { 
+            console.error(e); 
+            showToast("Fehler beim Speichern", "error"); 
+        }
     };
 
     const sign = async () => {
-        if (confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) {
+        if (confirm(`Ich, ${user.name}, bestätige die Richtigkeit aller Werte.`)) {
             await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_signatures', `${getTodayStr()}_cooling`), {
                 module: 'cooling',
                 user: user.name,
@@ -3418,55 +3486,81 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
             <div className="grid gap-4">
                 {active.map(dev => {
                     const done = tempLogs.find(l => l.deviceId === dev.id);
+                    // Wir sind im Edit-Modus, wenn die ID übereinstimmt ODER wenn noch nichts eingetragen ist
+                    const isEditing = editingId === dev.id;
+                    const showInput = !done || isEditing;
+
                     const v = val[dev.id] || '';
-                    
-                    // --- NEUE LOGIK HIER ---
-                    // Wir holen das Limit aus dem Gerät, oder nehmen 8 als Standard
                     const maxLimit = dev.maxTemp ? parseFloat(dev.maxTemp) : 8;
-                    // Warnung, wenn Wert ÜBER dem Limit ist
                     const isHigh = v && parseFloat(v) > maxLimit;
-                    // -----------------------
 
                     return (
-                        <div key={dev.id} className={`p-6 rounded-[2rem] border shadow-sm transition-all ${done ? 'bg-emerald-50/50 border-emerald-100' : 'bg-white border-slate-100'}`}>
+                        <div key={dev.id} className={`p-6 rounded-[2rem] border shadow-sm transition-all ${done && !isEditing ? 'bg-emerald-50/50 border-emerald-100' : 'bg-white border-slate-100'}`}>
+                            
                             <div className="flex justify-between mb-4 font-black text-lg text-slate-700 items-center">
                                 <div>
                                     <span>{dev.name}</span>
-                                    {/* Kleiner Hinweis auf das Limit */}
                                     <span className="block text-[10px] text-slate-400 font-normal uppercase mt-0.5">
                                         Max: {maxLimit}°C
                                     </span>
                                 </div>
-                                {done ? <span className="text-emerald-600 bg-emerald-100 px-2 py-1 rounded-lg text-sm">{done.temp}°C</span> : <Thermometer size={20} className="text-slate-300" />}
+                                
+                                {/* ANZEIGE WENN FERTIG (und nicht im Edit Modus) */}
+                                {done && !isEditing ? (
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-emerald-600 bg-emerald-100 px-3 py-1 rounded-xl text-sm shadow-sm">
+                                            {done.temp}°C
+                                        </span>
+                                        {/* DER BEARBEITEN BUTTON - Nur sichtbar wenn noch nicht unterschrieben */}
+                                        {!signature && (
+                                            <button 
+                                                onClick={() => startEdit(dev, done)} 
+                                                className="bg-white border border-slate-200 text-slate-400 p-2 rounded-full hover:text-indigo-600 hover:border-indigo-200 transition-colors"
+                                                title="Wert korrigieren"
+                                            >
+                                                <PenTool size={14} />
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <Thermometer size={20} className="text-slate-300" />
+                                )}
                             </div>
                             
-                            {!done && (
-                                <div className="flex gap-3 h-14">
+                            {/* EINGABEFELD (Sichtbar wenn neu ODER beim Bearbeiten) */}
+                            {showInput && (
+                                <div className="flex gap-3 h-14 animate-in fade-in">
                                     <div className="relative flex-1 h-full">
                                         <input 
                                             type="number" 
                                             inputMode="decimal" 
                                             value={v} 
                                             onChange={e => setVal({ ...val, [dev.id]: e.target.value })} 
-                                            placeholder="0.0" 
+                                            placeholder={isEditing ? "Neuer Wert..." : "0.0"} 
                                             className={`w-full h-full rounded-2xl border-2 font-black text-2xl text-center outline-none transition-colors ${isHigh ? 'border-red-300 bg-red-50 text-red-600 placeholder-red-300' : 'border-slate-100 focus:border-indigo-500 placeholder-slate-200'}`} 
                                         />
                                     </div>
-                                    <button onClick={() => save(dev)} className="bg-slate-900 active:bg-slate-800 text-white w-16 h-full rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/20">
+                                    <button onClick={() => save(dev)} className={`text-white w-16 h-full rounded-2xl flex items-center justify-center shadow-lg transition-colors ${isEditing ? 'bg-indigo-600 shadow-indigo-200' : 'bg-slate-900 shadow-slate-900/20'}`}>
                                         <Save size={24} />
                                     </button>
+                                    {isEditing && (
+                                        <button onClick={() => setEditingId(null)} className="w-14 h-full rounded-2xl border border-slate-200 text-slate-400 flex items-center justify-center hover:bg-slate-50">
+                                            <X size={24}/>
+                                        </button>
+                                    )}
                                 </div>
                             )}
                             
-                            {isHigh && (
+                            {isHigh && showInput && (
                                 <div className="text-red-500 text-xs font-bold mt-2 flex items-center gap-1 animate-pulse">
-                                    <AlertTriangle size={12} /> Achtung: Zu warm! (Limit: {maxLimit}°C)
+                                    <AlertTriangle size={12} /> Limit ({maxLimit}°C) überschritten!
                                 </div>
                             )}
                         </div>
                     );
                 })}
             </div>
+            
             <div className="mt-8 pt-6 border-t border-slate-200">
                 {signature ? (
                     <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold">
@@ -3475,12 +3569,14 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                             <div className="text-xs uppercase opacity-70">Digital Signiert von</div>
                             <div className="text-lg">{signature.user}</div>
                         </div>
+                        <div className="text-[10px] uppercase bg-white/50 px-2 py-1 rounded">Locked</div>
                     </div>
                 ) : (
                     <div className="space-y-2">
                         <Button onClick={sign} disabled={!canSign} className="shadow-indigo-200">
                             <PenTool size={18} /> {t.sign}
                         </Button>
+                        <p className="text-center text-[10px] text-slate-400">Nach dem Signieren sind keine Änderungen mehr möglich.</p>
                     </div>
                 )}
             </div>
