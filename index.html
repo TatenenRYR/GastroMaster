@@ -3371,20 +3371,122 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
             ); 
         };
 
-        const Cooling = ({ data, status, user, appId, showToast, lang }) => { 
-            const [val, setVal] = useState({}); const active = (data.cooling || []).filter(d => d.status!=='defekt'); const t = DICTIONARY[lang]; 
-            const signature = (status.signatures || {})['cooling']; const tempLogs = status.tempLogs || []; 
-            const canSign = active.length > 0 && active.every(d => tempLogs.find(l => l.deviceId === d.id)); 
-            const save = async (dev) => { if(!val[dev.id]) return; try { await addDoc(collection(db,'artifacts',appId,'public','data','logs_temp'), { deviceId:dev.id, deviceName:dev.name, temp: val[dev.id], user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); await logBranchAction(appId, user.name, 'TEMP_LOG', `${dev.name}: ${val[dev.id]}°C`); setVal(p=>({...p,[dev.id]:''})); showToast("Temperatur erfasst"); } catch(e){ console.error(e); } }; 
-            const sign = async () => { if(confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) { await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_cooling`), { module:'cooling', user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); await logBranchAction(appId, user.name, 'SIGNATURE', 'Cooling protocol signed'); showToast("Protokoll signiert!"); } }; 
-            return (
-                <div className="animate-in space-y-6">
-                    <div><h2 className="text-3xl font-black text-inherit">{t.temp}</h2><p className="text-inherit opacity-60 text-sm font-medium">HACCP Dokumentation</p></div>
-                    <div className="grid gap-4">{active.map(dev => { const done = tempLogs.find(l=>l.deviceId===dev.id); const v = val[dev.id] || ''; const isHigh = v && (parseFloat(v)>8 || parseFloat(v)<0); return (<div key={dev.id} className={`p-6 rounded-[2rem] border shadow-sm transition-all ${done?'bg-emerald-50/50 border-emerald-100':'bg-white border-slate-100'}`}><div className="flex justify-between mb-4 font-black text-lg text-slate-700 items-center"><span>{dev.name}</span>{done ? <span className="text-emerald-600 bg-emerald-100 px-2 py-1 rounded-lg text-sm">{done.temp}°C</span> : <Thermometer size={20} className="text-slate-300"/>}</div>{!done && (<div className="flex gap-3 h-14"><div className="relative flex-1 h-full"><input type="number" inputMode="decimal" value={v} onChange={e=>setVal({...val,[dev.id]:e.target.value})} placeholder="0.0" className={`w-full h-full rounded-2xl border-2 font-black text-2xl text-center outline-none transition-colors ${isHigh?'border-red-300 bg-red-50 text-red-600 placeholder-red-300':'border-slate-100 focus:border-indigo-500 placeholder-slate-200'}`} /></div><button onClick={()=>save(dev)} className="bg-slate-900 active:bg-slate-800 text-white w-16 h-full rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/20"><Save size={24}/></button></div>)}{isHigh && <div className="text-red-500 text-xs font-bold mt-2 flex items-center gap-1"><AlertTriangle size={12}/> Achtung: Kritischer Bereich</div>}</div>); })}</div>
-                    <div className="mt-8 pt-6 border-t border-slate-200">{signature ? (<div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold"><PenTool size={20}/><div className="flex-1"><div className="text-xs uppercase opacity-70">Digital Signiert von</div><div className="text-lg">{signature.user}</div></div></div>) : (<div className="space-y-2"><Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18}/> {t.sign}</Button></div>)}</div>
-                </div>
-            ); 
-        };
+        const Cooling = ({ data, status, user, appId, showToast, lang }) => {
+    const [val, setVal] = useState({});
+    const active = (data.cooling || []).filter(d => d.status !== 'defekt');
+    const t = DICTIONARY[lang];
+    const signature = (status.signatures || {})['cooling'];
+    const tempLogs = status.tempLogs || [];
+    const canSign = active.length > 0 && active.every(d => tempLogs.find(l => l.deviceId === d.id));
+
+    const save = async (dev) => {
+        if (!val[dev.id]) return;
+        try {
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_temp'), {
+                deviceId: dev.id,
+                deviceName: dev.name,
+                temp: val[dev.id],
+                user: user.name,
+                dateStr: getTodayStr(),
+                createdAt: serverTimestamp()
+            });
+            await logBranchAction(appId, user.name, 'TEMP_LOG', `${dev.name}: ${val[dev.id]}°C`);
+            setVal(p => ({ ...p, [dev.id]: '' }));
+            showToast("Temperatur erfasst");
+        } catch (e) { console.error(e); }
+    };
+
+    const sign = async () => {
+        if (confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) {
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_signatures', `${getTodayStr()}_cooling`), {
+                module: 'cooling',
+                user: user.name,
+                dateStr: getTodayStr(),
+                createdAt: serverTimestamp()
+            });
+            await logBranchAction(appId, user.name, 'SIGNATURE', 'Cooling protocol signed');
+            showToast("Protokoll signiert!");
+        }
+    };
+
+    return (
+        <div className="animate-in space-y-6">
+            <div>
+                <h2 className="text-3xl font-black text-inherit">{t.temp}</h2>
+                <p className="text-inherit opacity-60 text-sm font-medium">HACCP Dokumentation</p>
+            </div>
+            <div className="grid gap-4">
+                {active.map(dev => {
+                    const done = tempLogs.find(l => l.deviceId === dev.id);
+                    const v = val[dev.id] || '';
+                    
+                    // --- NEUE LOGIK HIER ---
+                    // Wir holen das Limit aus dem Gerät, oder nehmen 8 als Standard
+                    const maxLimit = dev.maxTemp ? parseFloat(dev.maxTemp) : 8;
+                    // Warnung, wenn Wert ÜBER dem Limit ist
+                    const isHigh = v && parseFloat(v) > maxLimit;
+                    // -----------------------
+
+                    return (
+                        <div key={dev.id} className={`p-6 rounded-[2rem] border shadow-sm transition-all ${done ? 'bg-emerald-50/50 border-emerald-100' : 'bg-white border-slate-100'}`}>
+                            <div className="flex justify-between mb-4 font-black text-lg text-slate-700 items-center">
+                                <div>
+                                    <span>{dev.name}</span>
+                                    {/* Kleiner Hinweis auf das Limit */}
+                                    <span className="block text-[10px] text-slate-400 font-normal uppercase mt-0.5">
+                                        Max: {maxLimit}°C
+                                    </span>
+                                </div>
+                                {done ? <span className="text-emerald-600 bg-emerald-100 px-2 py-1 rounded-lg text-sm">{done.temp}°C</span> : <Thermometer size={20} className="text-slate-300" />}
+                            </div>
+                            
+                            {!done && (
+                                <div className="flex gap-3 h-14">
+                                    <div className="relative flex-1 h-full">
+                                        <input 
+                                            type="number" 
+                                            inputMode="decimal" 
+                                            value={v} 
+                                            onChange={e => setVal({ ...val, [dev.id]: e.target.value })} 
+                                            placeholder="0.0" 
+                                            className={`w-full h-full rounded-2xl border-2 font-black text-2xl text-center outline-none transition-colors ${isHigh ? 'border-red-300 bg-red-50 text-red-600 placeholder-red-300' : 'border-slate-100 focus:border-indigo-500 placeholder-slate-200'}`} 
+                                        />
+                                    </div>
+                                    <button onClick={() => save(dev)} className="bg-slate-900 active:bg-slate-800 text-white w-16 h-full rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/20">
+                                        <Save size={24} />
+                                    </button>
+                                </div>
+                            )}
+                            
+                            {isHigh && (
+                                <div className="text-red-500 text-xs font-bold mt-2 flex items-center gap-1 animate-pulse">
+                                    <AlertTriangle size={12} /> Achtung: Zu warm! (Limit: {maxLimit}°C)
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+            <div className="mt-8 pt-6 border-t border-slate-200">
+                {signature ? (
+                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold">
+                        <PenTool size={20} />
+                        <div className="flex-1">
+                            <div className="text-xs uppercase opacity-70">Digital Signiert von</div>
+                            <div className="text-lg">{signature.user}</div>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        <Button onClick={sign} disabled={!canSign} className="shadow-indigo-200">
+                            <PenTool size={18} /> {t.sign}
+                        </Button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
 
         const Oil = ({ data, status, user, appId, showToast, lang }) => { 
     const [inp, setInp] = useState({}); 
@@ -3550,6 +3652,33 @@ const Editor = ({ type, data, close, appId, showToast, btnStyle }) => {
                         <span className="text-xs font-bold uppercase text-slate-400 ml-1">Bezeichnung / Name</span>
                         <Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." />
                     </div>
+                    {type === 'cooling' && (
+                        <div className="space-y-4">
+                            {/* Name des Geräts */}
+                            <div className="space-y-2">
+                                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Gerätename</span>
+                                <Input 
+                                    value={form.name || ''} 
+                                    onChange={e => setForm({ ...form, name: e.target.value })} 
+                                    placeholder="z.B. Kühlhaus Küche" 
+                                />
+                            </div>
+
+                            {/* NEU: Maximaltemperatur */}
+                            <div className="space-y-2">
+                                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Max. Temperatur (°C)</span>
+                                <Input 
+                                    type="number" 
+                                    value={form.maxTemp || ''} 
+                                    onChange={e => setForm({ ...form, maxTemp: e.target.value })} 
+                                    placeholder="Standard: 8" 
+                                />
+                                <p className="text-[10px] text-slate-400 ml-1">
+                                    Ab diesem Wert wird die Eingabe rot markiert (z.B. -18 für TK, 7 für Kühlschrank).
+                                </p>
+                            </div>
+                        </div>
+                    )}
 
                     {type==='prep' && (
                         <div className="space-y-4">
