@@ -2921,7 +2921,16 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                                     <div className="space-y-1">
                                         {oilLogs.map((l,i) => { 
                                             const fname = (fryers||[]).find(f=>f.id===l.deviceId)?.name || 'Fritteuse'; 
-                                            return <div key={i} className="text-xs flex justify-between"><span>{fname}</span><span className="font-bold">OK ({l.tpm}%)</span></div> 
+                                            const isCritical = l.tpm >= 24; // Ab 24% muss gewechselt werden
+                                            
+                                            return (
+                                                <div key={i} className="text-xs flex justify-between items-center">
+                                                    <span className="opacity-80">{fname}</span>
+                                                    <span className={`font-bold ${isCritical ? 'text-red-400 animate-pulse' : 'text-emerald-400'}`}>
+                                                        {isCritical ? 'WECHSELN' : 'FILTERN'} ({l.tpm}%)
+                                                    </span>
+                                                </div>
+                                            ); 
                                         })}
                                     </div>
                                 )}
