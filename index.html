@@ -2389,7 +2389,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
     return (
         <div className="p-4 space-y-6 pb-32">
             <div className="flex justify-between items-end pt-6 px-2">
-                <h1 className="text-3xl font-black italic tracking-tighter">ORDER-HUB</h1>
+                <h1 className="text-3xl font-black italic tracking-tighter">ALFRED-BESTELLASSISTENT</h1>
                 <div className="flex gap-2">
                     <button onClick={()=>setView('checks')} className="bg-white text-slate-900 border border-slate-200 p-3 rounded-2xl shadow-lg relative">
                         <SafeIcon name="ClipboardList" size={24}/>
@@ -2434,10 +2434,10 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
             {view === 'setup' && editSup && (
                 <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
                     <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 space-y-4 shadow-2xl">
-                        <div className="flex justify-between items-center"><h2 className="font-black italic uppercase">Setup</h2><button onClick={()=>setView('dashboard')}><SafeIcon name="X"/></button></div>
-                        <Input label="Name" value={editSup.name} onChange={e=>setEditSup({...editSup, name:e.target.value})} placeholder="Name" />
-                        <Input label="Email" value={editSup.email} onChange={e=>setEditSup({...editSup, email:e.target.value})} placeholder="Email" />
-                        <Input label="Kunden-ID" value={editSup.customerNumber} onChange={e=>setEditSup({...editSup, customerNumber:e.target.value})} placeholder="ID" />
+                        <div className="flex justify-between items-center"><h2 className="font-black italic uppercase">Lieferanten-Setup</h2><button onClick={()=>setView('dashboard')}><SafeIcon name="X"/></button></div>
+                        <Input label="Name" value={editSup.name} onChange={e=>setEditSup({...editSup, name:e.target.value})} placeholder="Name des Lieferanten" />
+                        <Input label="Email" value={editSup.email} onChange={e=>setEditSup({...editSup, email:e.target.value})} placeholder="Email-Adresse (Lieferant)" />
+                        <Input label="Kunden-ID" value={editSup.customerNumber} onChange={e=>setEditSup({...editSup, customerNumber:e.target.value})} placeholder="Kundennummer" />
                         {editSup.id && (
                             <button onClick={()=>exportToExcel(editSup)} className="w-full bg-indigo-50 text-indigo-600 p-3 rounded-xl font-bold uppercase text-xs border border-indigo-100 flex justify-center items-center gap-2">
                                 <SafeIcon name="FileSpreadsheet" size={16}/> Als Excel Exportieren
@@ -2450,6 +2450,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                     </div>
                 </div>
             )}
+            <h1 className="text-3xl font-black italic tracking-tighter">v.2.0.6</h1>
         </div>
     );
 };
