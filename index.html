@@ -2069,6 +2069,7 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
 */
 
 const SmartOrdering = ({ data, appId, showToast, user }) => {
+    // --- KONFIGURATION ---
     const EMAILJS_SERVICE_ID = "service_dejsfye";
     const EMAILJS_TEMPLATE_ID = "template_mcithcs";
     const EMAILJS_PUBLIC_KEY = "TMFx2hP-RUgy_g9LC";
@@ -2082,6 +2083,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         return <span className={className}>•</span>;
     };
 
+    // --- STATE ---
     const [view, setView] = useState('dashboard'); 
     const [selectedSup, setSelectedSup] = useState(null);
     const [editSup, setEditSup] = useState(null);
@@ -2089,11 +2091,13 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
     const [isEditMode, setIsEditMode] = useState(false);
     const [cart, setCart] = useState({});
 
-    // Daten sicher laden (verhindert 'undefined' Fehler)
+    // Daten sicher laden
     const suppliers = data?.suppliers || [];
     const weekdays = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+    // JS getDay(): 0=Sonntag, 1=Montag...
     const today = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][new Date().getDay()];
 
+    // --- DB SYNC ---
     const syncSup = async (id, payload) => {
         try {
             const ref = doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', id);
@@ -2101,10 +2105,10 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         } catch (e) { console.error("Sync Error", e); }
     };
 
-    // --- EXCEL EXPORT (Statt PDF) ---
+    // --- EXCEL EXPORT (Ersetzt PDF Export) ---
     const exportToExcel = (sup) => {
         try {
-            if (!window.XLSX) return showToast("Excel Library fehlt", "error");
+            if (!window.XLSX) return showToast("Excel Library lädt noch...", "error");
             
             const wsData = [
                 ["LIEFERANT", sup.name, "KUNDEN-NR", sup.customerNumber],
@@ -2118,7 +2122,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Katalog");
             XLSX.writeFile(wb, `${sup.name}_Bestellliste.xlsx`);
-            showToast("Excel exportiert!");
+            showToast("Excel Datei erstellt!");
         } catch (e) { showToast("Export Fehler: " + e.message, "error"); }
     };
 
@@ -2139,13 +2143,13 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 
                 const existing = suppliers.find(s => s.name === sName);
                 
-                if (existing && !confirm(`Der Lieferant "${sName}" existiert bereits.\nMöchtest du die Daten zusammenführen (verschmelzen)?`)) {
+                if (existing && !confirm(`WARNUNG: "${sName}" existiert bereits.\nMöchtest du die Daten verschmelzen (mergen)?`)) {
                     return; 
                 }
 
                 let baseCatalog = existing ? [...existing.catalog] : [];
 
-                // Spalten: 0=Cat, 1=SKU, 2=Name, 3=Unit, 4-10=Tage
+                // Importiert ab Zeile 3 (Index 2). Spalten 4-10 sind die Tage Mo-So
                 const newItems = rows.slice(2).map(r => ({
                     cat: r[0] || 'Allgemein', 
                     sku: r[1]?.toString() || 'N/A', 
@@ -2156,8 +2160,12 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
 
                 newItems.forEach(newItem => {
                     const idx = baseCatalog.findIndex(item => item.sku === newItem.sku);
-                    if (idx > -1) baseCatalog[idx].targets = { ...baseCatalog[idx].targets, ...newItem.targets };
-                    else baseCatalog.push(newItem);
+                    if (idx > -1) {
+                        // Merge: Bestehende Ziele mit neuen überschreiben/ergänzen
+                        baseCatalog[idx].targets = { ...baseCatalog[idx].targets, ...newItem.targets };
+                    } else {
+                        baseCatalog.push(newItem);
+                    }
                 });
 
                 const supData = { 
@@ -2183,38 +2191,45 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         const companyName = data?.company?.name || "Gastronomiebetrieb";
         const logoUrl = data?.company?.logoUrl || "";
         const dateStr = new Date().toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const timeStr = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
+        // HTML Template für die E-Mail
         const orderTableHTML = `
         <div style="font-family: Arial, sans-serif; color: #333; max-width: 800px; margin: 0 auto; background-color: #ffffff;">
-            <div style="background-color: #f8fafc; padding: 20px; border-radius: 12px 12px 0 0; text-align: center; border-bottom: 2px solid #e2e8f0;">
+            <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-bottom: 2px solid #e2e8f0;">
                 ${logoUrl ? `<img src="${logoUrl}" style="height: 70px; object-fit: contain; margin-bottom: 15px;" alt="Logo"/>` : ''}
-                <h2 style="margin: 0; color: #0f172a; font-size: 24px; text-transform: uppercase; letter-spacing: 1px;">Bestellung</h2>
-                <p style="margin: 5px 0 0 0; font-weight: bold; color: #475569; font-size: 16px;">${companyName}</p>
-                <p style="margin: 5px 0 0 0; font-size: 14px; color: #94a3b8;">${dateStr}</p>
+                <h2 style="margin: 0; color: #0f172a; text-transform: uppercase;">Bestellung</h2>
+                <p style="margin: 5px 0 0; font-weight: bold; color: #475569;">${companyName}</p>
+                <p style="margin: 5px 0 0; font-size: 14px; color: #94a3b8;">${dateStr} ${timeStr}</p>
             </div>
-            <div style="background-color: #ffffff; padding: 20px; border: 1px solid #e2e8f0; border-top: none;">
-                <p><strong>Lieferant:</strong> ${selectedSup.name} | <strong>Kd-Nr:</strong> ${selectedSup.customerNumber || "N/A"}</p>
+            
+            <div style="padding: 20px; border-bottom: 1px solid #e2e8f0;">
+                <p style="margin:0;"><strong>Lieferant:</strong> ${selectedSup.name}</p>
+                <p style="margin:5px 0 0;"><strong>Kd-Nr:</strong> ${selectedSup.customerNumber || "N/A"}</p>
+                <p style="margin:5px 0 0;"><strong>Besteller:</strong> ${user?.name || "Mitarbeiter"}</p>
             </div>
-            <table width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; border: 1px solid #e2e8f0; border-top: none;">
+
+            <table width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse;">
                 <thead style="background-color: #f1f5f9;">
                     <tr>
-                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0;">Menge</th>
-                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0;">Einh.</th>
-                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0;">Artikel</th>
-                        <th style="text-align: right; border-bottom: 2px solid #e2e8f0;">Art-Nr.</th>
+                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0; color: #475569;">Menge</th>
+                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0; color: #475569;">Einh.</th>
+                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0; color: #475569;">Artikel</th>
+                        <th style="text-align: right; border-bottom: 2px solid #e2e8f0; color: #475569;">Art-Nr.</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${orderItems.map((i, index) => `
                         <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : '#f8fafc'};">
-                            <td style="border-bottom: 1px solid #e2e8f0; font-weight: bold;">${cart[i.sku]}</td>
-                            <td style="border-bottom: 1px solid #e2e8f0;">${i.unit}</td>
-                            <td style="border-bottom: 1px solid #e2e8f0;"><strong>${i.name}</strong></td>
-                            <td style="border-bottom: 1px solid #e2e8f0; text-align: right;">${i.sku}</td>
+                            <td style="border-bottom: 1px solid #e2e8f0; font-weight: bold; font-size: 15px;">${cart[i.sku]}</td>
+                            <td style="border-bottom: 1px solid #e2e8f0; font-size: 14px;">${i.unit}</td>
+                            <td style="border-bottom: 1px solid #e2e8f0; font-weight: bold;">${i.name}</td>
+                            <td style="border-bottom: 1px solid #e2e8f0; text-align: right; font-family: monospace;">${i.sku}</td>
                         </tr>
                     `).join('')}
                 </tbody>
             </table>
+            <div style="text-align: center; padding: 20px; font-size: 11px; color: #cbd5e1;">Generiert mit ORDER-HUB</div>
         </div>`;
 
         try {
@@ -2222,17 +2237,18 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 supplier_name: selectedSup.name,
                 to_email: selectedSup.email,
                 order_details: orderTableHTML,
-                customer_number: selectedSup.customerNumber || "N/A"
+                customer_number: selectedSup.customerNumber || "N/A",
+                company_name: companyName
             }, EMAILJS_PUBLIC_KEY);
-            showToast("Bestellung versendet!");
+            showToast("Bestellung erfolgreich versendet!");
             setCart({}); setView('dashboard');
         } catch (e) { showToast("Sende-Fehler: " + e.text, "error"); }
     };
 
-    // --- VIEW: PRODUKT EDITOR ---
+    // --- VIEW: PRODUKT EDITOR (MENGEN SETUP) ---
     if (view === 'edit_item' && activeItem) return (
         <div className="p-6 space-y-4 animate-in bg-white h-full overflow-y-auto">
-            <div className="flex justify-between items-center"><h2 className="text-xl font-black">Mengen-Setup</h2><button onClick={()=>setView('order')}><X/></button></div>
+            <div className="flex justify-between items-center"><h2 className="text-xl font-black">Mengen-Setup</h2><button onClick={()=>setView('order')}><SafeIcon name="X"/></button></div>
             <div className="bg-slate-50 p-4 rounded-2xl mb-4 border border-slate-100 text-center">
                 <div className="font-black text-lg text-indigo-600">{activeItem.name}</div>
                 <div className="text-[10px] text-slate-400 font-bold uppercase">{activeItem.unit} | SKU: {activeItem.sku}</div>
@@ -2256,18 +2272,20 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         </div>
     );
 
-    // --- VIEW: BESTELLUNG ---
+    // --- VIEW: BESTELLUNG & WARENKORB ---
     if (view === 'order' && selectedSup) return (
         <div className="min-h-screen bg-slate-50 pb-48">
             <div className="bg-white p-5 sticky top-0 z-50 border-b flex justify-between items-center shadow-sm">
                 <span className="font-black text-xl italic">{selectedSup.name}</span>
                 <div className="flex gap-2">
+                    {/* EDIT MODE TOGGLE */}
                     <button onClick={()=>setIsEditMode(!isEditMode)} className={`p-2 rounded-xl transition-all ${isEditMode ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400'}`}><SafeIcon name="PenTool" size={20}/></button>
                     <button onClick={() => setView('dashboard')} className="p-2 bg-slate-100 rounded-full"><SafeIcon name="X" size={20}/></button>
                 </div>
             </div>
             <div className="p-4 space-y-6">
                 {selectedSup.categories?.map(cat => {
+                    // Filter: Zeige Artikel wenn EditMode AN ist ODER wenn für HEUTE eine Menge > 0 hinterlegt ist
                     const items = selectedSup.catalog.filter(i => i.cat === cat && (isEditMode || parseFloat(i.targets?.[today]) > 0));
                     if (items.length === 0) return null;
                     return (
@@ -2292,6 +2310,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                     );
                 })}
             </div>
+            {/* WARENKORB BAR - Schwebend über Navigation */}
             {!isEditMode && Object.values(cart).some(v=>v>0) && (
                 <div className="fixed bottom-24 left-4 right-4 flex gap-2 animate-in-up z-[100]">
                     <div className="flex-1 bg-white border-2 border-slate-900 p-4 rounded-[2rem] flex items-center justify-center gap-2 shadow-2xl">
@@ -2306,7 +2325,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         </div>
     );
 
-    // --- DASHBOARD ---
+    // --- VIEW: DASHBOARD (STARTSEITE) ---
     return (
         <div className="p-4 space-y-6 pb-32">
             <div className="flex justify-between items-end pt-6 px-2">
@@ -2318,6 +2337,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
             </div>
             <div className="grid gap-4">
                 {suppliers.map(s => {
+                    // Prüfen, an welchen Tagen dieser Lieferant bestellt wird (Sollmenge > 0)
                     const activeDays = weekdays.filter(d => s.catalog?.some(i => parseFloat(i.targets?.[d]) > 0));
                     const isTodayActive = activeDays.includes(today);
 
@@ -2327,6 +2347,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                                 <div onClick={()=>{setSelectedSup(s); setView('order'); setIsEditMode(false);}} className="flex-1 cursor-pointer">
                                     <div className="flex items-center gap-2">
                                         <div className="font-black text-2xl text-slate-800">{s.name}</div>
+                                        {/* HEUTE BADGE */}
                                         {isTodayActive && <span className="bg-indigo-600 text-white text-[9px] font-black px-2 py-1 rounded-full animate-pulse">HEUTE</span>}
                                     </div>
                                     <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{s.catalog?.length || 0} Produkte</div>
@@ -2334,7 +2355,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                                 <button onClick={()=>{setEditSup(s); setView('setup')}} className="p-3 bg-slate-50 text-slate-300 rounded-2xl hover:bg-slate-900 hover:text-white"><SafeIcon name="Settings" size={20}/></button>
                             </div>
                             
-                            {/* WOCHENTAGS-ANZEIGE */}
+                            {/* TAG ANZEIGE */}
                             <div className="flex gap-1">
                                 {weekdays.map(d => (
                                     <div key={d} className={`text-[9px] font-black px-2 py-1 rounded-md ${activeDays.includes(d) ? (d === today ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-white') : 'bg-slate-100 text-slate-300'}`}>
@@ -2346,6 +2367,8 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                     );
                 })}
             </div>
+            
+            {/* SETUP MODAL */}
             {view === 'setup' && editSup && (
                 <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
                     <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 space-y-4 shadow-2xl">
