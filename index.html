@@ -2082,14 +2082,15 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
 
     const suppliers = data.suppliers || [];
     const weekdays = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-    const today = ['So','Mo','Di','Mi','Do','Fr','Sa'][new Date().getDay()];
+    // Korrigierter Index: In JS ist 0=So, 1=Mo... für die Anzeige mappen wir es auf unser Array
+    const todayIdx = new Date().getDay();
+    const today = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][todayIdx];
 
     const syncSup = async (id, payload) => {
         const ref = doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', id);
         await updateDoc(ref, { ...payload, lastUpdate: serverTimestamp() });
     };
 
-    // --- MERGE LOGIK FÜR EXCEL IMPORT ---
     const handleSmartImport = async (e) => {
         const file = e.target.files[0];
         if(!file) return;
@@ -2105,12 +2106,15 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 const existing = suppliers.find(s => s.name === sName);
                 let baseCatalog = existing ? [...existing.catalog] : [];
 
+                // Mapping der Spalten 4-10 auf Mo-So
                 const newItems = rows.slice(2).map(r => ({
-                    cat: r[0] || 'Allgemein', sku: r[1]?.toString() || 'N/A', name: r[2], unit: r[3],
-                    targets: { Mo:r[4], Di:r[5], Mi:r[6], Do:r[7], Fr:r[8], Sa:r[9], So:r[10] }
+                    cat: r[0] || 'Allgemein', 
+                    sku: r[1]?.toString() || 'N/A', 
+                    name: r[2], 
+                    unit: r[3],
+                    targets: { Mo:r[4]||0, Di:r[5]||0, Mi:r[6]||0, Do:r[7]||0, Fr:r[8]||0, Sa:r[9]||0, So:r[10]||0 }
                 })).filter(i => i.name);
 
-                // Merge: Wenn SKU existiert, Targets aktualisieren, sonst neu hinzufügen
                 newItems.forEach(newItem => {
                     const idx = baseCatalog.findIndex(item => item.sku === newItem.sku);
                     if (idx > -1) {
@@ -2129,7 +2133,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
 
                 if(existing) await syncSup(existing.id, supData);
                 else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'suppliers'), supData);
-                showToast(`${sName} importiert & gemerged!`);
+                showToast(`${sName} importiert!`);
             } catch (err) { showToast("Import-Fehler", "error"); }
         };
         reader.readAsArrayBuffer(file);
@@ -2150,8 +2154,38 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         } catch (e) { showToast("Sende-Fehler", "error"); }
     };
 
-    // Hilfsfunktion: Prüft ob ein Lieferant heute Artikel mit Soll-Menge > 0 hat
-    const hasOrderToday = (sup) => sup.catalog?.some(i => parseFloat(i.targets?.[today]) > 0);
+    // --- PRODUKT EDITOR (REAKTIVIERT) ---
+    if (view === 'edit_item' && activeItem) return (
+        <div className="p-6 space-y-4 animate-in bg-white h-full">
+            <div className="flex justify-between items-center"><h2 className="text-xl font-black">Produkt bearbeiten</h2><button onClick={()=>setView('order')}><X/></button></div>
+            <Input label="Name" value={activeItem.name} onChange={e=>setActiveItem({...activeItem, name:e.target.value})} />
+            <div className="grid grid-cols-2 gap-2">
+                {weekdays.map(d => (
+                    <div key={d} className="bg-slate-50 p-2 rounded-xl">
+                        <label className="text-[10px] font-bold text-slate-400 block">{d}</label>
+                        <input type="number" className="w-full bg-transparent font-bold outline-none" value={activeItem.targets?.[d]||0} 
+                        onChange={e=>setActiveItem({...activeItem, targets:{...activeItem.targets, [d]:e.target.value}})} />
+                    </div>
+                ))}
+            </div>
+            <div className="flex gap-2 pt-4">
+                <button onClick={async ()=>{
+                    if(confirm("Löschen?")){
+                        const newCat = selectedSup.catalog.filter(i=>i.sku !== activeItem.sku);
+                        await syncSup(selectedSup.id, {catalog: newCat});
+                        setSelectedSup({...selectedSup, catalog: newCat});
+                        setView('order');
+                    }
+                }} className="bg-red-50 text-red-500 p-4 rounded-2xl flex-1 font-bold">Löschen</button>
+                <button onClick={async ()=>{
+                    const newCat = selectedSup.catalog.map(i=>i.sku === activeItem.sku ? activeItem : i);
+                    await syncSup(selectedSup.id, {catalog: newCat});
+                    setSelectedSup({...selectedSup, catalog: newCat});
+                    setView('order');
+                }} className="bg-slate-900 text-white p-4 rounded-2xl flex-1 font-bold">Speichern</button>
+            </div>
+        </div>
+    );
 
     if (view === 'order' && selectedSup) return (
         <div className="min-h-screen bg-slate-50 pb-32">
@@ -2165,16 +2199,16 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 pt-4">{cat}</h3>
                         {selectedSup.catalog.filter(i=>i.cat===cat).map(item => (
                             <div key={item.sku} className="bg-white p-4 rounded-[2rem] border border-slate-100 flex items-center justify-between shadow-sm">
-                                <div className="flex-1">
+                                <div onClick={()=>{setActiveItem(item); setView('edit_item');}} className="flex-1 cursor-pointer">
                                     <div className="font-bold text-slate-800">{item.name}</div>
                                     <div className={`text-[10px] font-black uppercase ${parseFloat(item.targets?.[today]) > 0 ? 'text-indigo-500' : 'text-slate-300'}`}>
                                         Soll {today}: {item.targets?.[today]||0} {item.unit}
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-2xl border">
-                                    <button onClick={()=>setCart({...cart, [item.sku]:Math.max(0,(cart[item.sku]||0)-1)})} className="w-10 h-10 bg-white rounded-xl font-bold shadow-sm">-</button>
+                                    <button onClick={()=>setCart({...cart, [item.sku]:Math.max(0,(cart[item.sku]||0)-1)})} className="w-10 h-10 bg-white rounded-xl font-bold">-</button>
                                     <span className="w-8 text-center font-bold">{cart[item.sku]||0}</span>
-                                    <button onClick={()=>setCart({...cart, [item.sku]:(cart[item.sku]||0)+1})} className="w-10 h-10 bg-white rounded-xl font-bold shadow-sm">+</button>
+                                    <button onClick={()=>setCart({...cart, [item.sku]:(cart[item.sku]||0)+1})} className="w-10 h-10 bg-white rounded-xl font-bold">+</button>
                                 </div>
                             </div>
                         ))}
@@ -2182,9 +2216,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 ))}
             </div>
             {Object.values(cart).some(v=>v>0) && (
-                <div className="fixed bottom-6 left-4 right-4 flex gap-2">
-                    <button onClick={finalizeOrder} className="w-full bg-slate-900 text-white p-5 rounded-[2rem] font-black shadow-xl">SENDEN</button>
-                </div>
+                <div className="fixed bottom-6 left-4 right-4"><button onClick={finalizeOrder} className="w-full bg-slate-900 text-white p-5 rounded-[2rem] font-black shadow-xl">BESTELLUNG ABSENDEN</button></div>
             )}
         </div>
     );
@@ -2195,21 +2227,19 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 <h1 className="text-3xl font-black italic tracking-tighter">ORDER-HUB</h1>
                 <div className="flex gap-2">
                     <label className="bg-indigo-600 text-white p-3 rounded-2xl shadow-lg cursor-pointer"><Database/><input type="file" className="hidden" onChange={handleSmartImport}/></label>
-                    <button onClick={()=>{setEditSup({name:'', email:'', customerNumber:'', catalog:[]}); setView('setup')}} className="bg-slate-900 text-white p-3 rounded-2xl shadow-lg"><Plus/></button>
+                    <button onClick={()=>{setEditSup({name:'', email:'', customerNumber:'', catalog:[], categories:[]}); setView('setup')}} className="bg-slate-900 text-white p-3 rounded-2xl shadow-lg"><Plus/></button>
                 </div>
             </div>
             <div className="grid gap-4">
                 {suppliers.map(s => {
-                    const needsOrder = hasOrderToday(s);
-                    // Sammle alle Tage, an denen Soll-Mengen > 0 hinterlegt sind
+                    const needsOrder = s.catalog?.some(i => parseFloat(i.targets?.[today]) > 0);
                     const activeDays = weekdays.filter(day => s.catalog?.some(i => parseFloat(i.targets?.[day]) > 0));
-
                     return (
                         <div key={s.id} className={`bg-white p-6 rounded-[2.5rem] border flex items-center justify-between shadow-sm transition-all ${needsOrder ? 'ring-2 ring-indigo-500 border-transparent' : 'border-slate-100'}`}>
                             <div onClick={()=>{setSelectedSup(s); setView('order')}} className="flex-1 cursor-pointer">
                                 <div className="flex items-center gap-2">
                                     <div className="font-black text-2xl text-slate-800">{s.name}</div>
-                                    {needsOrder && <span className="bg-indigo-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full animate-pulse">HEUTE FÄLLIG</span>}
+                                    {needsOrder && <span className="bg-indigo-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full animate-pulse">HEUTE</span>}
                                 </div>
                                 <div className="flex flex-wrap gap-1 mt-2">
                                     {weekdays.map(day => (
@@ -2224,7 +2254,21 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                     );
                 })}
             </div>
-            {/* Setup View bleibt identisch... */}
+            {view === 'setup' && editSup && (
+                <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 space-y-4 shadow-2xl">
+                        <div className="flex justify-between items-center"><h2 className="font-black italic uppercase">Lieferant Setup</h2><button onClick={()=>setView('dashboard')}><X/></button></div>
+                        <Input label="Name" value={editSup.name} onChange={e=>setEditSup({...editSup, name:e.target.value})} />
+                        <Input label="Email" value={editSup.email} onChange={e=>setEditSup({...editSup, email:e.target.value})} />
+                        <Input label="Kundennummer" value={editSup.customerNumber} onChange={e=>setEditSup({...editSup, customerNumber:e.target.value})} />
+                        <button onClick={async ()=>{
+                            if(editSup.id) await syncSup(editSup.id, editSup);
+                            else await addDoc(collection(db,'artifacts',appId,'public','data','suppliers'), {...editSup, updatedAt:serverTimestamp()});
+                            setView('dashboard');
+                        }} className="w-full bg-slate-900 text-white p-3 rounded-xl font-black shadow-lg">SPEICHERN</button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
