@@ -2069,26 +2069,19 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
 */
 
 const SmartOrdering = ({ data, appId, showToast, user }) => {
-    // --- KONFIGURATION ---
     const EMAILJS_SERVICE_ID = "service_dejsfye";
     const EMAILJS_TEMPLATE_ID = "template_mcithcs";
     const EMAILJS_PUBLIC_KEY = "TMFx2hP-RUgy_g9LC";
 
-    // --- INTERNE ICONS (Keine externen Abhängigkeiten mehr = Kein Crash) ---
-    const Icons = {
-        ShoppingBag: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>,
-        Database: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>,
-        Plus: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
-        Settings: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
-        X: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 18 18"/></svg>,
-        ChevronRight: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>,
-        PenTool: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19 7-7 3 3-7 7-3-3z"/><path d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="m2 2 7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>,
-        Table: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
-    };
-
+    // --- HELFER: SafeIcon ---
     const SafeIcon = ({ name, size = 20, className = "" }) => {
-        const IconComp = Icons[name];
-        return IconComp ? <IconComp width={size} height={size} className={className} /> : null;
+        try {
+            const Icon = window[name] || 
+                         (window.Lucide && window.Lucide[name]) || 
+                         (window.Lucide && window.Lucide.icons && window.Lucide.icons[name]);
+            if (Icon) return <Icon size={size} className={className} />;
+        } catch (e) {}
+        return <span className="text-xs font-bold">●</span>;
     };
 
     // --- STATE ---
@@ -2099,10 +2092,10 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
     const [isEditMode, setIsEditMode] = useState(false);
     const [cart, setCart] = useState({});
 
-    // Daten laden
     const suppliers = data?.suppliers || [];
     const weekdays = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-    const today = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][new Date().getDay()];
+    const todayIndex = new Date().getDay(); 
+    const today = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][todayIndex];
 
     // --- DB SYNC ---
     const syncSup = async (id, payload) => {
@@ -2112,11 +2105,32 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         } catch (e) { console.error("Sync Error", e); }
     };
 
-    // --- EXCEL EXPORT (Statt PDF) ---
+    // --- PRODUKT HINZUFÜGEN ---
+    const handleAddProduct = () => {
+        const newItem = {
+            sku: Date.now().toString(), // Temporäre ID
+            name: "Neues Produkt",
+            unit: "Stk",
+            cat: selectedSup.categories?.[0] || "Allgemein",
+            targets: { Mo:0, Di:0, Mi:0, Do:0, Fr:0, Sa:0, So:0 }
+        };
+        // Direkt in den Katalog pushen und Editor öffnen
+        const newCatalog = [...selectedSup.catalog, newItem];
+        const newSup = { ...selectedSup, catalog: newCatalog };
+        
+        // Optimistisch updaten
+        setSelectedSup(newSup);
+        setActiveItem(newItem);
+        setView('edit_item');
+        
+        // Im Hintergrund speichern
+        syncSup(selectedSup.id, { catalog: newCatalog });
+    };
+
+    // --- EXCEL EXPORT ---
     const exportToExcel = (sup) => {
         try {
             if (!window.XLSX) return showToast("Excel System lädt noch...", "error");
-            
             const wsData = [
                 ["LIEFERANT", sup.name, "KUNDEN-NR", sup.customerNumber],
                 ["KATEGORIE", "ART-NR", "NAME", "EINHEIT", "Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
@@ -2133,7 +2147,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         } catch (e) { showToast("Export Fehler: " + e.message, "error"); }
     };
 
-    // --- EXCEL IMPORT & MERGE ---
+    // --- EXCEL IMPORT ---
     const handleSmartImport = async (e) => {
         const file = e.target.files[0];
         if(!file) return;
@@ -2141,7 +2155,6 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         reader.onload = async (evt) => {
             try {
                 if (!window.XLSX) return showToast("Excel System fehlt", "error");
-
                 const bdata = new Uint8Array(evt.target.result);
                 const wb = XLSX.read(bdata, {type:'array'});
                 const ws = wb.Sheets[wb.SheetNames[0]];
@@ -2149,36 +2162,21 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 const sName = rows[0]?.[1] || "Unbekannt";
                 
                 const existing = suppliers.find(s => s.name === sName);
-                
-                if (existing && !confirm(`WARNUNG: "${sName}" existiert bereits.\nMöchtest du die Daten verschmelzen (mergen)?`)) {
-                    return; 
-                }
+                if (existing && !confirm(`WARNUNG: "${sName}" existiert bereits.\nMöchtest du die Daten verschmelzen (mergen)?`)) return; 
 
                 let baseCatalog = existing ? [...existing.catalog] : [];
                 const newItems = rows.slice(2).map(r => ({
-                    cat: r[0] || 'Allgemein', 
-                    sku: r[1]?.toString() || 'N/A', 
-                    name: r[2], 
-                    unit: r[3],
+                    cat: r[0] || 'Allgemein', sku: r[1]?.toString() || 'N/A', name: r[2], unit: r[3],
                     targets: { Mo:r[4]||0, Di:r[5]||0, Mi:r[6]||0, Do:r[7]||0, Fr:r[8]||0, Sa:r[9]||0, So:r[10]||0 }
                 })).filter(i => i.name);
 
                 newItems.forEach(newItem => {
                     const idx = baseCatalog.findIndex(item => item.sku === newItem.sku);
-                    if (idx > -1) {
-                        baseCatalog[idx].targets = { ...baseCatalog[idx].targets, ...newItem.targets };
-                    } else {
-                        baseCatalog.push(newItem);
-                    }
+                    if (idx > -1) baseCatalog[idx].targets = { ...baseCatalog[idx].targets, ...newItem.targets };
+                    else baseCatalog.push(newItem);
                 });
 
-                const supData = { 
-                    name: sName, 
-                    customerNumber: rows[0]?.[3] || "", 
-                    catalog: baseCatalog, 
-                    categories: [...new Set(baseCatalog.map(i => i.cat))] 
-                };
-
+                const supData = { name: sName, customerNumber: rows[0]?.[3] || "", catalog: baseCatalog, categories: [...new Set(baseCatalog.map(i => i.cat))] };
                 if(existing) await syncSup(existing.id, supData);
                 else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'suppliers'), supData);
                 showToast("Import & Merge erfolgreich!");
@@ -2187,7 +2185,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         reader.readAsArrayBuffer(file);
     };
 
-    // --- HTML EMAIL SENDEN ---
+    // --- HTML EMAIL ---
     const finalizeOrder = async () => {
         const orderItems = selectedSup.catalog.filter(i => cart[i.sku] > 0);
         if (orderItems.length === 0) return showToast("Warenkorb leer", "error");
@@ -2212,22 +2210,16 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
             </div>
             <table width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse;">
                 <thead style="background-color: #f1f5f9;">
-                    <tr>
-                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0; color: #475569;">Menge</th>
-                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0; color: #475569;">Einh.</th>
-                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0; color: #475569;">Artikel</th>
-                        <th style="text-align: right; border-bottom: 2px solid #e2e8f0; color: #475569;">Art-Nr.</th>
-                    </tr>
+                    <tr><th style="text-align: left; border-bottom: 2px solid #e2e8f0;">Menge</th><th style="text-align: left; border-bottom: 2px solid #e2e8f0;">Einh.</th><th style="text-align: left; border-bottom: 2px solid #e2e8f0;">Artikel</th><th style="text-align: right; border-bottom: 2px solid #e2e8f0;">Art-Nr.</th></tr>
                 </thead>
                 <tbody>
                     ${orderItems.map((i, index) => `
                         <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : '#f8fafc'};">
-                            <td style="border-bottom: 1px solid #e2e8f0; font-weight: bold; font-size: 15px;">${cart[i.sku]}</td>
-                            <td style="border-bottom: 1px solid #e2e8f0; font-size: 14px;">${i.unit}</td>
-                            <td style="border-bottom: 1px solid #e2e8f0; font-weight: bold;">${i.name}</td>
-                            <td style="border-bottom: 1px solid #e2e8f0; text-align: right; font-family: monospace;">${i.sku}</td>
-                        </tr>
-                    `).join('')}
+                            <td style="border-bottom: 1px solid #e2e8f0; font-weight: bold;">${cart[i.sku]}</td>
+                            <td style="border-bottom: 1px solid #e2e8f0;">${i.unit}</td>
+                            <td style="border-bottom: 1px solid #e2e8f0;"><strong>${i.name}</strong></td>
+                            <td style="border-bottom: 1px solid #e2e8f0; text-align: right;">${i.sku}</td>
+                        </tr>`).join('')}
                 </tbody>
             </table>
             <div style="text-align: center; padding: 20px; font-size: 11px; color: #cbd5e1;">Generiert mit ORDER-HUB</div>
@@ -2235,25 +2227,45 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
 
         try {
             await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-                supplier_name: selectedSup.name,
-                to_email: selectedSup.email,
-                order_details: orderTableHTML,
-                customer_number: selectedSup.customerNumber || "N/A",
-                company_name: companyName
+                supplier_name: selectedSup.name, to_email: selectedSup.email, order_details: orderTableHTML,
+                customer_number: selectedSup.customerNumber || "N/A", company_name: companyName
             }, EMAILJS_PUBLIC_KEY);
-            showToast("Bestellung erfolgreich versendet!");
-            setCart({}); setView('dashboard');
+            showToast("Bestellung erfolgreich versendet!"); setCart({}); setView('dashboard');
         } catch (e) { showToast("Sende-Fehler: " + e.text, "error"); }
     };
 
-    // --- VIEW: PRODUKT EDITOR (MENGEN SETUP) ---
+    // --- VIEW: PRODUKT EDITOR ---
     if (view === 'edit_item' && activeItem) return (
         <div className="p-6 space-y-4 animate-in bg-white h-full overflow-y-auto">
-            <div className="flex justify-between items-center"><h2 className="text-xl font-black">Mengen-Setup</h2><button onClick={()=>setView('order')}><SafeIcon name="X"/></button></div>
-            <div className="bg-slate-50 p-4 rounded-2xl mb-4 border border-slate-100 text-center">
-                <div className="font-black text-lg text-indigo-600">{activeItem.name}</div>
-                <div className="text-[10px] text-slate-400 font-bold uppercase">{activeItem.unit} | SKU: {activeItem.sku}</div>
+            <div className="flex justify-between items-center"><h2 className="text-xl font-black">Produkt Bearbeiten</h2><button onClick={()=>setView('order')}><SafeIcon name="X"/></button></div>
+            
+            {/* Produkt Stammdaten Bearbeitung */}
+            <div className="bg-slate-50 p-4 rounded-2xl mb-4 border border-slate-100 space-y-3">
+                <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase">Name</label>
+                    <input className="w-full bg-white p-3 rounded-xl border border-slate-200 font-bold" value={activeItem.name} onChange={e=>setActiveItem({...activeItem, name:e.target.value})} />
+                </div>
+                <div className="flex gap-2">
+                    <div className="flex-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Art-Nr (SKU)</label>
+                        <input className="w-full bg-white p-3 rounded-xl border border-slate-200" value={activeItem.sku} onChange={e=>setActiveItem({...activeItem, sku:e.target.value})} />
+                    </div>
+                    <div className="w-24">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Einheit</label>
+                        <input className="w-full bg-white p-3 rounded-xl border border-slate-200" value={activeItem.unit} onChange={e=>setActiveItem({...activeItem, unit:e.target.value})} />
+                    </div>
+                </div>
+                <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase">Kategorie</label>
+                    <input list="cat-suggestions" className="w-full bg-white p-3 rounded-xl border border-slate-200 font-bold text-indigo-600" 
+                           value={activeItem.cat} onChange={e=>setActiveItem({...activeItem, cat:e.target.value})} placeholder="Kategorie wählen oder tippen..." />
+                    <datalist id="cat-suggestions">
+                        {selectedSup.categories?.map(c => <option key={c} value={c} />)}
+                    </datalist>
+                </div>
             </div>
+
+            {/* Wochenmengen */}
             <div className="space-y-2">
                 {weekdays.map(d => (
                     <div key={d} className={`flex items-center justify-between p-3 rounded-2xl border ${d === today ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-100'}`}>
@@ -2266,9 +2278,26 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                     </div>
                 ))}
             </div>
+
             <div className="flex gap-2 pt-6">
-                <button onClick={async ()=>{if(confirm("Löschen?")){const n = selectedSup.catalog.filter(i=>i.sku !== activeItem.sku); await syncSup(selectedSup.id, {catalog: n}); setSelectedSup({...selectedSup, catalog: n}); setView('order');}}} className="bg-red-50 text-red-500 p-4 rounded-2xl flex-1 font-bold">Löschen</button>
-                <button onClick={async ()=>{const n = selectedSup.catalog.map(i=>i.sku === activeItem.sku ? activeItem : i); await syncSup(selectedSup.id, {catalog: n}); setSelectedSup({...selectedSup, catalog: n}); setView('order');}} className="bg-slate-900 text-white p-4 rounded-2xl flex-1 font-black">Speichern</button>
+                <button onClick={async ()=>{if(confirm("Produkt löschen?")){
+                    const newCatalog = selectedSup.catalog.filter(i=>i.sku !== activeItem.sku);
+                    // Kategorien neu berechnen
+                    const newCats = [...new Set(newCatalog.map(i => i.cat))];
+                    await syncSup(selectedSup.id, {catalog: newCatalog, categories: newCats});
+                    setSelectedSup({...selectedSup, catalog: newCatalog, categories: newCats});
+                    setView('order');
+                }}} className="bg-red-50 text-red-500 p-4 rounded-2xl flex-1 font-bold">Löschen</button>
+                
+                <button onClick={async ()=>{
+                    // Update Item in Catalog
+                    const newCatalog = selectedSup.catalog.map(i=>i.sku === activeItem.sku ? activeItem : i);
+                    // Kategorien neu berechnen (falls geändert)
+                    const newCats = [...new Set(newCatalog.map(i => i.cat))];
+                    await syncSup(selectedSup.id, {catalog: newCatalog, categories: newCats});
+                    setSelectedSup({...selectedSup, catalog: newCatalog, categories: newCats});
+                    setView('order');
+                }} className="bg-slate-900 text-white p-4 rounded-2xl flex-1 font-black shadow-lg">Speichern</button>
             </div>
         </div>
     );
@@ -2276,39 +2305,63 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
     // --- VIEW: BESTELLUNG & WARENKORB ---
     if (view === 'order' && selectedSup) return (
         <div className="min-h-screen bg-slate-50 pb-48">
-            <div className="bg-white p-5 sticky top-0 z-50 border-b flex justify-between items-center shadow-sm">
-                <span className="font-black text-xl italic">{selectedSup.name}</span>
-                <div className="flex gap-2">
-                    <button onClick={()=>setIsEditMode(!isEditMode)} className={`p-2 rounded-xl transition-all ${isEditMode ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400'}`}><SafeIcon name="PenTool" size={20}/></button>
-                    <button onClick={() => setView('dashboard')} className="p-2 bg-slate-100 rounded-full"><SafeIcon name="X" size={20}/></button>
+            <div className="bg-white p-5 sticky top-0 z-50 border-b flex flex-col gap-4 shadow-sm">
+                <div className="flex justify-between items-center">
+                    <span className="font-black text-xl italic">{selectedSup.name}</span>
+                    <div className="flex gap-2">
+                        {isEditMode && (
+                            <button onClick={handleAddProduct} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg flex items-center gap-1">
+                                <SafeIcon name="Plus" size={14}/> NEU
+                            </button>
+                        )}
+                        <button onClick={()=>setIsEditMode(!isEditMode)} className={`p-2 rounded-xl transition-all ${isEditMode ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-400'}`}><SafeIcon name="PenTool" size={20}/></button>
+                        <button onClick={() => setView('dashboard')} className="p-2 bg-slate-100 rounded-full"><SafeIcon name="X" size={20}/></button>
+                    </div>
+                </div>
+                
+                {/* KATEGORIE NAVIGATION (ANKERPUNKTE) */}
+                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                    {selectedSup.categories?.map(cat => (
+                        <button key={cat} onClick={() => document.getElementById(`cat-${cat}`).scrollIntoView({behavior:'smooth', block:'center'})} 
+                                className="whitespace-nowrap px-3 py-1 bg-slate-100 rounded-lg text-[10px] font-bold uppercase text-slate-500 hover:bg-slate-200">
+                            {cat}
+                        </button>
+                    ))}
                 </div>
             </div>
-            <div className="p-4 space-y-6">
+
+            <div className="p-4 space-y-8">
                 {selectedSup.categories?.map(cat => {
                     const items = selectedSup.catalog.filter(i => i.cat === cat && (isEditMode || parseFloat(i.targets?.[today]) > 0));
                     if (items.length === 0) return null;
                     return (
-                        <div key={cat} className="space-y-2">
-                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 pt-4">{cat}</h3>
+                        <div key={cat} id={`cat-${cat}`} className="space-y-3">
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 border-b border-slate-200 pb-1">{cat}</h3>
                             {items.map(item => (
                                 <div key={item.sku} className={`bg-white p-4 rounded-[2rem] border flex items-center justify-between shadow-sm transition-all ${isEditMode ? 'border-dashed border-indigo-300 bg-indigo-50/20' : 'border-slate-100'}`}>
-                                    <div onClick={()=>{if(isEditMode){setActiveItem(item); setView('edit_item');}}} className="flex-1 cursor-pointer">
-                                        <div className="font-bold text-slate-800">{item.name}</div>
-                                        <div className="text-[10px] font-black uppercase text-indigo-500">Soll {today}: {item.targets?.[today]||0} {item.unit}</div>
+                                    <div onClick={()=>{if(isEditMode){setActiveItem(item); setView('edit_item');}}} className="flex-1 cursor-pointer pr-2">
+                                        <div className="font-bold text-slate-800 leading-tight">{item.name}</div>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">{item.unit}</span>
+                                            <span className="text-[10px] font-black uppercase text-indigo-500">Soll: {item.targets?.[today]||0}</span>
+                                        </div>
                                     </div>
                                     {!isEditMode && (
                                         <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-2xl border border-slate-200">
                                             <button onClick={()=>setCart({...cart, [item.sku]:Math.max(0,(cart[item.sku]||0)-1)})} className="w-10 h-10 bg-white rounded-xl font-bold shadow-sm">-</button>
-                                            <span className="w-8 text-center font-bold text-sm">{cart[item.sku]||0}</span>
+                                            <span className="w-6 text-center font-bold text-sm">{cart[item.sku]||0}</span>
                                             <button onClick={()=>setCart({...cart, [item.sku]:(cart[item.sku]||0)+1})} className="w-10 h-10 bg-white rounded-xl font-bold shadow-sm">+</button>
                                         </div>
                                     )}
+                                    {isEditMode && <SafeIcon name="ChevronRight" size={16} className="text-indigo-400"/>}
                                 </div>
                             ))}
                         </div>
                     );
                 })}
             </div>
+
+            {/* WARENKORB BAR */}
             {!isEditMode && Object.values(cart).some(v=>v>0) && (
                 <div className="fixed bottom-24 left-4 right-4 flex gap-2 animate-in-up z-[100]">
                     <div className="flex-1 bg-white border-2 border-slate-900 p-4 rounded-[2rem] flex items-center justify-center gap-2 shadow-2xl">
@@ -2337,7 +2390,6 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 {suppliers.map(s => {
                     const activeDays = weekdays.filter(d => s.catalog?.some(i => parseFloat(i.targets?.[d]) > 0));
                     const isTodayActive = activeDays.includes(today);
-
                     return (
                         <div key={s.id} className={`bg-white p-6 rounded-[2.5rem] border flex flex-col gap-4 shadow-sm transition-all ${isTodayActive ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-slate-100'}`}>
                             <div className="flex justify-between items-center">
@@ -2350,7 +2402,6 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                                 </div>
                                 <button onClick={()=>{setEditSup(s); setView('setup')}} className="p-3 bg-slate-50 text-slate-300 rounded-2xl hover:bg-slate-900 hover:text-white"><SafeIcon name="Settings" size={20}/></button>
                             </div>
-                            
                             <div className="flex gap-1">
                                 {weekdays.map(d => (
                                     <div key={d} className={`text-[9px] font-black px-2 py-1 rounded-md ${activeDays.includes(d) ? (d === today ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-white') : 'bg-slate-100 text-slate-300'}`}>
@@ -2362,7 +2413,6 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                     );
                 })}
             </div>
-            
             {view === 'setup' && editSup && (
                 <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
                     <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 space-y-4 shadow-2xl">
@@ -2370,13 +2420,11 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                         <Input label="Name" value={editSup.name} onChange={e=>setEditSup({...editSup, name:e.target.value})} placeholder="Name" />
                         <Input label="Email" value={editSup.email} onChange={e=>setEditSup({...editSup, email:e.target.value})} placeholder="Email" />
                         <Input label="Kunden-ID" value={editSup.customerNumber} onChange={e=>setEditSup({...editSup, customerNumber:e.target.value})} placeholder="ID" />
-                        
                         {editSup.id && (
                             <button onClick={()=>exportToExcel(editSup)} className="w-full bg-indigo-50 text-indigo-600 p-3 rounded-xl font-bold uppercase text-xs border border-indigo-100 flex justify-center items-center gap-2">
                                 <SafeIcon name="Table" size={16}/> Als Excel Exportieren
                             </button>
                         )}
-
                         <div className="flex gap-2 pt-4">
                             <button onClick={async ()=>{if(confirm("Löschen?")){await deleteDoc(doc(db,'artifacts',appId,'public','data','suppliers',editSup.id)); setView('dashboard');}}} className="bg-red-50 text-red-500 p-4 rounded-2xl font-bold flex-1 uppercase text-xs">Löschen</button>
                             <button onClick={async ()=>{if(editSup.id) await syncSup(editSup.id, editSup); else await addDoc(collection(db,'artifacts',appId,'public','data','suppliers'), {...editSup, updatedAt:serverTimestamp()}); setView('dashboard');}} className="bg-slate-900 text-white p-4 rounded-2xl font-black flex-[2] shadow-lg uppercase text-xs">Speichern</button>
@@ -2387,7 +2435,6 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         </div>
     );
 };
-
 
 // --- APP CONTROLLER ---
         function App() {
