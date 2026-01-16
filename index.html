@@ -2069,10 +2069,20 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
 
 */
 
- const SmartOrdering = ({ data, appId, showToast, user }) => {
+const SmartOrdering = ({ data, appId, showToast, user }) => {
     const EMAILJS_SERVICE_ID = "service_dejsfye";
     const EMAILJS_TEMPLATE_ID = "template_mcithcs";
     const EMAILJS_PUBLIC_KEY = "TMFx2hP-RUgy_g9LC";
+
+    // --- FIX: SafeIcon Definition (Behebt den Crash) ---
+    const SafeIcon = ({ name, size = 20, className = "" }) => {
+        try {
+            // Versucht das Icon aus den globalen Variablen oder window.Lucide zu laden
+            const Icon = window[name] || (window.Lucide && window.Lucide[name]);
+            if (Icon) return <Icon size={size} className={className} />;
+        } catch (e) {}
+        return <span className={className}>•</span>;
+    };
 
     const [view, setView] = useState('dashboard'); 
     const [selectedSup, setSelectedSup] = useState(null);
@@ -2090,7 +2100,7 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
         await updateDoc(ref, { ...payload, lastUpdate: serverTimestamp() });
     };
 
-    // --- HIER WURDE DIE FEHLENDE FUNKTION EINGEFÜGT ---
+    // --- IMPORT FUNKTION ---
     const handleSmartImport = async (e) => {
         const file = e.target.files[0];
         if(!file) return;
@@ -2114,7 +2124,7 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
                     targets: { Mo:r[4]||0, Di:r[5]||0, Mi:r[6]||0, Do:r[7]||0, Fr:r[8]||0, Sa:r[9]||0, So:r[10]||0 }
                 })).filter(i => i.name);
 
-                // Merge-Logik: Vorhandene SKUs aktualisieren, neue hinzufügen
+                // Merge-Logik
                 newItems.forEach(newItem => {
                     const idx = baseCatalog.findIndex(item => item.sku === newItem.sku);
                     if (idx > -1) baseCatalog[idx].targets = { ...baseCatalog[idx].targets, ...newItem.targets };
@@ -2135,7 +2145,6 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
         };
         reader.readAsArrayBuffer(file);
     };
-    // --------------------------------------------------
 
     const finalizeOrder = async () => {
         const orderItems = selectedSup.catalog.filter(i => cart[i.sku] > 0);
@@ -2270,7 +2279,6 @@ const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
         </div>
     );
 };
-         
 // --- APP CONTROLLER ---
         function App() {
             // --- STATE DEFINITIONS ---
