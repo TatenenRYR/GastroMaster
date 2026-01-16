@@ -2066,7 +2066,6 @@ const CashManager = ({ user, appId, showToast, setView, data = {} }) => {
 const EMAILJS_SERVICE_ID = "service_dejsfye";  // <--- ÄNDERN
         const EMAILJS_TEMPLATE_ID = "template_mcithcs"; // <--- ÄNDERN
         const EMAILJS_PUBLIC_KEY = "TMFx2hP-RUgy_g9LC";    // <--- ÄNDERN
-TEST
 */
 
 const SmartOrdering = ({ data, appId, showToast, user }) => {
@@ -2099,6 +2098,26 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         await updateDoc(ref, { ...payload, lastUpdate: serverTimestamp() });
     };
 
+    // --- NEU: EXCEL EXPORT FUNKTION ---
+    const exportToExcel = (sup) => {
+        try {
+            // Struktur passend für den Import bauen
+            const wsData = [
+                ["LIEFERANT", sup.name, "KUNDEN-NR", sup.customerNumber], // Zeile 0: Meta
+                ["KATEGORIE", "ART-NR", "NAME", "EINHEIT", "Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"], // Zeile 1: Header
+                ...sup.catalog.map(i => [
+                    i.cat, i.sku, i.name, i.unit,
+                    i.targets?.Mo||0, i.targets?.Di||0, i.targets?.Mi||0, i.targets?.Do||0, i.targets?.Fr||0, i.targets?.Sa||0, i.targets?.So||0
+                ])
+            ];
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Katalog");
+            XLSX.writeFile(wb, `${sup.name}_Bestellliste.xlsx`);
+            showToast("Excel exportiert!");
+        } catch (e) { showToast("Export Fehler", "error"); }
+    };
+
     const handleSmartImport = async (e) => {
         const file = e.target.files[0];
         if(!file) return;
@@ -2112,6 +2131,12 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 const sName = rows[0]?.[1] || "Unbekannt";
                 
                 const existing = suppliers.find(s => s.name === sName);
+                
+                // --- NEU: WARNUNG VOR MERGE ---
+                if (existing && !confirm(`Der Lieferant "${sName}" existiert bereits.\nMöchtest du die Daten zusammenführen (verschmelzen)?`)) {
+                    return; 
+                }
+
                 let baseCatalog = existing ? [...existing.catalog] : [];
 
                 const newItems = rows.slice(2).map(r => ({
@@ -2143,67 +2168,46 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         reader.readAsArrayBuffer(file);
     };
 
-    // --- HTML EMAIL GENERIERUNG MIT LOGO UND DESIGN ---
     const finalizeOrder = async () => {
         const orderItems = selectedSup.catalog.filter(i => cart[i.sku] > 0);
         if (orderItems.length === 0) return showToast("Warenkorb leer", "error");
         
-        // Firmendaten abrufen
-        const companyName = data?.company?.name || "Ihr Gastronomiebetrieb";
-        const companyLogo = data?.company?.logoUrl || "";
+        const companyName = data?.company?.name || "Gastronomiebetrieb";
+        const logoUrl = data?.company?.logoUrl || "";
         const dateStr = new Date().toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-        // HTML Email Template
         const orderTableHTML = `
         <div style="font-family: Arial, sans-serif; color: #333; max-width: 800px; margin: 0 auto; background-color: #ffffff;">
             <div style="background-color: #f8fafc; padding: 20px; border-radius: 12px 12px 0 0; text-align: center; border-bottom: 2px solid #e2e8f0;">
-                ${companyLogo ? `<img src="${companyLogo}" style="height: 70px; object-fit: contain; margin-bottom: 15px;" alt="Logo"/>` : ''}
+                ${logoUrl ? `<img src="${logoUrl}" style="height: 70px; object-fit: contain; margin-bottom: 15px;" alt="Logo"/>` : ''}
                 <h2 style="margin: 0; color: #0f172a; font-size: 24px; text-transform: uppercase; letter-spacing: 1px;">Bestellung</h2>
                 <p style="margin: 5px 0 0 0; font-weight: bold; color: #475569; font-size: 16px;">${companyName}</p>
                 <p style="margin: 5px 0 0 0; font-size: 14px; color: #94a3b8;">${dateStr}</p>
             </div>
-
             <div style="background-color: #ffffff; padding: 20px; border: 1px solid #e2e8f0; border-top: none;">
-                <table width="100%">
-                    <tr>
-                        <td valign="top">
-                            <p style="margin: 0; font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: bold;">Lieferant:</p>
-                            <p style="margin: 2px 0 0 0; font-size: 16px; font-weight: bold;">${selectedSup.name}</p>
-                        </td>
-                        <td valign="top" style="text-align: right;">
-                            <p style="margin: 0; font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: bold;">Kundennummer:</p>
-                            <p style="margin: 2px 0 0 0; font-size: 16px; font-weight: bold;">${selectedSup.customerNumber || "N/A"}</p>
-                        </td>
-                    </tr>
-                </table>
+                <p><strong>Lieferant:</strong> ${selectedSup.name} | <strong>Kd-Nr:</strong> ${selectedSup.customerNumber || "N/A"}</p>
             </div>
-
             <table width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; border: 1px solid #e2e8f0; border-top: none;">
                 <thead style="background-color: #f1f5f9;">
                     <tr>
-                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0; color: #475569; font-size: 12px; text-transform: uppercase;">Menge</th>
-                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0; color: #475569; font-size: 12px; text-transform: uppercase;">Einh.</th>
-                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0; color: #475569; font-size: 12px; text-transform: uppercase;">Artikel</th>
-                        <th style="text-align: right; border-bottom: 2px solid #e2e8f0; color: #475569; font-size: 12px; text-transform: uppercase;">Art-Nr.</th>
+                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0;">Menge</th>
+                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0;">Einh.</th>
+                        <th style="text-align: left; border-bottom: 2px solid #e2e8f0;">Artikel</th>
+                        <th style="text-align: right; border-bottom: 2px solid #e2e8f0;">Art-Nr.</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${orderItems.map((i, index) => `
                         <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : '#f8fafc'};">
-                            <td style="border-bottom: 1px solid #e2e8f0; font-weight: bold; font-size: 16px; color: #0f172a;">${cart[i.sku]}</td>
-                            <td style="border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #64748b;">${i.unit}</td>
-                            <td style="border-bottom: 1px solid #e2e8f0; font-size: 14px;"><strong>${i.name}</strong></td>
-                            <td style="border-bottom: 1px solid #e2e8f0; text-align: right; font-family: monospace; color: #94a3b8; font-size: 12px;">${i.sku}</td>
+                            <td style="border-bottom: 1px solid #e2e8f0; font-weight: bold;">${cart[i.sku]}</td>
+                            <td style="border-bottom: 1px solid #e2e8f0;">${i.unit}</td>
+                            <td style="border-bottom: 1px solid #e2e8f0;"><strong>${i.name}</strong></td>
+                            <td style="border-bottom: 1px solid #e2e8f0; text-align: right;">${i.sku}</td>
                         </tr>
                     `).join('')}
                 </tbody>
             </table>
-
-            <div style="text-align: center; padding: 20px; font-size: 11px; color: #cbd5e1; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
-                Automatisch erstellt via ORDER-HUB
-            </div>
-        </div>
-        `;
+        </div>`;
 
         try {
             await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
@@ -2212,7 +2216,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 order_details: orderTableHTML,
                 customer_number: selectedSup.customerNumber || "N/A"
             }, EMAILJS_PUBLIC_KEY);
-            showToast("Bestellung direkt versendet!");
+            showToast("Bestellung versendet!");
             setCart({}); setView('dashboard');
         } catch (e) { showToast("Sende-Fehler", "error"); }
     };
@@ -2238,8 +2242,8 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 ))}
             </div>
             <div className="flex gap-2 pt-6">
-                <button onClick={async ()=>{if(confirm("Produkt löschen?")){const n = selectedSup.catalog.filter(i=>i.sku !== activeItem.sku); await syncSup(selectedSup.id, {catalog: n}); setSelectedSup({...selectedSup, catalog: n}); setView('order');}}} className="bg-red-50 text-red-500 p-4 rounded-2xl flex-1 font-bold uppercase text-xs">Löschen</button>
-                <button onClick={async ()=>{const n = selectedSup.catalog.map(i=>i.sku === activeItem.sku ? activeItem : i); await syncSup(selectedSup.id, {catalog: n}); setSelectedSup({...selectedSup, catalog: n}); setView('order');}} className="bg-slate-900 text-white p-4 rounded-2xl flex-1 font-black uppercase text-xs shadow-lg">Speichern</button>
+                <button onClick={async ()=>{if(confirm("Löschen?")){const n = selectedSup.catalog.filter(i=>i.sku !== activeItem.sku); await syncSup(selectedSup.id, {catalog: n}); setSelectedSup({...selectedSup, catalog: n}); setView('order');}}} className="bg-red-50 text-red-500 p-4 rounded-2xl flex-1 font-bold">Löschen</button>
+                <button onClick={async ()=>{const n = selectedSup.catalog.map(i=>i.sku === activeItem.sku ? activeItem : i); await syncSup(selectedSup.id, {catalog: n}); setSelectedSup({...selectedSup, catalog: n}); setView('order');}} className="bg-slate-900 text-white p-4 rounded-2xl flex-1 font-black">Speichern</button>
             </div>
         </div>
     );
@@ -2269,9 +2273,9 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                                     </div>
                                     {!isEditMode && (
                                         <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-2xl border border-slate-200">
-                                            <button onClick={()=>setCart({...cart, [item.sku]:Math.max(0,(cart[item.sku]||0)-1)})} className="w-10 h-10 bg-white rounded-xl font-bold shadow-sm">-</button>
+                                            <button onClick={()=>setCart({...cart, [item.sku]:Math.max(0,(cart[item.sku]||0)-1)})} className="w-10 h-10 bg-white rounded-xl font-bold">-</button>
                                             <span className="w-8 text-center font-bold text-sm">{cart[item.sku]||0}</span>
-                                            <button onClick={()=>setCart({...cart, [item.sku]:(cart[item.sku]||0)+1})} className="w-10 h-10 bg-white rounded-xl font-bold shadow-sm">+</button>
+                                            <button onClick={()=>setCart({...cart, [item.sku]:(cart[item.sku]||0)+1})} className="w-10 h-10 bg-white rounded-xl font-bold">+</button>
                                         </div>
                                     )}
                                 </div>
@@ -2280,15 +2284,14 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                     );
                 })}
             </div>
-            {/* WARENKORB / DIREKT ABSCHICKEN BAR */}
             {!isEditMode && Object.values(cart).some(v=>v>0) && (
                 <div className="fixed bottom-24 left-4 right-4 flex gap-2 animate-in-up z-[100]">
                     <div className="flex-1 bg-white border-2 border-slate-900 p-4 rounded-[2rem] flex items-center justify-center gap-2 shadow-2xl">
                         <ShoppingBag size={18} />
                         <span className="font-black text-sm">{Object.values(cart).reduce((a, b) => a + b, 0)} Art.</span>
                     </div>
-                    <button onClick={finalizeOrder} className="flex-[2] bg-slate-900 text-white p-4 rounded-[2rem] font-black shadow-2xl uppercase tracking-tighter text-sm flex items-center justify-center gap-2">
-                        Direkt Abschicken <SafeIcon name="ChevronRight" />
+                    <button onClick={finalizeOrder} className="flex-[2] bg-slate-900 text-white p-4 rounded-[2rem] font-black shadow-2xl uppercase text-sm flex items-center justify-center gap-2">
+                        Abschicken <SafeIcon name="ChevronRight" />
                     </button>
                 </div>
             )}
@@ -2306,15 +2309,35 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 </div>
             </div>
             <div className="grid gap-4">
-                {suppliers.map(s => (
-                    <div key={s.id} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 flex items-center justify-between shadow-sm">
-                        <div onClick={()=>{setSelectedSup(s); setView('order'); setIsEditMode(false);}} className="flex-1 cursor-pointer">
-                            <div className="font-black text-2xl text-slate-800">{s.name}</div>
-                            <div className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest">{s.catalog?.length || 0} Produkte</div>
+                {suppliers.map(s => {
+                    // Prüfen, an welchen Tagen bestellt wird
+                    const activeDays = weekdays.filter(d => s.catalog?.some(i => parseFloat(i.targets?.[d]) > 0));
+                    const isTodayActive = activeDays.includes(today);
+
+                    return (
+                        <div key={s.id} className={`bg-white p-6 rounded-[2.5rem] border flex flex-col gap-4 shadow-sm transition-all ${isTodayActive ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-slate-100'}`}>
+                            <div className="flex justify-between items-center">
+                                <div onClick={()=>{setSelectedSup(s); setView('order'); setIsEditMode(false);}} className="flex-1 cursor-pointer">
+                                    <div className="flex items-center gap-2">
+                                        <div className="font-black text-2xl text-slate-800">{s.name}</div>
+                                        {isTodayActive && <span className="bg-indigo-600 text-white text-[9px] font-black px-2 py-1 rounded-full animate-pulse">HEUTE</span>}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{s.catalog?.length || 0} Produkte</div>
+                                </div>
+                                <button onClick={()=>{setEditSup(s); setView('setup')}} className="p-3 bg-slate-50 text-slate-300 rounded-2xl hover:bg-slate-900"><Settings size={20}/></button>
+                            </div>
+                            
+                            {/* TAG ANZEIGE */}
+                            <div className="flex gap-1">
+                                {weekdays.map(d => (
+                                    <div key={d} className={`text-[9px] font-black px-2 py-1 rounded-md ${activeDays.includes(d) ? (d === today ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-white') : 'bg-slate-100 text-slate-300'}`}>
+                                        {d}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                        <button onClick={()=>{setEditSup(s); setView('setup')}} className="p-4 bg-slate-50 text-slate-300 rounded-2xl hover:bg-slate-900 hover:text-white transition-all"><Settings size={20}/></button>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
             {view === 'setup' && editSup && (
                 <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -2323,6 +2346,14 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                         <Input label="Name" value={editSup.name} onChange={e=>setEditSup({...editSup, name:e.target.value})} placeholder="Vierlande, Metro..." />
                         <Input label="Email" value={editSup.email} onChange={e=>setEditSup({...editSup, email:e.target.value})} placeholder="bestellung@lieferant.de" />
                         <Input label="Kunden-ID" value={editSup.customerNumber} onChange={e=>setEditSup({...editSup, customerNumber:e.target.value})} placeholder="ID beim Großhändler" />
+                        
+                        {/* NEU: EXCEL EXPORT BUTTON */}
+                        {editSup.id && (
+                            <button onClick={()=>exportToExcel(editSup)} className="w-full bg-indigo-50 text-indigo-600 p-3 rounded-xl font-bold uppercase text-xs border border-indigo-100 flex justify-center items-center gap-2">
+                                <SafeIcon name="Table" size={16}/> Als Excel Exportieren
+                            </button>
+                        )}
+
                         <div className="flex gap-2 pt-4">
                             <button onClick={async ()=>{if(confirm("Lieferant löschen?")){await deleteDoc(doc(db,'artifacts',appId,'public','data','suppliers',editSup.id)); setView('dashboard');}}} className="bg-red-50 text-red-500 p-4 rounded-2xl font-bold flex-1 uppercase text-xs">Löschen</button>
                             <button onClick={async ()=>{if(editSup.id) await syncSup(editSup.id, editSup); else await addDoc(collection(db,'artifacts',appId,'public','data','suppliers'), {...editSup, updatedAt:serverTimestamp()}); setView('dashboard');}} className="bg-slate-900 text-white p-4 rounded-2xl font-black flex-[2] shadow-lg uppercase text-xs">Speichern</button>
