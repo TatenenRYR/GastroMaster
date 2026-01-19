@@ -4258,6 +4258,146 @@ const Editor = ({ type, data, close, appId, showToast, btnStyle }) => {
 
         const CompanyEditor = ({ data, appId, showToast }) => { const [f, setF] = useState(data||{}); const save = async () => { await setDoc(doc(db,'artifacts',appId,'public','data','company','info'), f); showToast("Firmendaten gespeichert"); }; return <div className="space-y-4 animate-in"><div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400">Betriebsname</span><Input value={f.name||''} onChange={e=>setF({...f,name:e.target.value})} /></div><Button onClick={save}>Speichern</Button></div> };
 
+const History = ({ onClose, date, appId, t }) => { 
+    // State direkt hier verwalten
+    const [d, setHistoryData] = useState({ cleaning: [], temp: [], oil: [], time: [] });
+    const [loading, setLoading] = useState(true);
+
+    // DEIN LADE-CODE (Repariert & Optimiert)
+    useEffect(() => { 
+        const loadHistory = async () => { 
+            setLoading(true); 
+            try { 
+                const [sClean, sTemp, sOil, sTime] = await Promise.all([
+                    // 1. Putzplan
+                    getDocs(query(collection(db,'artifacts',appId,'public','data','logs_cleaning'), where('dateStr','==',date))), 
+                    // 2. Kühlung (Häufiger Fehler: hieß früher oft 'logs_cooling' statt 'logs_temp')
+                    getDocs(query(collection(db,'artifacts',appId,'public','data','logs_cooling'), where('dateStr','==',date))), 
+                    // 3. Fett / Öl
+                    getDocs(query(collection(db,'artifacts',appId,'public','data','logs_oil'), where('dateStr','==',date))), 
+                    // 4. Stempeluhr
+                    getDocs(query(collection(db,'artifacts',appId,'public','data','logs_time'), where('dateStr','==',date)))
+                ]); 
+
+                setHistoryData({ 
+                    cleaning: sClean.docs.map(d=>d.data()), 
+                    temp: sTemp.docs.map(d=>d.data()), // Falls leer, prüf in Firebase ob es 'logs_temp' oder 'logs_cooling' heißt
+                    oil: sOil.docs.map(d=>d.data()), 
+                    time: sTime.docs.map(d=>d.data()) 
+                }); 
+            } catch(e) { console.error(e); } 
+            setLoading(false); 
+        }; 
+        if(date && appId) loadHistory(); 
+    }, [date, appId]); 
+
+    // Hilfs-Komponente für leere Listen
+    const Empty = () => <div className="p-4 text-center text-slate-400 text-xs italic">Keine Einträge vorhanden</div>;
+
+    return (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-lg h-[85vh] sm:h-[80vh] rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl flex flex-col overflow-hidden">
+                
+                {/* Header */}
+                <div className="bg-slate-900 text-white p-6 flex justify-between items-center shrink-0">
+                    <div>
+                        <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Protokoll vom</div>
+                        <h2 className="text-2xl font-black">{date}</h2>
+                    </div>
+                    <button onClick={onClose} className="bg-white/10 hover:bg-white/20 text-white p-3 rounded-full transition-colors">
+                        <X size={20}/>
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50">
+                    
+                    {loading ? (
+                        <div className="text-center py-10 text-slate-400">Lade Daten...</div>
+                    ) : (
+                        <>
+                            {/* 1. STEMPELUHR */}
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                                <div className="bg-indigo-50 px-4 py-3 border-b border-indigo-100 flex items-center gap-2 text-indigo-800 font-bold text-sm uppercase">
+                                    <Clock size={16}/> {t.time}
+                                </div>
+                                {d.time.length === 0 ? <Empty/> : (
+                                    <div className="divide-y divide-slate-50">
+                                        {d.time.map((c, i) => (
+                                            <div key={i} className="p-3 flex justify-between items-center">
+                                                <span className="font-bold text-slate-700">{c.user}</span>
+                                                <div className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-600">
+                                                    {c.start} - {c.end || '...'}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 2. FETTLISTE (ÖL) - Das hat gefehlt */}
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                                <div className="bg-amber-50 px-4 py-3 border-b border-amber-100 flex items-center gap-2 text-amber-800 font-bold text-sm uppercase">
+                                    <Droplet size={16}/> Fettqualität
+                                </div>
+                                {d.oil.length === 0 ? <Empty/> : (
+                                    <div className="divide-y divide-slate-50">
+                                        {d.oil.map((c, i) => (
+                                            <div key={i} className="p-3 flex justify-between items-center">
+                                                <span className="font-bold text-slate-700">{c.deviceName}</span>
+                                                <div className="flex gap-2">
+                                                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded font-bold">{c.temp}°C</span>
+                                                    <span className={`text-xs px-2 py-1 rounded font-bold text-white ${c.tpm >= 24 ? 'bg-red-500' : c.tpm >= 20 ? 'bg-amber-500' : 'bg-emerald-500'}`}>
+                                                        {c.tpm}%
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 3. KÜHLUNG (TEMP) */}
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                                <div className="bg-sky-50 px-4 py-3 border-b border-sky-100 flex items-center gap-2 text-sky-800 font-bold text-sm uppercase">
+                                    <Thermometer size={16}/> {t.temp}
+                                </div>
+                                {d.temp.length === 0 ? <Empty/> : (
+                                    <div className="divide-y divide-slate-50">
+                                        {d.temp.map((c, i) => (
+                                            <div key={i} className="p-3 flex justify-between items-center">
+                                                <span className="font-bold text-slate-700">{c.deviceName}</span>
+                                                <span className="text-xs bg-sky-100 text-sky-700 px-2 py-1 rounded font-bold">{c.temp}°C</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 4. PUTZPLAN */}
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                                <div className="bg-emerald-50 px-4 py-3 border-b border-emerald-100 flex items-center gap-2 text-emerald-800 font-bold text-sm uppercase">
+                                    <ClipboardCheck size={16}/> {t.clean}
+                                </div>
+                                {d.cleaning.length === 0 ? <Empty/> : (
+                                    <div className="divide-y divide-slate-50">
+                                        {d.cleaning.map((c, i) => (
+                                            <div key={i} className="p-3 flex justify-between items-center">
+                                                <span className="text-slate-700 text-sm">{c.taskName}</span>
+                                                <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase">{c.user}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </div>
+            </div>
+        </div>
+    ); 
+};
+            
 // --- SETTINGS EDITOR (Erweitert für Modul-Einstellungen) ---
 const SettingsEditor = ({ data, appId, showToast, btnStyle, deleteBranch, lang }) => { 
     const [key, setKey] = useState(data.masterKey||''); 
@@ -4688,123 +4828,152 @@ const SettingsEditor = ({ data, appId, showToast, btnStyle, deleteBranch, lang }
         };
         
         const SmartHistory = ({ appId, setView, data, lang }) => { 
-            const [date, setDate] = useState(getTodayStr()); 
-            const [historyData, setHistoryData] = useState({ cleaning: [], temp: [], oil: [], prep: [], time: [] }); 
-            const [loading, setLoading] = useState(false); 
-            const t = DICTIONARY[lang] || DICTIONARY.de;
+    const [date, setDate] = useState(getTodayStr()); 
+    // State initialisieren
+    const [historyData, setHistoryData] = useState({ cleaning: [], temp: [], oil: [], prep: [], time: [] }); 
+    const [loading, setLoading] = useState(false); 
+    const t = DICTIONARY[lang] || DICTIONARY.de;
 
-            useEffect(() => { 
-                const loadHistory = async () => { 
-                    setLoading(true); 
-                    try { 
-                        const [sClean, sTemp, sOil, sPrep, sTime] = await Promise.all([
-                            getDocs(query(collection(db,'artifacts',appId,'public','data','logs_cleaning'), where('dateStr','==',date))), 
-                            getDocs(query(collection(db,'artifacts',appId,'public','data','logs_temp'), where('dateStr','==',date))), 
-                            getDocs(query(collection(db,'artifacts',appId,'public','data','logs_oil'), where('dateStr','==',date))), 
-                            getDocs(query(collection(db,'artifacts',appId,'public','data','logs_prep'), where('dateStr','==',date))), 
-                            getDocs(query(collection(db,'artifacts',appId,'public','data','logs_time'), where('dateStr','==',date)))
-                        ]); 
-                        setHistoryData({ 
-                            cleaning: sClean.docs.map(d=>d.data()), 
-                            temp: sTemp.docs.map(d=>d.data()), 
-                            oil: sOil.docs.map(d=>d.data()), 
-                            prep: sPrep.docs.map(d=>d.data()), 
-                            time: sTime.docs.map(d=>d.data()) 
-                        }); 
-                    } catch(e) { console.error(e); } 
-                    setLoading(false); 
-                }; 
-                loadHistory(); 
-            }, [date, appId]); 
+    useEffect(() => { 
+        const loadHistory = async () => { 
+            setLoading(true); 
+            try { 
+                const [sClean, sTemp, sOil, sPrep, sTime] = await Promise.all([
+                    getDocs(query(collection(db,'artifacts',appId,'public','data','logs_cleaning'), where('dateStr','==',date))), 
+                    // ACHTUNG: Falls Kühlung leer bleibt, probier mal 'logs_cooling' statt 'logs_temp'
+                    getDocs(query(collection(db,'artifacts',appId,'public','data','logs_temp'), where('dateStr','==',date))), 
+                    getDocs(query(collection(db,'artifacts',appId,'public','data','logs_oil'), where('dateStr','==',date))), 
+                    getDocs(query(collection(db,'artifacts',appId,'public','data','logs_prep'), where('dateStr','==',date))), 
+                    getDocs(query(collection(db,'artifacts',appId,'public','data','logs_time'), where('dateStr','==',date)))
+                ]); 
 
-            const downloadPDF = () => {
-                const { jsPDF } = window.jspdf;
-                const doc = new jsPDF();
-                
-                doc.setFontSize(18);
-                doc.text(`HACCP Protokoll: ${date}`, 14, 20);
-                doc.setFontSize(10);
-                doc.text(`Erstellt am: ${new Date().toLocaleString()}`, 14, 26);
+                setHistoryData({ 
+                    cleaning: sClean.docs.map(d=>d.data()), 
+                    temp: sTemp.docs.map(d=>d.data()), 
+                    oil: sOil.docs.map(d=>d.data()), 
+                    prep: sPrep.docs.map(d=>d.data()), 
+                    time: sTime.docs.map(d=>d.data()) 
+                }); 
+            } catch(e) { console.error(e); } 
+            setLoading(false); 
+        }; 
+        loadHistory(); 
+    }, [date, appId]); 
 
-                let yPos = 35;
+    const downloadPDF = () => {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        doc.setFontSize(18);
+        doc.text(`HACCP Protokoll: ${date}`, 14, 20);
+        doc.setFontSize(10);
+        doc.text(`Erstellt am: ${new Date().toLocaleString()}`, 14, 26);
 
-                const addTable = (title, headers, bodyData) => {
-                    if(bodyData.length === 0) return;
-                    doc.setFontSize(12);
-                    doc.setTextColor(0, 0, 0);
-                    doc.text(title, 14, yPos);
-                    
-                    doc.autoTable({
-                        startY: yPos + 2,
-                        head: [headers],
-                        body: bodyData,
-                        theme: 'striped',
-                        headStyles: { fillColor: [40, 40, 40] }
-                    });
-                    yPos = doc.lastAutoTable.finalY + 15;
-                };
+        let yPos = 35;
 
-                // Temperaturen
-                const tempData = historyData.temp.map(x => [x.deviceName, x.temp + ' °C', x.user, x.createdAt?.seconds ? new Date(x.createdAt.seconds*1000).toLocaleTimeString() : '-']);
-                addTable(t.temp, ['Gerät', 'Wert', 'User', 'Zeit'], tempData);
-
-                // Reinigung
-                const cleanData = historyData.cleaning.map(x => [x.taskName, 'OK', x.user, x.createdAt?.seconds ? new Date(x.createdAt.seconds*1000).toLocaleTimeString() : '-']);
-                addTable(t.clean, ['Aufgabe', 'Status', 'User', 'Zeit'], cleanData);
-
-                // Öl
-                const oilData = historyData.oil.map(x => [x.deviceName, x.temp + ' °C', x.tpm + ' %', x.user]);
-                addTable(t.oil, ['Gerät', 'Temp', 'TPM', 'User'], oilData);
-                
-                // Zeiten
-                const timeData = historyData.time.map(x => [x.userName, x.start, x.end || 'Läuft...']);
-                addTable(t.time, ['Mitarbeiter', 'Start', 'Ende'], timeData);
-
-                doc.save(`HACCP_${date}.pdf`);
-            };
-
-            const Empty = () => <div className="text-center p-4 text-slate-400 text-xs italic">Keine Einträge.</div>; 
+        const addTable = (title, headers, bodyData) => {
+            if(bodyData.length === 0) return;
+            doc.setFontSize(12);
+            doc.setTextColor(0, 0, 0);
+            doc.text(title, 14, yPos);
             
-            return (
-                <div className="animate-in space-y-5 pb-10">
-                    <div className="flex items-center gap-3 mb-2">
-                        <button onClick={()=>setView('admin')} className="p-2 bg-slate-100 rounded-full"><ChevronLeft/></button>
-                        <div><h2 className="text-3xl font-black text-inherit">Protokolle</h2><p className="text-inherit opacity-60 text-sm font-medium">HACCP & Zeiten</p></div>
+            doc.autoTable({
+                startY: yPos + 2,
+                head: [headers],
+                body: bodyData,
+                theme: 'striped',
+                headStyles: { fillColor: [40, 40, 40] }
+            });
+            yPos = doc.lastAutoTable.finalY + 15;
+        };
+
+        // Temperaturen
+        const tempData = historyData.temp.map(x => [x.deviceName, x.temp + ' °C', x.user, x.createdAt?.seconds ? new Date(x.createdAt.seconds*1000).toLocaleTimeString() : '-']);
+        addTable(t.temp || 'Kühlung', ['Gerät', 'Wert', 'User', 'Zeit'], tempData);
+
+        // Reinigung
+        const cleanData = historyData.cleaning.map(x => [x.taskName, 'OK', x.user, x.createdAt?.seconds ? new Date(x.createdAt.seconds*1000).toLocaleTimeString() : '-']);
+        addTable(t.clean, ['Aufgabe', 'Status', 'User', 'Zeit'], cleanData);
+
+        // Öl
+        const oilData = historyData.oil.map(x => [x.deviceName, x.temp + ' °C', x.tpm + ' %', x.user]);
+        addTable(t.oil || 'Fettqualität', ['Gerät', 'Temp', 'TPM', 'User'], oilData);
+        
+        // Zeiten
+        const timeData = historyData.time.map(x => [x.userName, x.start, x.end || 'Läuft...']);
+        addTable(t.time, ['Mitarbeiter', 'Start', 'Ende'], timeData);
+
+        doc.save(`HACCP_${date}.pdf`);
+    };
+
+    const Empty = () => <div className="text-center p-4 text-slate-400 text-xs italic">Keine Einträge.</div>; 
+    
+    return (
+        <div className="animate-in space-y-5 pb-10">
+            <div className="flex items-center gap-3 mb-2">
+                <button onClick={()=>setView('admin')} className="p-2 bg-slate-100 rounded-full"><ChevronLeft/></button>
+                <div><h2 className="text-3xl font-black text-inherit">Protokolle</h2><p className="text-inherit opacity-60 text-sm font-medium">HACCP & Zeiten</p></div>
+            </div>
+            
+            <div className="flex gap-2">
+                    <div className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4 flex-1">
+                    <div className="bg-indigo-50 p-3 rounded-2xl text-indigo-600"><Calendar size={24}/></div>
+                    <div className="flex-1">
+                        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Datum</div>
+                        <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full font-bold text-lg bg-transparent outline-none text-slate-800"/>
                     </div>
-                    
-                    <div className="flex gap-2">
-                         <div className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4 flex-1">
-                            <div className="bg-indigo-50 p-3 rounded-2xl text-indigo-600"><Calendar size={24}/></div>
-                            <div className="flex-1">
-                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Datum</div>
-                                <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full font-bold text-lg bg-transparent outline-none text-slate-800"/>
-                            </div>
-                        </div>
-                        <button onClick={downloadPDF} className="bg-slate-900 text-white rounded-[2rem] px-6 font-bold flex flex-col items-center justify-center gap-1 shadow-lg active:scale-95 transition-transform">
-                            <FileText size={20}/>
-                            <span className="text-[10px] uppercase">PDF</span>
-                        </button>
+                </div>
+                <button onClick={downloadPDF} className="bg-slate-900 text-white rounded-[2rem] px-6 font-bold flex flex-col items-center justify-center gap-1 shadow-lg active:scale-95 transition-transform">
+                    <FileText size={20}/>
+                    <span className="text-[10px] uppercase">PDF</span>
+                </button>
+            </div>
+
+            {loading ? <div className="p-10 text-center"><Loader2 className="animate-spin inline text-indigo-500"/></div> : (
+                <div className="space-y-6">
+                    {/* 1. ZEITEN */}
+                    <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+                        <div className="bg-violet-50 px-6 py-3 border-b border-violet-100 flex items-center gap-2 text-violet-800 font-bold uppercase tracking-wider text-sm"><Clock size={16}/> {t.time}</div>
+                        {historyData.time.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.time.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.userName}</span><span className="font-mono bg-violet-100 text-violet-700 px-2 py-1 rounded font-bold">{c.start} - {c.end || '...'}</span></div>))}</div>)}
                     </div>
 
-                    {loading ? <div className="p-10 text-center"><Loader2 className="animate-spin inline text-indigo-500"/></div> : (
-                        <div className="space-y-6">
-                            <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
-                                <div className="bg-violet-50 px-6 py-3 border-b border-violet-100 flex items-center gap-2 text-violet-800 font-bold uppercase tracking-wider text-sm"><Clock size={16}/> {t.time}</div>
-                                {historyData.time.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.time.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.userName}</span><span className="font-mono bg-violet-100 text-violet-700 px-2 py-1 rounded font-bold">{c.start} - {c.end || '...'}</span></div>))}</div>)}
+                    {/* 2. FETTQUALITÄT (NEU HINZUGEFÜGT) */}
+                    <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+                        <div className="bg-amber-50 px-6 py-3 border-b border-amber-100 flex items-center gap-2 text-amber-800 font-bold uppercase tracking-wider text-sm"><Droplet size={16}/> Fettqualität</div>
+                        {historyData.oil.length === 0 ? <Empty/> : (
+                            <div className="divide-y divide-slate-50">
+                                {historyData.oil.map((c,i) => (
+                                    <div key={i} className="p-4 flex justify-between items-center">
+                                        <span className="font-bold text-slate-700">{c.deviceName}</span>
+                                        <div className="flex gap-2">
+                                            <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded font-bold">{c.temp}°C</span>
+                                            <span className={`text-xs px-2 py-1 rounded font-bold text-white ${c.tpm >= 24 ? 'bg-red-500' : c.tpm >= 20 ? 'bg-amber-500' : 'bg-emerald-500'}`}>
+                                                {c.tpm}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                            <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
-                                <div className="bg-emerald-50 px-6 py-3 border-b border-emerald-100 flex items-center gap-2 text-emerald-800 font-bold uppercase tracking-wider text-sm"><Sparkles size={16}/> {t.clean}</div>
-                                {historyData.cleaning.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.cleaning.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.taskName}</span><span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold flex gap-1 items-center"><User size={10}/> {c.user}</span></div>))}</div>)}
-                            </div>
-                            <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
-                                <div className="bg-sky-50 px-6 py-3 border-b border-sky-100 flex items-center gap-2 text-sky-800 font-bold uppercase tracking-wider text-sm"><Thermometer size={16}/> {t.temp}</div>
-                                {historyData.temp.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.temp.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.deviceName}</span><span className="text-xs bg-sky-100 text-sky-700 px-2 py-1 rounded font-bold">{c.temp}°C</span></div>))}</div>)}
-                            </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
+
+                    {/* 3. REINIGUNG */}
+                    <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+                        <div className="bg-emerald-50 px-6 py-3 border-b border-emerald-100 flex items-center gap-2 text-emerald-800 font-bold uppercase tracking-wider text-sm"><Sparkles size={16}/> {t.clean}</div>
+                        {historyData.cleaning.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.cleaning.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.taskName}</span><span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold flex gap-1 items-center"><User size={10}/> {c.user}</span></div>))}</div>)}
+                    </div>
+
+                    {/* 4. TEMPERATUR / KÜHLUNG */}
+                    <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+                        <div className="bg-sky-50 px-6 py-3 border-b border-sky-100 flex items-center gap-2 text-sky-800 font-bold uppercase tracking-wider text-sm"><Thermometer size={16}/> {t.temp}</div>
+                        {historyData.temp.length === 0 ? <Empty/> : (<div className="divide-y divide-slate-50">{historyData.temp.map((c,i)=>(<div key={i} className="p-4 flex justify-between items-center"><span className="font-bold text-slate-700">{c.deviceName}</span><span className="text-xs bg-sky-100 text-sky-700 px-2 py-1 rounded font-bold">{c.temp}°C</span></div>))}</div>)}
+                    </div>
                 </div>
-            ); 
-        };
+            )}
+        </div>
+    ); 
+};
+        
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
