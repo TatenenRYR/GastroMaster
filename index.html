@@ -3573,7 +3573,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
 
     // --- BEARBEITETE LÖSCH-FUNKTION ---
     const deleteLog = async (logId, devId) => { 
-        if(confirm("Eintrag wirklich löschen?")) { 
+        if(confirm("Eintrag von " + devId + " wirklich löschen?")) { 
             try {
                 // 1. In der Datenbank löschen (falls logId vorhanden)
                 if (logId) {
