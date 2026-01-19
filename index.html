@@ -3571,32 +3571,31 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
     const oilLogs = status.oilLogs || {}; 
     const canSign = active.length > 0 && active.every(d => oilLogs[d.id]); 
 
-    // --- SMARTE LÖSCH-FUNKTION V2.0 ---
-    // Jetzt mit Gerätenamen für bessere Logs und Audit-Trail
+    // --- KORRIGIERTE LÖSCH-FUNKTION (FINAL) ---
     const deleteLog = async (logId, devId, devName) => { 
         if(!confirm(`Möchtest du die Messung für "${devName}" wirklich unwiderruflich löschen?`)) return;
 
         try {
-            // 1. Audit-Log schreiben (Hintergrund-Protokollierung für Sicherheit)
-            // Das verhindert, dass Mitarbeiter heimlich schlechte Werte löschen, ohne dass es jemand merkt.
+            // FIX: Wir holen die Werte aus den gespeicherten Logs, nicht aus den leeren Inputs!
+            const oldValues = oilLogs[devId] || { temp: '?', tpm: '?' };
+
+            // 1. Audit-Log schreiben
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'audit_logs'), {
                 user: user.name,
                 action: 'DELETE_OIL_LOG',
-                details: `Messung gelöscht für: ${devName} (ID: ${logId}) (${inp[dev.id]?.t}/${inp[dev.id]?.p})`,
+                // HIER WAR DER FEHLER: dev.id gab es nicht -> jetzt devId nutzen
+                // UND: Wir loggen die echten Werte, die gelöscht werden (oldValues)
+                details: `Messung gelöscht für: ${devName} (ID: ${logId}) - Werte: ${oldValues.temp}°C / ${oldValues.tpm}%`,
                 timestamp: serverTimestamp()
             });
 
-            console.log("1");
-            // 2. UI sofort bereinigen (Optimistic Update)
+            // 2. UI sofort bereinigen (State Reset)
             setInp(prev => {
-            console.log("2");
                 const newState = { ...prev };
-            console.log("3");
-                delete newState[devId]; // Löscht das komplette Objekt für diese ID
-            console.log("4");
+                delete newState[devId]; // Löscht den Key komplett -> React setzt auf undefined zurück
                 return newState;
             });
-            console.log("5");
+
             // 3. Datenbank-Eintrag entfernen
             if (logId) {
                 await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_oil', logId)); 
@@ -3606,13 +3605,9 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
 
         } catch (e) {
             console.error("Critical Delete Error:", e);
-            // Fehler-Feedback
             showToast("Fehler: Löschen fehlgeschlagen.", "error");
-            
-            // Optional: Falls das Löschen fehlschlägt, könnte man hier die Werte theoretisch wiederherstellen,
-            // aber in diesem Fall ist das Leeren der Felder das sicherere Fallback.
         }
-    }; 
+    };
 
     const save = async (dev) => { 
         const tempVal = inp[dev.id]?.t;
