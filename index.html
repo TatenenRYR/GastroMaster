@@ -174,8 +174,8 @@
             ClipboardList, Box, Layers, PenTool, ShieldAlert, BadgeCheck, Code, Globe, UserCog, RefreshCcw, Search, ArrowLeft,
             Users, Languages, Ticket, ListChecks, Clock, PlayCircle, StopCircle, Palette, Megaphone, Power, Monitor, Check,
             MessageCircle, LayoutGrid, ToggleLeft, ToggleRight, Brush, ClipboardCheck, Utensils,
-            Palmtree, Wrench, Link, Sun, Cloud, BookOpen, // Vorherige
-            Euro, Video, Coins, Wallet, Calculator, Briefcase // <--- NEU HINZUGEFÜGT FÜR KASSE
+            Palmtree, Wrench, Link, Sun, Cloud, BookOpen,
+            Euro, Video, Coins, Wallet, Calculator, Briefcase, HelpCircle
         } from "https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0";
         const { useState, useEffect, useRef, useMemo } = React;
 
@@ -3219,26 +3219,154 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                 </div>
             ); 
         };
-        const Cleaning = ({ data, status, user, appId, showToast, lang }) => { 
-            const day = getWeekdayShort(); const list = data.tasks || []; const myDepts = user.departments || []; 
-            const relevant = list.filter(i => i.schedule?.[day] && (user.role==='admin' || ['kitchen_lead','service_lead'].includes(user.role) || myDepts.includes(i.dept))); 
-            const sorted = relevant.sort((a,b) => (status.cleaningLogs[a.id]?1:0) - (status.cleaningLogs[b.id]?1:0)); 
-            const toggle = async (item) => { 
-                const id = `${getTodayStr()}_${item.id}`; const ref = doc(db,'artifacts',appId,'public','data','logs_cleaning',id); 
-                if(status.cleaningLogs[item.id]) { await deleteDoc(ref); } 
-                else { await setDoc(ref, {taskId:item.id, taskName:item.name, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()}); await logBranchAction(appId, user.name, 'CLEANING', `Completed: ${item.name}`); showToast("Sauber!"); } 
-            }; 
-            return (
-                <div className="animate-in space-y-6">
-                    <div><h2 className="text-3xl font-black text-inherit">{DICTIONARY[lang].clean}</h2><p className="text-inherit opacity-60 text-sm font-medium">Bereich: {user.departments?.join(', ') || 'Alle'}</p></div>
-                    <div className="space-y-3">
-                        {sorted.map(item => { const done = status.cleaningLogs[item.id]; return (<div key={item.id} onClick={()=>toggle(item)} className={`p-4 rounded-2xl border flex justify-between items-center cursor-pointer card-press ${done?'bg-slate-50 border-slate-100 opacity-60 grayscale':'bg-white border-slate-100 shadow-sm hover:border-violet-200'}`}><div><div className={`font-bold text-base leading-tight ${done?'text-slate-400 line-through':'text-slate-800'}`}>{item.name}</div><div className="text-[11px] font-bold uppercase text-violet-500 mt-1">{item.area}</div></div><div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${done?'bg-emerald-500 text-white':'bg-slate-100 text-slate-300'}`}><CheckCircle size={16}/></div></div>); })}
-                        {sorted.length===0 && <div className="text-center p-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-xs">Alles erledigt.</div>}
+
+        //Putzliste
+       const Cleaning = ({ data, status, user, appId, showToast, lang }) => { 
+    const [infoItem, setInfoItem] = useState(null); 
+    const [hideDone, setHideDone] = useState(false); // NEU: Filter-Status
+
+    const t = DICTIONARY[lang];
+    const day = getWeekdayShort(); 
+    const list = data.tasks || []; 
+    const myDepts = user.departments || []; 
+
+    // 1. FILTERN: Nur relevante Aufgaben für heute & Abteilung
+    const relevant = list.filter(i => 
+        i.schedule?.[day] && 
+        (user.role==='admin' || ['kitchen_lead','service_lead'].includes(user.role) || myDepts.includes(i.dept))
+    ); 
+
+    // 2. SMARTE STATISTIK BERECHNEN
+    const total = relevant.length;
+    const doneCount = relevant.filter(i => status.cleaningLogs[i.id]).length;
+    const progress = total === 0 ? 100 : Math.round((doneCount / total) * 100);
+    const isAllDone = total > 0 && total === doneCount;
+
+    // 3. GRUPPIEREN NACH BEREICH (AREA)
+    const grouped = relevant.reduce((acc, item) => {
+        const area = item.area || 'Allgemein';
+        if (!acc[area]) acc[area] = [];
+        acc[area].push(item);
+        return acc;
+    }, {});
+    
+    // Bereiche alphabetisch sortieren
+    const areaKeys = Object.keys(grouped).sort();
+
+    const toggle = async (item) => { 
+        const id = `${getTodayStr()}_${item.id}`; const ref = doc(db,'artifacts',appId,'public','data','logs_cleaning',id); 
+        if(status.cleaningLogs[item.id]) { await deleteDoc(ref); } 
+        else { await setDoc(ref, {taskId:item.id, taskName:item.name, user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp()}); await logBranchAction(appId, user.name, 'CLEANING', `Completed: ${item.name}`); showToast("Sauber!"); } 
+    }; 
+    
+    return (
+        <div className="animate-in space-y-6 pb-24">
+            {/* INFO POPUP */}
+            {infoItem && (
+                <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in" onClick={()=>setInfoItem(null)}>
+                    <div className="bg-white p-8 rounded-[2rem] w-full max-w-sm shadow-2xl relative" onClick={e=>e.stopPropagation()}>
+                        <button onClick={()=>setInfoItem(null)} className="absolute top-4 right-4 p-2 bg-slate-100 rounded-full"><X size={20}/></button>
+                        <h3 className="text-xl font-black mb-2 text-indigo-900">{infoItem.name}</h3>
+                        <div className="text-xs font-bold uppercase text-indigo-400 mb-4 tracking-widest">Anleitung & Info</div>
+                        <div className="text-slate-600 font-medium leading-relaxed whitespace-pre-wrap">{infoItem.info}</div>
+                        <button onClick={()=>setInfoItem(null)} className="w-full mt-6 bg-slate-900 text-white py-3 rounded-xl font-bold">Verstanden</button>
                     </div>
                 </div>
-            ); 
-        };
+            )}
 
+            {/* DASHBOARD HEADER & PROGRESS BAR */}
+            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden">
+                <div className="flex justify-between items-center mb-3">
+                    <div>
+                        <h2 className="text-3xl font-black text-slate-800">{t.clean}</h2>
+                        <p className="text-sm font-bold text-slate-400">{doneCount} von {total} erledigt</p>
+                    </div>
+                    <div className={`text-2xl font-black ${isAllDone ? 'text-emerald-500' : 'text-indigo-600'}`}>{progress}%</div>
+                </div>
+                
+                {/* Progress Bar */}
+                <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden mb-4">
+                    <div className={`h-full transition-all duration-1000 ease-out ${isAllDone ? 'bg-emerald-500' : 'bg-indigo-600'}`} style={{width: `${progress}%`}}></div>
+                </div>
+
+                {/* Filter Toggle */}
+                <div className="flex justify-between items-center border-t border-slate-50 pt-3">
+                    <div className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">{user.departments?.join(', ') || 'Alle'}</div>
+                    <button onClick={()=>setHideDone(!hideDone)} className={`text-[10px] font-bold px-3 py-1.5 rounded-lg border transition-all ${hideDone ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-slate-200 text-slate-500'}`}>
+                        {hideDone ? 'Zeige Alle' : 'Nur Offene'}
+                    </button>
+                </div>
+            </div>
+
+            {/* AUFGABEN LISTEN (GRUPPIERT) */}
+            <div className="space-y-8">
+                {areaKeys.map(area => {
+                    // Sortieren: Offene nach oben
+                    const items = grouped[area].sort((a,b) => (status.cleaningLogs[a.id]?1:0) - (status.cleaningLogs[b.id]?1:0));
+                    // Filtern: Wenn "Nur Offene" aktiv ist
+                    const visibleItems = hideDone ? items.filter(i => !status.cleaningLogs[i.id]) : items;
+                    
+                    if(visibleItems.length === 0) return null;
+
+                    return (
+                        <div key={area} className="animate-in">
+                            <h3 className="ml-4 mb-2 text-xs font-black uppercase text-slate-400 tracking-widest sticky top-20 z-10">{area}</h3>
+                            <div className="space-y-3">
+                                {visibleItems.map(item => { 
+                                    const doneLog = status.cleaningLogs[item.id]; 
+                                    const done = !!doneLog;
+                                    
+                                    return (
+                                        <div key={item.id} className={`p-4 rounded-2xl border flex justify-between items-center transition-all ${done ? 'bg-slate-50 border-slate-100' : 'bg-white border-slate-100 shadow-sm hover:border-violet-200'}`}>
+                                            
+                                            <div onClick={()=>toggle(item)} className="flex-1 cursor-pointer pr-4">
+                                                <div className={`font-bold text-base leading-tight transition-all ${done ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{item.name}</div>
+                                                {done && <div className="text-[10px] font-bold text-emerald-600 mt-1 flex items-center gap-1"><CheckCircle size={10}/> Erledigt von {doneLog.user}</div>}
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                {/* Info Button */}
+                                                {item.info && (
+                                                    <button onClick={(e)=>{e.stopPropagation(); setInfoItem(item);}} className={`p-2 rounded-full transition-colors ${done ? 'text-slate-300' : 'text-indigo-400 hover:bg-indigo-50'}`}>
+                                                        <HelpCircle size={18}/>
+                                                    </button>
+                                                )}
+                                                
+                                                {/* Check Button */}
+                                                <button onClick={()=>toggle(item)} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-sm ${done ? 'bg-emerald-500 text-white shadow-emerald-200' : 'bg-white border-2 border-slate-100 text-slate-200 hover:border-indigo-200'}`}>
+                                                    <CheckCircle size={20} className={done ? 'scale-110' : 'scale-100'}/>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ); 
+                                })}
+                            </div>
+                        </div>
+                    );
+                })}
+
+                {/* Empty State */}
+                {total === 0 && (
+                    <div className="text-center p-10 border-2 border-dashed border-slate-100 rounded-[2rem] text-slate-400">
+                        <Sparkles size={48} className="mx-auto mb-4 opacity-20"/>
+                        <p className="font-bold text-sm">Heute nichts zu tun!</p>
+                    </div>
+                )}
+
+                {/* Success Message */}
+                {isAllDone && total > 0 && (
+                    <div className="text-center py-4 animate-in">
+                        <div className="inline-block bg-emerald-100 text-emerald-800 px-6 py-2 rounded-full font-black text-sm shadow-sm">
+                            ✨ ALLES ERLEDIGT! SAUBER!
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    ); 
+};
+
+//Besondere Abschriftenliste:
         const WasteManager = ({ user, appId, showToast }) => {
             const [item, setItem] = useState('');
             const [qty, setQty] = useState('');
@@ -3384,9 +3512,10 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
             ); 
         };
 
-       const Cooling = ({ data, status, user, appId, showToast, lang }) => {
+  const Cooling = ({ data, status, user, appId, showToast, lang }) => {
     const [val, setVal] = useState({});
     const [editingId, setEditingId] = useState(null);
+    const [infoItem, setInfoItem] = useState(null); // NEU: State für Info-Popup
 
     const active = (data.cooling || []).filter(d => d.status !== 'defekt');
     const t = DICTIONARY[lang];
@@ -3394,17 +3523,11 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
     const tempLogs = status.tempLogs || [];
     const canSign = active.length > 0 && active.every(d => tempLogs.find(l => l.deviceId === d.id));
 
-    // Prüft, ob ein Wert kritisch ist (außerhalb des definierten Bereichs)
     const checkCritical = (value, dev) => {
         if (!value) return false;
         const num = parseFloat(value);
-        // Falls keine Werte hinterlegt sind, nehmen wir Standardwerte an (TK-Logik vs Kühl-Logik raten wir hier nicht, lieber sicherheitshalber keine Warnung wenn nichts eingestellt ist)
         if (dev.minTemp === undefined || dev.maxTemp === undefined) return false;
-        
-        const min = parseFloat(dev.minTemp);
-        const max = parseFloat(dev.maxTemp);
-        
-        return num < min || num > max;
+        return num < parseFloat(dev.minTemp) || num > parseFloat(dev.maxTemp);
     };
 
     const startEdit = (dev, currentLog) => {
@@ -3416,138 +3539,80 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
     const save = async (dev) => {
         const inputVal = val[dev.id];
         if (!inputVal) return;
-
         const isCritical = checkCritical(inputVal, dev);
-        const existingLog = tempLogs.find(l => l.deviceId === dev.id);
-        const isUpdate = editingId === dev.id && existingLog;
-
+        const logData = { deviceId: dev.id, deviceName: dev.name, temp: inputVal, user: user.name, dateStr: getTodayStr(), createdAt: serverTimestamp(), isCritical: isCritical };
+        
         try {
-            // ALARM NACHRICHT SENDEN (Wenn kritisch ODER Update)
-            if (isCritical || isUpdate) {
-                let msgText = "";
-                let msgType = "INFO";
-
-                if (isUpdate) {
-                    msgText = `⚠️ KORREKTUR: ${dev.name} geändert auf ${inputVal}°C (von ${existingLog.temp}°C).`;
-                    msgType = "SYSTEM-KORREKTUR";
-                } else if (isCritical) {
-                    msgText = `🚨 ALARM KÜHLUNG: ${dev.name} hat ${inputVal}°C! (Soll: ${dev.minTemp} bis ${dev.maxTemp}°C)`;
-                    msgType = "SYSTEM-ALARM";
-                }
-
-                // Nachricht an Leitungen senden (internal: true)
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), {
-                    text: msgText + ` (User: ${user.name})`,
-                    user: msgType,
-                    role: "admin",
-                    internal: true,
-                    createdAt: serverTimestamp()
-                });
+            if (isCritical) {
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), { text: `🚨 ALARM KÜHLUNG: ${dev.name} hat ${inputVal}°C!`, user: "SYSTEM-ALARM", role: "admin", internal: true, createdAt: serverTimestamp() });
             }
-
-            // DATEN SPEICHERN
-            const logData = {
-                deviceId: dev.id,
-                deviceName: dev.name,
-                temp: inputVal,
-                user: user.name,
-                dateStr: getTodayStr(),
-                createdAt: serverTimestamp(),
-                // Wir speichern auch, ob es kritisch war, für die Historie
-                isCritical: isCritical
-            };
-
-            if (isUpdate) {
-                // Update Logik (Suche via Query, da wir Doc-ID brauchen)
+            if (editingId === dev.id) {
                 const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs_temp'), where('deviceId', '==', dev.id), where('dateStr', '==', getTodayStr()));
-                const querySnapshot = await getDocs(q);
-                if (!querySnapshot.empty) {
-                    await updateDoc(querySnapshot.docs[0].ref, { ...logData, updatedBy: user.name });
-                    showToast("Korrigiert & Leitung informiert");
-                }
+                const snap = await getDocs(q);
+                if (!snap.empty) await updateDoc(snap.docs[0].ref, { ...logData, updatedBy: user.name });
                 setEditingId(null);
             } else {
-                // Create Logik
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_temp'), logData);
-                await logBranchAction(appId, user.name, 'TEMP_LOG', `${dev.name}: ${inputVal}°C`);
-                showToast(isCritical ? "Wert gespeichert (ALARM GESENDET!)" : "Gespeichert");
             }
-
+            showToast("Gespeichert");
             setVal(p => ({ ...p, [dev.id]: '' }));
-
-        } catch (e) { console.error(e); showToast("Fehler", "error"); }
+        } catch (e) { showToast("Fehler", "error"); }
     };
 
     const sign = async () => {
         if (confirm(`Hiermit bestätige ich, ${user.name}, die Prüfung.`)) {
-            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_signatures', `${getTodayStr()}_cooling`), {
-                module: 'cooling', user: user.name, dateStr: getTodayStr(), createdAt: serverTimestamp()
-            });
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_signatures', `${getTodayStr()}_cooling`), { module: 'cooling', user: user.name, dateStr: getTodayStr(), createdAt: serverTimestamp() });
             showToast("Unterschrieben!");
         }
     };
 
     return (
         <div className="animate-in space-y-6">
+            {/* INFO POPUP */}
+            {infoItem && (
+                <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in" onClick={()=>setInfoItem(null)}>
+                    <div className="bg-white p-8 rounded-[2rem] w-full max-w-sm shadow-2xl relative" onClick={e=>e.stopPropagation()}>
+                        <button onClick={()=>setInfoItem(null)} className="absolute top-4 right-4 p-2 bg-slate-100 rounded-full"><X size={20}/></button>
+                        <h3 className="text-xl font-black mb-2 text-indigo-900">{infoItem.name}</h3>
+                        <div className="text-xs font-bold uppercase text-indigo-400 mb-4 tracking-widest">Anleitung & Info</div>
+                        <div className="text-slate-600 font-medium leading-relaxed whitespace-pre-wrap">{infoItem.info}</div>
+                        <button onClick={()=>setInfoItem(null)} className="w-full mt-6 bg-slate-900 text-white py-3 rounded-xl font-bold">Verstanden</button>
+                    </div>
+                </div>
+            )}
+
             <div><h2 className="text-3xl font-black text-inherit">{t.temp}</h2><p className="opacity-60 text-sm font-medium">Bereichskontrolle</p></div>
             <div className="grid gap-4">
                 {active.map(dev => {
                     const done = tempLogs.find(l => l.deviceId === dev.id);
                     const isEditing = editingId === dev.id;
                     const v = val[dev.id] || '';
-                    
-                    // Live-Prüfung während der Eingabe
                     const isCriticalInput = checkCritical(v, dev);
-                    // Prüfung des gespeicherten Wertes
                     const isCriticalSaved = done && checkCritical(done.temp, dev);
 
                     return (
                         <div key={dev.id} className={`p-6 rounded-[2rem] border shadow-sm transition-all ${done && !isEditing ? (isCriticalSaved ? 'bg-red-50 border-red-200' : 'bg-emerald-50/50 border-emerald-100') : 'bg-white border-slate-100'}`}>
                             <div className="flex justify-between mb-4 font-black text-lg text-slate-700 items-center">
-                                <div>
+                                <div className="flex items-center gap-2">
                                     <span>{dev.name}</span>
-                                    {dev.minTemp && dev.maxTemp && (
-                                        <span className="block text-[10px] text-slate-400 font-normal uppercase mt-0.5">
-                                            Soll: {dev.minTemp}° bis {dev.maxTemp}°
-                                        </span>
-                                    )}
+                                    {/* INFO BUTTON */}
+                                    {dev.info && <button onClick={()=>setInfoItem(dev)} className="text-indigo-400 hover:text-indigo-600 transition-colors"><HelpCircle size={18}/></button>}
                                 </div>
                                 {done && !isEditing ? (
                                     <div className="flex items-center gap-3">
-                                        <span className={`px-3 py-1 rounded-xl text-sm shadow-sm font-bold ${isCriticalSaved ? 'bg-red-500 text-white animate-pulse' : 'bg-emerald-100 text-emerald-600'}`}>
-                                            {done.temp}°C
-                                        </span>
-                                        {!signature && (
-                                            <button onClick={() => startEdit(dev, done)} className="bg-white border p-2 rounded-full text-slate-400 hover:text-indigo-600">
-                                                <PenTool size={14} />
-                                            </button>
-                                        )}
+                                        <span className={`px-3 py-1 rounded-xl text-sm shadow-sm font-bold ${isCriticalSaved ? 'bg-red-500 text-white animate-pulse' : 'bg-emerald-100 text-emerald-600'}`}>{done.temp}°C</span>
+                                        {!signature && <button onClick={() => startEdit(dev, done)} className="bg-white border p-2 rounded-full text-slate-400 hover:text-indigo-600"><PenTool size={14} /></button>}
                                     </div>
                                 ) : <Thermometer size={20} className="text-slate-300" />}
                             </div>
-
                             {(!done || isEditing) && (
                                 <div className="flex gap-3 h-14">
-                                    <input 
-                                        type="number" 
-                                        inputMode="decimal" // Wichtig für Minuszeichen auf Handy
-                                        value={v} 
-                                        onChange={e => setVal({ ...val, [dev.id]: e.target.value })} 
-                                        placeholder={isEditing ? "Korrektur..." : "Temp..."} 
-                                        className={`flex-1 rounded-2xl border-2 font-black text-2xl text-center outline-none ${isCriticalInput ? 'border-red-300 bg-red-50 text-red-600' : 'border-slate-100 focus:border-indigo-500'}`} 
-                                    />
-                                    <button onClick={() => save(dev)} className={`text-white w-16 h-full rounded-2xl flex items-center justify-center shadow-lg ${isCriticalInput ? 'bg-red-600' : 'bg-slate-900'}`}>
-                                        <Save size={24} />
-                                    </button>
+                                    <input type="number" inputMode="decimal" value={v} onChange={e => setVal({ ...val, [dev.id]: e.target.value })} placeholder={isEditing?"Korrektur...":"Temp..."} className={`flex-1 rounded-2xl border-2 font-black text-2xl text-center outline-none ${isCriticalInput ? 'border-red-300 bg-red-50 text-red-600' : 'border-slate-100 focus:border-indigo-500'}`} />
+                                    <button onClick={() => save(dev)} className={`text-white w-16 h-full rounded-2xl flex items-center justify-center shadow-lg ${isCriticalInput ? 'bg-red-600' : 'bg-slate-900'}`}><Save size={24} /></button>
                                     {isEditing && <button onClick={() => setEditingId(null)} className="w-14 rounded-2xl border text-slate-400"><X size={24}/></button>}
                                 </div>
                             )}
-                            
-                            {(isCriticalInput || isCriticalSaved) && (
-                                <div className="text-red-500 text-xs font-bold mt-2 flex items-center gap-1">
-                                    <AlertTriangle size={12} /> Temperatur außerhalb des Soll-Bereichs!
-                                </div>
-                            )}
+                            {(isCriticalInput || isCriticalSaved) && <div className="text-red-500 text-xs font-bold mt-2 flex items-center gap-1"><AlertTriangle size={12} /> Temperatur kritisch!</div>}
                         </div>
                     );
                 })}
@@ -3555,158 +3620,83 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
             
             <div className="mt-8 pt-6 border-t border-slate-200">
                 {signature ? (
-                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold">
-                        <PenTool size={20} />
-                        <div className="flex-1"><div className="text-xs uppercase opacity-70">Signiert von</div><div className="text-lg">{signature.user}</div></div>
-                    </div>
+                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold"><PenTool size={20} /><div className="flex-1"><div className="text-xs uppercase opacity-70">Signiert von</div><div className="text-lg">{signature.user}</div></div></div>
                 ) : (
                     <Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18} /> {t.sign}</Button>
                 )}
             </div>
         </div>
     );
-};
-//Fritteusenliste
+}; 
+   
+        //Fritteusenliste
 const Oil = ({ data, status, user, appId, showToast, lang }) => { 
     const [inp, setInp] = useState({}); 
-    
-    // Aktive Fritteusen filtern
+    const [infoItem, setInfoItem] = useState(null); // NEU: Info State
+
     const active = (data.fryers || []).filter(d => d.status !== 'defekt'); 
-    
-    // Signatur abrufen
     const signature = (status.signatures || {})['oil']; 
-    
     const t = DICTIONARY[lang]; 
     const oilLogs = status.oilLogs || {}; 
     const canSign = active.length > 0 && active.every(d => oilLogs[d.id]); 
-
-    // --- RECHTE PRÜFUNG ---
     const isManager = ['admin', 'kitchen_lead', 'service_lead'].includes(user.role);
 
-    // --- LÖSCHEN FUNKTION ---
     const deleteLog = async (logId, devId, devName) => { 
-        // Sicherheits-Check: Ist signiert?
-        if (signature && !isManager) {
-            showToast("Bereits signiert! Nur Leitung darf löschen.", "error");
-            return;
-        }
-
+        if (signature && !isManager) { showToast("Bereits signiert! Nur Leitung darf löschen.", "error"); return; }
         if(!confirm(`Möchtest du die Messung für "${devName}" wirklich löschen?`)) return;
-
         try {
-            // UI sofort leeren
-            setInp(prev => {
-                const newState = { ...prev };
-                delete newState[devId]; 
-                return newState;
-            });
-
-            if (!logId) {
-                console.error("CRITICAL: Keine Log-ID gefunden.");
-                return;
+            setInp(prev => { const newState = { ...prev }; delete newState[devId]; return newState; });
+            if (logId) {
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'audit_logs'), { user: user.name, action: 'DELETE_OIL_LOG', details: `Gelöscht: ${devName}`, timestamp: serverTimestamp() });
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_oil', logId)); 
             }
-
-            // Audit Log
-            const oldValues = oilLogs[devId] || { temp: '?', tpm: '?' };
-            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'audit_logs'), {
-                user: user.name,
-                action: 'DELETE_OIL_LOG',
-                details: `Gelöscht: ${devName} (${oldValues.temp}°C / ${oldValues.tpm}%) [Signed: ${!!signature}]`,
-                timestamp: serverTimestamp()
-            });
-
-            // Aus DB löschen
-            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_oil', logId)); 
-            
             showToast("Eintrag entfernt."); 
-        } catch (e) {
-            console.error("Delete Error:", e);
-            showToast("Fehler beim Löschen", "error");
-        }
+        } catch (e) { showToast("Fehler", "error"); }
     }; 
 
-    // --- SPEICHERN FUNKTION ---
     const save = async (dev) => { 
-        if (signature && !isManager) {
-            return showToast("Protokoll ist abgeschlossen/signiert.", "error");
-        }
-
-        const tempVal = inp[dev.id]?.t;
-        const tpmVal = inp[dev.id]?.p; 
-        
+        if (signature && !isManager) return showToast("Protokoll ist abgeschlossen.", "error");
+        const tempVal = inp[dev.id]?.t; const tpmVal = inp[dev.id]?.p; 
         if(!tempVal || !tpmVal) return showToast("Werte fehlen!", "error"); 
-
         try {
-            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_oil'), { 
-                deviceId: dev.id, 
-                deviceName: dev.name, 
-                temp: tempVal, 
-                tpm: tpmVal, 
-                user: user.name, 
-                dateStr: getTodayStr(), 
-                createdAt: serverTimestamp() 
-            }); 
-
-            setInp(prev => {
-                const newState = { ...prev };
-                delete newState[dev.id];
-                return newState;
-            });
-
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_oil'), { deviceId: dev.id, deviceName: dev.name, temp: tempVal, tpm: tpmVal, user: user.name, dateStr: getTodayStr(), createdAt: serverTimestamp() }); 
+            setInp(prev => { const newState = { ...prev }; delete newState[dev.id]; return newState; });
             showToast("Gespeichert"); 
-        } catch(e) {
-            console.error(e);
-            showToast("Speicherfehler", "error");
-        }
+        } catch(e) { showToast("Speicherfehler", "error"); }
     }; 
 
-    // --- SIGNIEREN FUNKTION ---
     const sign = async () => { 
         if(confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) { 
-            await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_oil`), { 
-                module:'oil', user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() 
-            }); 
+            await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_oil`), { module:'oil', user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); 
             showToast("Protokoll signiert!"); 
         } 
     }; 
 
-    // --- NEU: ENTSIGNIEREN (Nur Manager) ---
     const unsign = async () => {
         if(!isManager) return;
-        
-        if(confirm(`WARNUNG: Soll die Unterschrift von "${signature.user}" wirklich entfernt werden?\nDas Protokoll wird dadurch wieder geöffnet!`)) {
-            try {
-                // 1. Unterschrift löschen
-                await deleteDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_oil`));
-                
-                // 2. Ins Logbuch schreiben, wer das war (Wichtig!)
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'audit_logs'), {
-                    user: user.name,
-                    action: 'REMOVE_SIGNATURE_OIL',
-                    details: `Unterschrift von ${signature.user} entfernt`,
-                    timestamp: serverTimestamp()
-                });
-
-                showToast("Unterschrift entfernt - Protokoll offen.", "info");
-            } catch (e) {
-                console.error(e);
-                showToast("Fehler beim Entfernen", "error");
-            }
+        if(confirm(`WARNUNG: Protokoll öffnen?`)) {
+            try { await deleteDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_oil`)); showToast("Protokoll offen.", "info"); } catch (e) { showToast("Fehler", "error"); }
         }
     };
 
     return (
         <div className="animate-in space-y-6">
-            <div className="flex justify-between items-start">
-                <div>
-                    <h2 className="text-3xl font-black text-inherit">{t.oil}</h2>
-                    <p className="text-inherit opacity-60 text-sm font-medium">TPM Qualitätssicherung</p>
-                </div>
-                {signature && (
-                    <div className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm">
-                        <Lock size={12}/> ABGESCHLOSSEN
+            {/* INFO POPUP */}
+            {infoItem && (
+                <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in" onClick={()=>setInfoItem(null)}>
+                    <div className="bg-white p-8 rounded-[2rem] w-full max-w-sm shadow-2xl relative" onClick={e=>e.stopPropagation()}>
+                        <button onClick={()=>setInfoItem(null)} className="absolute top-4 right-4 p-2 bg-slate-100 rounded-full"><X size={20}/></button>
+                        <h3 className="text-xl font-black mb-2 text-indigo-900">{infoItem.name}</h3>
+                        <div className="text-xs font-bold uppercase text-indigo-400 mb-4 tracking-widest">Anleitung & Info</div>
+                        <div className="text-slate-600 font-medium leading-relaxed whitespace-pre-wrap">{infoItem.info}</div>
+                        <button onClick={()=>setInfoItem(null)} className="w-full mt-6 bg-slate-900 text-white py-3 rounded-xl font-bold">Verstanden</button>
                     </div>
-                )}
+                </div>
+            )}
+
+            <div className="flex justify-between items-start">
+                <div><h2 className="text-3xl font-black text-inherit">{t.oil}</h2><p className="text-inherit opacity-60 text-sm font-medium">TPM Qualitätssicherung</p></div>
+                {signature && <div className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm"><Lock size={12}/> ABGESCHLOSSEN</div>}
             </div>
             
             <div className="space-y-4">
@@ -3717,78 +3707,31 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
                     const labels = { bad: 'Wechseln', warn: 'Filtern', good: 'OK' }; 
                     
                     return (
-                        <div key={dev.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm transition-all hover:shadow-md">
+                        <div key={dev.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
                             <div className="flex justify-between items-center mb-6">
-                                <span className="font-bold text-lg text-slate-700">{dev.name}</span>
+                                <span className="font-bold text-lg text-slate-700 flex items-center gap-2">
+                                    {dev.name}
+                                    {/* INFO BUTTON */}
+                                    {dev.info && <button onClick={()=>setInfoItem(dev)} className="text-indigo-400 hover:text-indigo-600 transition-colors"><HelpCircle size={18}/></button>}
+                                </span>
                                 {l ? (
                                     <div className="flex items-center gap-2">
                                         <span className={`text-white text-xs font-black px-3 py-1.5 rounded-xl uppercase shadow-lg ${colors[quality]}`}>{labels[quality]}</span>
-                                        
-                                        {!signature || isManager ? (
-                                            <button 
-                                                onClick={() => deleteLog(l.id, dev.id, dev.name)} 
-                                                className={`p-2 rounded-full transition-colors ${signature ? 'bg-red-50 text-red-500 border border-red-100' : 'bg-slate-100 hover:bg-red-100 hover:text-red-500'}`}
-                                            >
-                                                <Trash2 size={14}/>
-                                            </button>
-                                        ) : (
-                                            <div className="p-2 text-slate-300">
-                                                <Lock size={14}/>
-                                            </div>
-                                        )}
+                                        {(!signature || isManager) ? <button onClick={() => deleteLog(l.id, dev.id, dev.name)} className="p-2 rounded-full bg-slate-100 hover:text-red-500"><Trash2 size={14}/></button> : <div className="p-2 text-slate-300"><Lock size={14}/></div>}
                                     </div>
-                                ) : (
-                                    <span className="bg-slate-100 text-slate-400 text-xs font-bold px-2 py-1 rounded-lg">Messung offen</span>
-                                )}
+                                ) : <span className="bg-slate-100 text-slate-400 text-xs font-bold px-2 py-1 rounded-lg">Messung offen</span>}
                             </div>
                             
                             {!l ? (
                                 <div className="flex gap-3">
-                                    <div className="flex-1 space-y-1">
-                                        <div className="text-[10px] uppercase font-bold text-slate-400 ml-1">Temp °C</div>
-                                        <Input 
-                                            type="number" 
-                                            inputMode="decimal" 
-                                            placeholder="000" 
-                                            className="text-center h-14 font-bold text-xl" 
-                                            value={inp[dev.id]?.t || ''} 
-                                            onChange={e => setInp({...inp, [dev.id]: {...inp[dev.id], t: e.target.value}})} 
-                                            disabled={signature && !isManager} 
-                                        />
-                                    </div>
-                                    <div className="flex-1 space-y-1">
-                                        <div className="text-[10px] uppercase font-bold text-slate-400 ml-1">TPM %</div>
-                                        <Input 
-                                            type="number" 
-                                            inputMode="decimal" 
-                                            placeholder="00" 
-                                            className="text-center h-14 font-bold text-xl" 
-                                            value={inp[dev.id]?.p || ''} 
-                                            onChange={e => setInp({...inp, [dev.id]: {...inp[dev.id], p: e.target.value}})} 
-                                            disabled={signature && !isManager}
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <div className="h-[17px]"></div>
-                                        {(signature && !isManager) ? (
-                                            <div className="h-14 w-14 flex items-center justify-center text-slate-300"><Lock/></div>
-                                        ) : (
-                                            <button onClick={() => save(dev)} className="bg-slate-900 text-white h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg active:scale-95 transition-all">
-                                                <Save size={24}/>
-                                            </button>
-                                        )}
-                                    </div>
+                                    <div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">Temp °C</div><Input type="number" inputMode="decimal" placeholder="000" className="text-center h-14 font-bold text-xl" value={inp[dev.id]?.t || ''} onChange={e => setInp({...inp, [dev.id]: {...inp[dev.id], t: e.target.value}})} disabled={signature && !isManager} /></div>
+                                    <div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">TPM %</div><Input type="number" inputMode="decimal" placeholder="00" className="text-center h-14 font-bold text-xl" value={inp[dev.id]?.p || ''} onChange={e => setInp({...inp, [dev.id]: {...inp[dev.id], p: e.target.value}})} disabled={signature && !isManager}/></div>
+                                    <div className="space-y-1"><div className="h-[17px]"></div>{(signature && !isManager) ? <div className="h-14 w-14 flex items-center justify-center text-slate-300"><Lock/></div> : <button onClick={() => save(dev)} className="bg-slate-900 text-white h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg active:scale-95 transition-all"><Save size={24}/></button>}</div>
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100">
-                                        <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Temp</div>
-                                        <div className="font-black text-xl text-slate-700">{l.temp}°C</div>
-                                    </div>
-                                    <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100">
-                                        <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">TPM</div>
-                                        <div className="font-black text-xl text-slate-700">{l.tpm}%</div>
-                                    </div>
+                                    <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Temp</div><div className="font-black text-xl text-slate-700">{l.temp}°C</div></div>
+                                    <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">TPM</div><div className="font-black text-xl text-slate-700">{l.tpm}%</div></div>
                                 </div>
                             )}
                         </div>
@@ -3800,199 +3743,148 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
                 {signature ? (
                     <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold shadow-sm relative overflow-hidden">
                         <div className="bg-white p-2 rounded-full shadow-sm z-10"><PenTool size={20}/></div>
-                        <div className="flex-1 z-10">
-                            <div className="text-[10px] uppercase opacity-70 tracking-wider">Verantwortlich geprüft von</div>
-                            <div className="text-lg leading-tight">{signature.user}</div>
-                        </div>
-                        
-                        {/* BUTTON ZUM ENTSIGNIEREN (Nur für Manager sichtbar) */}
-                        {isManager && (
-                            <button 
-                                onClick={unsign}
-                                className="z-10 bg-white text-red-500 p-3 rounded-xl shadow-sm hover:bg-red-500 hover:text-white transition-all border border-red-100 ml-2"
-                                title="Unterschrift entfernen und Protokoll öffnen"
-                            >
-                                <Trash2 size={18} />
-                            </button>
-                        )}
-
-                        {/* Hintergrund-Indikator für Admins */}
-                        {isManager && (
-                           <div className="absolute right-0 top-0 bg-red-500/5 text-red-600 text-[10px] px-2 py-0.5 rounded-bl-lg font-bold">ADMIN</div>
-                        )}
+                        <div className="flex-1 z-10"><div className="text-[10px] uppercase opacity-70 tracking-wider">Verantwortlich geprüft von</div><div className="text-lg leading-tight">{signature.user}</div></div>
+                        {isManager && <button onClick={unsign} className="z-10 bg-white text-red-500 p-3 rounded-xl shadow-sm hover:bg-red-500 hover:text-white transition-all ml-2"><Trash2 size={18} /></button>}
                     </div>
-                ) : (
-                    <Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18}/> {t.sign}</Button>
-                )}
+                ) : <Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18}/> {t.sign}</Button>}
             </div>
         </div>
     ); 
 };
-
 const Editor = ({ type, data, close, appId, showToast, btnStyle }) => { 
-            const [form, setForm] = useState({...data}); 
-            const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); 
+    const [form, setForm] = useState({...data}); 
+    const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); 
+    
+    const save = async () => { 
+        const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':type==='prep'?'prep_tasks':'staff'; 
+        const payload = { ...form }; 
+        if(type==='tasks'||type==='prep') payload.schedule = sched; 
+        delete payload.id; 
+        delete payload.isNew; 
+        
+        const ref = collection(db,'artifacts',appId,'public','data',col); 
+        if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()}); 
+        else await updateDoc(doc(ref, data.id), payload); 
+        
+        showToast("Gespeichert"); 
+        close(); 
+    }; 
+    
+    const toggleDept = (d) => { 
+        const cur = form.departments || []; 
+        setForm({...form, departments: cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]}); 
+    };
+
+    return (
+        <div className="space-y-6 animate-in">
+            <div className="flex justify-between items-center mb-2">
+                <h3 className="font-black text-xl text-slate-800">{data.isNew?'Neu':'Bearbeiten'}</h3>
+                <button onClick={close} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button>
+            </div>
             
-            const save = async () => { 
-                const col = type==='tasks'?'cleaning_tasks':type==='cooling'?'cooling_devices':type==='fryers'?'fryers':type==='suppliers'?'suppliers':type==='prep'?'prep_tasks':'staff'; 
-                const payload = { ...form }; 
-                if(type==='tasks'||type==='prep') payload.schedule = sched; 
-                delete payload.id; 
-                delete payload.isNew; 
-                
-                const ref = collection(db,'artifacts',appId,'public','data',col); 
-                if(data.isNew) await addDoc(ref, {...payload, createdAt:serverTimestamp()}); 
-                else await updateDoc(doc(ref, data.id), payload); 
-                
-                showToast("Gespeichert"); 
-                close(); 
-            }; 
-            
-            const toggleDept = (d) => { 
-                const cur = form.departments || []; 
-                setForm({...form, departments: cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]}); 
-            };
+            <div className="space-y-2">
+                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Bezeichnung / Name</span>
+                <Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." />
+            </div>
 
-            return (
-                <div className="space-y-6 animate-in">
-                    <div className="flex justify-between items-center mb-2">
-                        <h3 className="font-black text-xl text-slate-800">{data.isNew?'Neu':'Bearbeiten'}</h3>
-                        <button onClick={close} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button>
-                    </div>
-                    
-                    <div className="space-y-2">
-                        <span className="text-xs font-bold uppercase text-slate-400 ml-1">Bezeichnung / Name</span>
-                        <Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." />
-                    </div>
-                    {type === 'cooling' && (
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Gerätename</span>
-                                <Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="z.B. TK Schrank 1" />
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Min. Temp (°C)</span>
-                                    <Input type="number" value={form.minTemp||''} onChange={e=>setForm({...form,minTemp:e.target.value})} placeholder="z.B. -24" />
-                                </div>
-                                <div className="space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Max. Temp (°C)</span>
-                                    <Input type="number" value={form.maxTemp||''} onChange={e=>setForm({...form,maxTemp:e.target.value})} placeholder="z.B. -18" />
-                                </div>
-                            </div>
-                            <p className="text-[10px] text-slate-400 bg-slate-50 p-2 rounded">
-                                Beispiel TK: Min -24, Max -18.<br/>
-                                Beispiel Kühlung: Min 2, Max 7.<br/>
-                                Werte außerhalb lösen einen Alarm aus.
-                            </p>
-                        </div>
-                    )}
-                    {type==='prep' && (
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Kategorie</span>
-                                    <Select value={form.category||'prep'} onChange={e=>setForm({...form,category:e.target.value})}>
-                                        <option value="prep">Vorbereitung (Mise en Place)</option>
-                                        <option value="stock">Lager/Auffüllen</option>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Zuständigkeit</span>
-                                    <Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}>
-                                        <option value="kitchen">Küche</option>
-                                        <option value="service">Service</option>
-                                    </Select>
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Ziel / Menge</span>
-                                <Input value={form.target||''} onChange={e=>setForm({...form,target:e.target.value})} placeholder="z.B. 2 Behälter, Voll machen..." />
-                            </div>
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                <span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Zeitplan (Tage)</span>
-                                <div className="flex justify-between">
-                                    {['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>
-                                        <button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {type==='staff' && (
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <span className="text-xs font-bold uppercase text-slate-400 ml-1">Abteilungen</span>
-                                <div className="flex gap-3">
-                                    <button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('kitchen')?'border-orange-500 bg-orange-50 text-orange-600':'border-slate-100 bg-white text-slate-400'}`}>Küche</button>
-                                    <button onClick={()=>toggleDept('service')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('service')?'border-purple-500 bg-purple-50 text-purple-600':'border-slate-100 bg-white text-slate-400'}`}>Service</button>
-                                </div>
-                            </div>
-
-                            {/* VERTRAGSDATEN */}
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Vertrag (Std/Monat)</span>
-                                    <Input type="number" value={form.contractHours || ''} onChange={e=>setForm({...form, contractHours: e.target.value})} placeholder="z.B. 160" />
-                                </div>
-                                <div className="space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Stundenlohn (€)</span>
-                                    <Input type="number" value={form.hourlyRate || ''} onChange={e=>setForm({...form, hourlyRate: e.target.value})} placeholder="z.B. 12.50" />
-                                </div>
-                            </div>
-
-                            <div className="flex gap-3">
-                                <div className="flex-1 space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Rolle</span>
-                                    <Select value={form.role||'user'} onChange={e=>setForm({...form,role:e.target.value})}>
-                                        <option value="user">Mitarbeiter</option>
-                                        <option value="kitchen_lead">Küchenleitung</option>
-                                        <option value="service_lead">Serviceleitung</option>
-                                        <option value="admin">Filialleitung</option>
-                                    </Select>
-                                </div>
-                                <div className="flex-1 space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">PIN (Optional)</span>
-                                    <Input value={form.pin||''} onChange={e=>setForm({...form,pin:e.target.value})} className="text-center font-mono tracking-widest" maxLength={4}/>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {type==='tasks' && (
-                        <div className="space-y-4">
-                            <div className="flex gap-3">
-                                <div className="flex-1 space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Bereich</span>
-                                    <Input value={form.area||''} onChange={e=>setForm({...form,area:e.target.value})} placeholder="z.B. Bar"/>
-                                </div>
-                                <div className="flex-1 space-y-2">
-                                    <span className="text-xs font-bold uppercase text-slate-400 ml-1">Dept</span>
-                                    <Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}>
-                                        <option value="kitchen">Küche</option>
-                                        <option value="service">Service</option>
-                                        <option value="all">Alle</option>
-                                    </Select>
-                                </div>
-                            </div>
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                <span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Wochentage</span>
-                                <div className="flex justify-between">
-                                    {['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>
-                                        <button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    
-                    <Button onClick={save} className="mt-6 shadow-xl shadow-slate-900/10" style={btnStyle}>Speichern</Button>
+            {/* --- NEU: INFO FELD FÜR ALLE TYPEN AUSSER STAFF --- */}
+            {type !== 'staff' && (
+                <div className="space-y-2">
+                    <span className="text-xs font-bold uppercase text-slate-400 ml-1 flex items-center gap-1"><HelpCircle size={12}/> Anleitung / Info für Mitarbeiter</span>
+                    <textarea 
+                        value={form.info||''} 
+                        onChange={e=>setForm({...form,info:e.target.value})} 
+                        placeholder="z.B. Nur mit Schutzbrille reinigen / Messpunkt hinten links..." 
+                        rows="3"
+                        className="w-full p-4 rounded-2xl border border-slate-200 bg-white text-base font-medium focus:border-indigo-500 outline-none transition-all resize-none"
+                    />
                 </div>
-            ); 
-        };
-        // --- ADMIN SECTION ---
+            )}
+
+            {type === 'cooling' && (
+                <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <span className="text-xs font-bold uppercase text-slate-400 ml-1">Min. Temp (°C)</span>
+                            <Input type="number" value={form.minTemp||''} onChange={e=>setForm({...form,minTemp:e.target.value})} placeholder="z.B. 2" />
+                        </div>
+                        <div className="space-y-2">
+                            <span className="text-xs font-bold uppercase text-slate-400 ml-1">Max. Temp (°C)</span>
+                            <Input type="number" value={form.maxTemp||''} onChange={e=>setForm({...form,maxTemp:e.target.value})} placeholder="z.B. 7" />
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {type==='prep' && (
+                <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                            <span className="text-xs font-bold uppercase text-slate-400 ml-1">Kategorie</span>
+                            <Select value={form.category||'prep'} onChange={e=>setForm({...form,category:e.target.value})}>
+                                <option value="prep">Vorbereitung (Mise en Place)</option>
+                                <option value="stock">Lager/Auffüllen</option>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <span className="text-xs font-bold uppercase text-slate-400 ml-1">Zuständigkeit</span>
+                            <Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}>
+                                <option value="kitchen">Küche</option>
+                                <option value="service">Service</option>
+                            </Select>
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <span className="text-xs font-bold uppercase text-slate-400 ml-1">Ziel / Menge</span>
+                        <Input value={form.target||''} onChange={e=>setForm({...form,target:e.target.value})} placeholder="z.B. 2 Behälter" />
+                    </div>
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Zeitplan</span>
+                        <div className="flex justify-between">
+                            {['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>
+                                <button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {type==='staff' && (
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <span className="text-xs font-bold uppercase text-slate-400 ml-1">Abteilungen</span>
+                        <div className="flex gap-3">
+                            <button onClick={()=>toggleDept('kitchen')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('kitchen')?'border-orange-500 bg-orange-50 text-orange-600':'border-slate-100 bg-white text-slate-400'}`}>Küche</button>
+                            <button onClick={()=>toggleDept('service')} className={`flex-1 py-4 rounded-2xl border-2 font-bold transition-all ${(form.departments||[]).includes('service')?'border-purple-500 bg-purple-50 text-purple-600':'border-slate-100 bg-white text-slate-400'}`}>Service</button>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Vertrag (Std)</span><Input type="number" value={form.contractHours || ''} onChange={e=>setForm({...form, contractHours: e.target.value})} placeholder="160" /></div>
+                        <div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Lohn (€)</span><Input type="number" value={form.hourlyRate || ''} onChange={e=>setForm({...form, hourlyRate: e.target.value})} placeholder="12.50" /></div>
+                    </div>
+                    <div className="flex gap-3">
+                        <div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Rolle</span><Select value={form.role||'user'} onChange={e=>setForm({...form,role:e.target.value})}><option value="user">Mitarbeiter</option><option value="kitchen_lead">Küchenleitung</option><option value="service_lead">Serviceleitung</option><option value="admin">Filialleitung</option></Select></div>
+                        <div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">PIN</span><Input value={form.pin||''} onChange={e=>setForm({...form,pin:e.target.value})} className="text-center font-mono tracking-widest" maxLength={4}/></div>
+                    </div>
+                </div>
+            )}
+
+            {type==='tasks' && (
+                <div className="space-y-4">
+                    <div className="flex gap-3">
+                        <div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Bereich</span><Input value={form.area||''} onChange={e=>setForm({...form,area:e.target.value})} placeholder="z.B. Bar"/></div>
+                        <div className="flex-1 space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Dept</span><Select value={form.dept||'kitchen'} onChange={e=>setForm({...form,dept:e.target.value})}><option value="kitchen">Küche</option><option value="service">Service</option><option value="all">Alle</option></Select></div>
+                    </div>
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Wochentage</span><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>)}</div></div>
+                </div>
+            )}
+            
+            <Button onClick={save} className="mt-6 shadow-xl shadow-slate-900/10" style={btnStyle}>Speichern</Button>
+        </div>
+    ); 
+};
+
+// --- ADMIN SECTION ---
       
         const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView, onLogoutSystem, deleteBranch, isRemote, currentUser, lang, btnStyle }) => { 
     const [tab, setTab] = useState('staff'); 
