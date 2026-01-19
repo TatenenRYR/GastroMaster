@@ -3938,43 +3938,55 @@ const Editor = ({ type, data, close, appId, showToast, btnStyle }) => {
                 <Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Name..." />
             </div>
 
-            {/* --- NEU: INFO FELD FÜR ALLE TYPEN AUSSER STAFF --- */}
+            {/* INFO FELD (Alle außer Staff) */}
             {type !== 'staff' && (
                 <div className="space-y-2">
-                    <span className="text-xs font-bold uppercase text-slate-400 ml-1 flex items-center gap-1"><HelpCircle size={12}/> Anleitung / Info für Mitarbeiter</span>
+                    <span className="text-xs font-bold uppercase text-slate-400 ml-1 flex items-center gap-1"><HelpCircle size={12}/> Anleitung / Info</span>
                     <textarea 
                         value={form.info||''} 
                         onChange={e=>setForm({...form,info:e.target.value})} 
-                        placeholder="z.B. Nur mit Schutzbrille reinigen / Messpunkt hinten links..." 
-                        rows="3"
+                        placeholder="Zusatzinfos..." 
+                        rows="2"
                         className="w-full p-4 rounded-2xl border border-slate-200 bg-white text-base font-medium focus:border-indigo-500 outline-none transition-all resize-none"
                     />
                 </div>
             )}
 
-            {type === 'cooling' && (
+            {/* --- LIEFERANTEN (NEU) --- */}
+            {type === 'suppliers' && (
                 <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <span className="text-xs font-bold uppercase text-slate-400 ml-1">Min. Temp (°C)</span>
-                            <Input type="number" value={form.minTemp||''} onChange={e=>setForm({...form,minTemp:e.target.value})} placeholder="z.B. 2" />
-                        </div>
-                        <div className="space-y-2">
-                            <span className="text-xs font-bold uppercase text-slate-400 ml-1">Max. Temp (°C)</span>
-                            <Input type="number" value={form.maxTemp||''} onChange={e=>setForm({...form,maxTemp:e.target.value})} placeholder="z.B. 7" />
-                        </div>
+                    <div className="space-y-2">
+                        <span className="text-xs font-bold uppercase text-slate-400 ml-1">Email für Bestellungen</span>
+                        <Input value={form.email||''} onChange={e=>setForm({...form,email:e.target.value})} placeholder="bestellung@lieferant.de" />
+                    </div>
+                    <div className="space-y-2">
+                        <span className="text-xs font-bold uppercase text-slate-400 ml-1">Kundennummer</span>
+                        <Input value={form.customerNumber||''} onChange={e=>setForm({...form,customerNumber:e.target.value})} placeholder="KD-12345" />
+                    </div>
+                    <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 text-xs text-amber-800">
+                        <span className="font-bold">Hinweis:</span> Produkte/Katalog bitte über den Excel-Import oder im Bestell-Modul bearbeiten.
                     </div>
                 </div>
             )}
+
+            {/* --- KÜHLUNG --- */}
+            {type === 'cooling' && (
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Min. Temp</span><Input type="number" value={form.minTemp||''} onChange={e=>setForm({...form,minTemp:e.target.value})} /></div>
+                    <div className="space-y-2"><span className="text-xs font-bold uppercase text-slate-400 ml-1">Max. Temp</span><Input type="number" value={form.maxTemp||''} onChange={e=>setForm({...form,maxTemp:e.target.value})} /></div>
+                </div>
+            )}
             
+            {/* --- VORBEREITUNG --- */}
             {type==='prep' && (
                 <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-2">
                             <span className="text-xs font-bold uppercase text-slate-400 ml-1">Kategorie</span>
                             <Select value={form.category||'prep'} onChange={e=>setForm({...form,category:e.target.value})}>
-                                <option value="prep">Vorbereitung (Mise en Place)</option>
-                                <option value="stock">Lager/Auffüllen</option>
+                                <option value="daily">🕒 14 Uhr Liste</option>
+                                <option value="prep">🔪 Vorbereitung</option>
+                                <option value="stock">📦 Lager/Auffüllen</option>
                             </Select>
                         </div>
                         <div className="space-y-2">
@@ -3989,17 +4001,11 @@ const Editor = ({ type, data, close, appId, showToast, btnStyle }) => {
                         <span className="text-xs font-bold uppercase text-slate-400 ml-1">Ziel / Menge</span>
                         <Input value={form.target||''} onChange={e=>setForm({...form,target:e.target.value})} placeholder="z.B. 2 Behälter" />
                     </div>
-                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                        <span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Zeitplan</span>
-                        <div className="flex justify-between">
-                            {['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>
-                                <button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>
-                            )}
-                        </div>
-                    </div>
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><span className="text-xs font-bold uppercase text-slate-400 mb-3 block">Zeitplan</span><div className="flex justify-between">{['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=><button key={d} onClick={()=>setSched({...sched,[d]:!sched[d]})} className={`w-9 h-12 rounded-xl text-xs font-black transition-all ${sched[d]?'text-white shadow-md shadow-indigo-200 translate-y-[-2px]':'bg-white border text-slate-300'}`} style={sched[d] ? btnStyle : {}}>{d.slice(0,2)}</button>)}</div></div>
                 </div>
             )}
 
+            {/* --- PERSONAL --- */}
             {type==='staff' && (
                 <div className="space-y-4">
                     <div className="space-y-2">
@@ -4020,6 +4026,7 @@ const Editor = ({ type, data, close, appId, showToast, btnStyle }) => {
                 </div>
             )}
 
+            {/* --- PUTZPLAN --- */}
             {type==='tasks' && (
                 <div className="space-y-4">
                     <div className="flex gap-3">
@@ -4034,10 +4041,9 @@ const Editor = ({ type, data, close, appId, showToast, btnStyle }) => {
         </div>
     ); 
 };
-
 // --- ADMIN SECTION ---
       
-    const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView, onLogoutSystem, deleteBranch, isRemote, currentUser, lang, btnStyle }) => { 
+const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView, onLogoutSystem, deleteBranch, isRemote, currentUser, lang, btnStyle }) => { 
     const [tab, setTab] = useState('staff'); 
     const [edit, setEdit] = useState(null); 
     const [deleteMath, setDeleteMath] = useState(null); 
@@ -4063,8 +4069,7 @@ const Editor = ({ type, data, close, appId, showToast, btnStyle }) => {
     const initDeleteBranch = () => { const a=Math.floor(Math.random()*10)+1; const b=Math.floor(Math.random()*10)+1; setDeleteMath({q:`${a} + ${b}`, a:a+b}); };
     const confirmDeleteBranch = async () => { if(parseInt(deleteInput) === deleteMath.a) { deleteBranch(); } else { showToast("Rechnung falsch!", "error"); } };
 
-    // --- GENERIC EXCEL FUNKTIONEN ---
-    
+    // --- GENERIC EXCEL IMPORTER ---
     const handleExcelImport = async (e, collectionName, mapRowToPayload) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -4087,7 +4092,7 @@ const Editor = ({ type, data, close, appId, showToast, btnStyle }) => {
 
                 for (const row of rows) {
                     const payload = mapRowToPayload(row);
-                    // Cleanup undefined
+                    // Cleanup undefined fields
                     Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]);
                     
                     payload.updatedAt = serverTimestamp();
@@ -4107,38 +4112,76 @@ const Editor = ({ type, data, close, appId, showToast, btnStyle }) => {
         reader.readAsArrayBuffer(file);
     };
 
-    // 1. KÜHLUNG EXPORT
-    const exportCooling = () => {
-        const dataSet = (data.cooling || []).map(d => ({ ID: d.id, Name: d.name, MinTemp: d.minTemp||'', MaxTemp: d.maxTemp||'' }));
-        saveExcel(dataSet, "Kuehlung");
+    // --- SPEZIAL IMPORT FÜR LIEFERANTEN & KATALOGE ---
+    const importSuppliersWithCatalog = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        if(!confirm("⚠️ KOMPLEXER IMPORT: Dies aktualisiert Lieferanten UND ihre Produktkataloge.\n\nDaten werden anhand der Lieferanten-ID zusammengeführt.")) {
+            e.target.value = null; return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const bdata = new Uint8Array(evt.target.result);
+                const wb = XLSX.read(bdata, { type: 'array' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(ws);
+
+                // Daten gruppieren nach Lieferanten ID
+                const grouped = {};
+                rows.forEach(r => {
+                    const supId = r.ID || r.LieferantID || 'NEW_' + r.Lieferant;
+                    if(!grouped[supId]) {
+                        grouped[supId] = {
+                            id: r.ID,
+                            name: r.Lieferant,
+                            email: r.Email,
+                            customerNumber: r.KundenNr,
+                            catalog: []
+                        };
+                    }
+                    if(r.Produkt) { // Nur wenn auch ein Produkt in der Zeile steht
+                        grouped[supId].catalog.push({
+                            sku: r.SKU ? r.SKU.toString() : Date.now().toString(),
+                            name: r.Produkt,
+                            cat: r.Kategorie || 'Allgemein',
+                            unit: r.Einheit || 'Stk',
+                            targets: { 
+                                Mo:r.Tag_Mo||0, Di:r.Tag_Di||0, Mi:r.Tag_Mi||0, Do:r.Tag_Do||0, 
+                                Fr:r.Tag_Fr||0, Sa:r.Tag_Sa||0, So:r.Tag_So||0 
+                            }
+                        });
+                    }
+                });
+
+                for (const key in grouped) {
+                    const sup = grouped[key];
+                    const categories = [...new Set(sup.catalog.map(i => i.cat))];
+                    const payload = {
+                        name: sup.name,
+                        email: sup.email,
+                        customerNumber: sup.customerNumber,
+                        catalog: sup.catalog,
+                        categories: categories,
+                        updatedAt: serverTimestamp()
+                    };
+
+                    if (sup.id) {
+                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'suppliers', sup.id), payload, { merge: true });
+                    } else {
+                        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'suppliers'), { ...payload, createdAt: serverTimestamp() });
+                    }
+                }
+                showToast("Lieferanten & Kataloge importiert!");
+                e.target.value = null;
+            } catch (err) { console.error(err); showToast("Import Fehler", "error"); }
+        };
+        reader.readAsArrayBuffer(file);
     };
 
-    // 2. FRITTEUSEN EXPORT
-    const exportFryers = () => {
-        const dataSet = (data.fryers || []).map(d => ({ ID: d.id, Name: d.name, Status: d.status||'active' }));
-        saveExcel(dataSet, "Fritteusen");
-    };
-
-    // 3. PUTZLISTE EXPORT (Mit Wochenplan)
-    const exportTasks = () => {
-        const dataSet = (data.tasks || []).map(d => ({
-            ID: d.id, Name: d.name, Bereich: d.area||'', Abteilung: d.dept||'kitchen',
-            Mo: d.schedule?.Mo?1:0, Di: d.schedule?.Di?1:0, Mi: d.schedule?.Mi?1:0, Do: d.schedule?.Do?1:0, 
-            Fr: d.schedule?.Fr?1:0, Sa: d.schedule?.Sa?1:0, So: d.schedule?.So?1:0
-        }));
-        saveExcel(dataSet, "Putzplan");
-    };
-
-    // 4. VORBEREITUNG EXPORT (Mit Wochenplan)
-    const exportPrep = () => {
-        const dataSet = (data.prep || []).map(d => ({
-            ID: d.id, Name: d.name, Kategorie: d.category||'prep', Menge: d.target||'', Abteilung: d.dept||'kitchen',
-            Mo: d.schedule?.Mo?1:0, Di: d.schedule?.Di?1:0, Mi: d.schedule?.Mi?1:0, Do: d.schedule?.Do?1:0, 
-            Fr: d.schedule?.Fr?1:0, Sa: d.schedule?.Sa?1:0, So: d.schedule?.So?1:0
-        }));
-        saveExcel(dataSet, "Vorbereitung");
-    };
-
+    // --- EXPORT FUNKTIONEN ---
     const saveExcel = (jsonData, fileName) => {
         if (!window.XLSX) return showToast("Excel lädt noch...", "error");
         const ws = XLSX.utils.json_to_sheet(jsonData);
@@ -4148,7 +4191,60 @@ const Editor = ({ type, data, close, appId, showToast, btnStyle }) => {
         showToast("Exportiert!");
     };
 
-    // --- HELPER FÜR IMPORT MAPPINGS ---
+    // 1. KÜHLUNG
+    const exportCooling = () => {
+        const dataSet = (data.cooling || []).map(d => ({ ID: d.id, Name: d.name, MinTemp: d.minTemp||'', MaxTemp: d.maxTemp||'' }));
+        saveExcel(dataSet, "Kuehlung");
+    };
+
+    // 2. FRITTEUSEN
+    const exportFryers = () => {
+        const dataSet = (data.fryers || []).map(d => ({ ID: d.id, Name: d.name, Status: d.status||'active' }));
+        saveExcel(dataSet, "Fritteusen");
+    };
+
+    // 3. PUTZLISTE
+    const exportTasks = () => {
+        const dataSet = (data.tasks || []).map(d => ({
+            ID: d.id, Name: d.name, Bereich: d.area||'', Abteilung: d.dept||'kitchen',
+            Mo: d.schedule?.Mo?1:0, Di: d.schedule?.Di?1:0, Mi: d.schedule?.Mi?1:0, Do: d.schedule?.Do?1:0, 
+            Fr: d.schedule?.Fr?1:0, Sa: d.schedule?.Sa?1:0, So: d.schedule?.So?1:0
+        }));
+        saveExcel(dataSet, "Putzplan");
+    };
+
+    // 4. VORBEREITUNG
+    const exportPrep = () => {
+        const dataSet = (data.prep || []).map(d => ({
+            ID: d.id, Name: d.name, Kategorie: d.category||'prep', Menge: d.target||'', Abteilung: d.dept||'kitchen',
+            Mo: d.schedule?.Mo?1:0, Di: d.schedule?.Di?1:0, Mi: d.schedule?.Mi?1:0, Do: d.schedule?.Do?1:0, 
+            Fr: d.schedule?.Fr?1:0, Sa: d.schedule?.Sa?1:0, So: d.schedule?.So?1:0
+        }));
+        saveExcel(dataSet, "Vorbereitung");
+    };
+
+    // 5. LIEFERANTEN (NEU & KOMPLEX)
+    const exportSuppliers = () => {
+        const flatList = [];
+        (data.suppliers || []).forEach(s => {
+            if (!s.catalog || s.catalog.length === 0) {
+                // Leeren Lieferanten auch exportieren
+                flatList.push({ ID: s.id, Lieferant: s.name, Email: s.email||'', KundenNr: s.customerNumber||'' });
+            } else {
+                s.catalog.forEach(item => {
+                    flatList.push({
+                        ID: s.id, Lieferant: s.name, Email: s.email||'', KundenNr: s.customerNumber||'',
+                        Kategorie: item.cat, SKU: item.sku, Produkt: item.name, Einheit: item.unit,
+                        Tag_Mo: item.targets?.Mo||0, Tag_Di: item.targets?.Di||0, Tag_Mi: item.targets?.Mi||0,
+                        Tag_Do: item.targets?.Do||0, Tag_Fr: item.targets?.Fr||0, Tag_Sa: item.targets?.Sa||0, Tag_So: item.targets?.So||0
+                    });
+                });
+            }
+        });
+        saveExcel(flatList, "Lieferanten_Komplett");
+    };
+
+    // --- HELPER FÜR MAP ---
     const mapSchedule = (row) => ({
         Mo: !!row.Mo, Di: !!row.Di, Mi: !!row.Mi, Do: !!row.Do, Fr: !!row.Fr, Sa: !!row.Sa, So: !!row.So
     });
@@ -4200,6 +4296,18 @@ const Editor = ({ type, data, close, appId, showToast, btnStyle }) => {
                         <ExcelToolbar onExport={exportPrep} onImport={(e) => handleExcelImport(e, 'prep_tasks', r => ({ name: r.Name, category: r.Kategorie, target: r.Menge, dept: r.Abteilung, schedule: mapSchedule(r) }))} />
                         <Button variant="ghost" onClick={()=>setEdit({isNew:true})} className="border-dashed py-5 text-slate-400 bg-slate-50 hover:bg-slate-100 hover:text-slate-600"><Plus size={20}/> Aufgabe hinzufügen</Button>
                         <ItemList items={data.prep} onEdit={setEdit} onDelete={delItem} subText={i => `${i.target || ''} (${i.category})`} />
+                    </div>
+                ) :
+
+                /* LIEFERANTEN (NEU) */
+                tab === 'suppliers' && !edit ? (
+                    <div className="space-y-4 animate-in">
+                        <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl text-xs text-indigo-800 mb-2">
+                            <strong>Tipp:</strong> Nutzen Sie den Excel-Export, um Ihre Produktkataloge am PC zu bearbeiten und dann wieder zu importieren.
+                        </div>
+                        <ExcelToolbar onExport={exportSuppliers} onImport={importSuppliersWithCatalog} />
+                        <Button variant="ghost" onClick={()=>setEdit({isNew:true})} className="border-dashed py-5 text-slate-400 bg-slate-50 hover:bg-slate-100 hover:text-slate-600"><Plus size={20}/> Lieferant hinzufügen</Button>
+                        <ItemList items={data.suppliers} onEdit={setEdit} onDelete={delItem} subText={i => `Kunden-Nr: ${i.customerNumber || '-'} • ${i.catalog?.length || 0} Produkte`} />
                     </div>
                 ) :
 
