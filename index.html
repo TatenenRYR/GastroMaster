@@ -3582,16 +3582,21 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'audit_logs'), {
                 user: user.name,
                 action: 'DELETE_OIL_LOG',
-                details: `Messung gelöscht für: ${devName} (ID: ${logId})`,
+                details: `Messung gelöscht für: ${devName} (ID: ${logId}) (${inp[dev.id]?.t}/${inp[dev.id]?.p})`,
                 timestamp: serverTimestamp()
             });
 
+            console.log("1");
             // 2. UI sofort bereinigen (Optimistic Update)
             setInp(prev => {
+            console.log("2");
                 const newState = { ...prev };
+            console.log("3");
                 delete newState[devId]; // Löscht das komplette Objekt für diese ID
+            console.log("4");
                 return newState;
             });
+            console.log("5");
             // 3. Datenbank-Eintrag entfernen
             if (logId) {
                 await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_oil', logId)); 
