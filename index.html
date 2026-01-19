@@ -3562,8 +3562,8 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         </div>
     );
 };
-
-        const Oil = ({ data, status, user, appId, showToast, lang }) => { 
+//Fritteusenliste
+const Oil = ({ data, status, user, appId, showToast, lang }) => {
     const [inp, setInp] = useState({}); 
     const active = (data.fryers || []).filter(d => d.status!=='defekt'); 
     const signature = (status.signatures || {})['oil']; 
@@ -3571,38 +3571,53 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
     const oilLogs = status.oilLogs || {}; 
     const canSign = active.length > 0 && active.every(d => oilLogs[d.id]); 
 
-    // --- BEARBEITETE LÖSCH-FUNKTION ---
+    // --- KORRIGIERTE LÖSCH-FUNKTION ---
     const deleteLog = async (logId, devId) => { 
-        if(confirm("Eintrag von " + devId + " wirklich löschen?")) { 
+        if(confirm("Eintrag wirklich löschen?")) { 
             try {
-                // 1. In der Datenbank löschen (falls logId vorhanden)
-                if (logId) {
-                    await deleteDoc(doc(db,'artifacts',appId,'public', 'data', 'logs_oil', logId)); 
-                }
-                
-                // 2. FELDER LEEREN: Setzt Temperatur und TPM für diese Fritteuse zurück
+                // 1. ZUERST lokal die Felder leeren (damit sie leer sind, wenn sie gleich sichtbar werden)
                 setInp(prev => ({
                     ...prev,
                     [devId]: { t: '', p: '' }
                 }));
 
-                showToast("Eintrag gelöscht & Felder geleert"); 
+                // 2. DANN aus der Datenbank löschen
+                if (logId) {
+                    await deleteDoc(doc(db,'artifacts',appId,'public', 'data', 'logs_oil', logId)); 
+                }
+                
+                showToast("Gelöscht."); 
             } catch (e) {
                 console.error("Löschfehler:", e);
-                // Sicherheitshalber Felder trotzdem leeren bei Fehler
-                setInp(prev => ({ ...prev, [devId]: { t: '', p: '' } }));
+                showToast("Fehler beim Löschen", "error");
             }
         }
     }; 
 
+    // --- KORRIGIERTE SPEICHER-FUNKTION (WICHTIG!) ---
     const save = async (dev) => { 
-        const tempVal = inp[dev.id]?.t, tpmVal = inp[dev.id]?.p; 
-        if(!tempVal || !tpmVal) return; 
-        await addDoc(collection(db,'artifacts',appId,'public','data','logs_oil'), { 
-            deviceId:dev.id, deviceName:dev.name, temp:tempVal, tpm:tpmVal, 
-            user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() 
-        }); 
-        showToast("Gespeichert"); 
+        const tempVal = inp[dev.id]?.t;
+        const tpmVal = inp[dev.id]?.p; 
+        
+        if(!tempVal || !tpmVal) return showToast("Werte fehlen!", "error"); 
+
+        try {
+            await addDoc(collection(db,'artifacts',appId,'public','data','logs_oil'), { 
+                deviceId:dev.id, deviceName:dev.name, temp:tempVal, tpm:tpmVal, 
+                user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() 
+            }); 
+
+            // HIER WAR DER FEHLER: Felder müssen nach dem Speichern geleert werden!
+            setInp(prev => ({
+                ...prev,
+                [dev.id]: { t: '', p: '' }
+            }));
+
+            showToast("Gespeichert"); 
+        } catch(e) {
+            console.error(e);
+            showToast("Fehler beim Speichern", "error");
+        }
     }; 
 
     const sign = async () => { 
@@ -3631,7 +3646,6 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
                                 {l ? (
                                     <div className="flex items-center gap-2">
                                         <span className={`text-white text-xs font-black px-3 py-1.5 rounded-xl uppercase shadow-lg ${colors[quality]}`}>{labels[quality]}</span>
-                                        {/* Button ruft angepasste deleteLog mit dev.id auf */}
                                         <button onClick={() => deleteLog(l.id, dev.id)} className="p-2 bg-slate-100 rounded-full hover:bg-red-100 hover:text-red-500 transition-colors">
                                             <Trash2 size={14}/>
                                         </button>
@@ -3691,7 +3705,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
             </div>
         </div>
     ); 
-};
+}; 
 const Editor = ({ type, data, close, appId, showToast, btnStyle }) => { 
             const [form, setForm] = useState({...data}); 
             const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); 
