@@ -3581,12 +3581,11 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
     const canSign = active.length > 0 && active.every(d => oilLogs[d.id]); 
 
     // --- RECHTE PRÜFUNG ---
-    // Definiert, wer "Leitende Person" ist
     const isManager = ['admin', 'kitchen_lead', 'service_lead'].includes(user.role);
 
     // --- LÖSCHEN FUNKTION ---
     const deleteLog = async (logId, devId, devName) => { 
-        // 1. SICHERHEITS-CHECK: Ist signiert?
+        // Sicherheits-Check: Ist signiert?
         if (signature && !isManager) {
             showToast("Bereits signiert! Nur Leitung darf löschen.", "error");
             return;
@@ -3628,7 +3627,6 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
 
     // --- SPEICHERN FUNKTION ---
     const save = async (dev) => { 
-        // Auch beim Speichern verhindern wir Änderungen, wenn signiert (außer Manager)
         if (signature && !isManager) {
             return showToast("Protokoll ist abgeschlossen/signiert.", "error");
         }
@@ -3662,6 +3660,7 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
         }
     }; 
 
+    // --- SIGNIEREN FUNKTION ---
     const sign = async () => { 
         if(confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) { 
             await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_oil`), { 
@@ -3671,6 +3670,31 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
         } 
     }; 
 
+    // --- NEU: ENTSIGNIEREN (Nur Manager) ---
+    const unsign = async () => {
+        if(!isManager) return;
+        
+        if(confirm(`WARNUNG: Soll die Unterschrift von "${signature.user}" wirklich entfernt werden?\nDas Protokoll wird dadurch wieder geöffnet!`)) {
+            try {
+                // 1. Unterschrift löschen
+                await deleteDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_oil`));
+                
+                // 2. Ins Logbuch schreiben, wer das war (Wichtig!)
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'audit_logs'), {
+                    user: user.name,
+                    action: 'REMOVE_SIGNATURE_OIL',
+                    details: `Unterschrift von ${signature.user} entfernt`,
+                    timestamp: serverTimestamp()
+                });
+
+                showToast("Unterschrift entfernt - Protokoll offen.", "info");
+            } catch (e) {
+                console.error(e);
+                showToast("Fehler beim Entfernen", "error");
+            }
+        }
+    };
+
     return (
         <div className="animate-in space-y-6">
             <div className="flex justify-between items-start">
@@ -3679,7 +3703,7 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
                     <p className="text-inherit opacity-60 text-sm font-medium">TPM Qualitätssicherung</p>
                 </div>
                 {signature && (
-                    <div className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1">
+                    <div className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm">
                         <Lock size={12}/> ABGESCHLOSSEN
                     </div>
                 )}
@@ -3700,17 +3724,14 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
                                     <div className="flex items-center gap-2">
                                         <span className={`text-white text-xs font-black px-3 py-1.5 rounded-xl uppercase shadow-lg ${colors[quality]}`}>{labels[quality]}</span>
                                         
-                                        {/* LOGIK: Löschen Button nur zeigen, wenn NICHT signiert ODER User ist Manager */}
                                         {!signature || isManager ? (
                                             <button 
                                                 onClick={() => deleteLog(l.id, dev.id, dev.name)} 
                                                 className={`p-2 rounded-full transition-colors ${signature ? 'bg-red-50 text-red-500 border border-red-100' : 'bg-slate-100 hover:bg-red-100 hover:text-red-500'}`}
-                                                title={signature ? "Löschen als Manager erzwingen" : "Löschen"}
                                             >
                                                 <Trash2 size={14}/>
                                             </button>
                                         ) : (
-                                            /* Wenn signiert und kein Manager: Schloss anzeigen */
                                             <div className="p-2 text-slate-300">
                                                 <Lock size={14}/>
                                             </div>
@@ -3732,7 +3753,7 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
                                             className="text-center h-14 font-bold text-xl" 
                                             value={inp[dev.id]?.t || ''} 
                                             onChange={e => setInp({...inp, [dev.id]: {...inp[dev.id], t: e.target.value}})} 
-                                            disabled={signature && !isManager} // Eingabe sperren wenn signiert
+                                            disabled={signature && !isManager} 
                                         />
                                     </div>
                                     <div className="flex-1 space-y-1">
@@ -3777,14 +3798,27 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
             
             <div className="mt-8 pt-6 border-t border-slate-200">
                 {signature ? (
-                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold shadow-sm">
-                        <div className="bg-white p-2 rounded-full shadow-sm"><PenTool size={20}/></div>
-                        <div className="flex-1">
+                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold shadow-sm relative overflow-hidden">
+                        <div className="bg-white p-2 rounded-full shadow-sm z-10"><PenTool size={20}/></div>
+                        <div className="flex-1 z-10">
                             <div className="text-[10px] uppercase opacity-70 tracking-wider">Verantwortlich geprüft von</div>
                             <div className="text-lg leading-tight">{signature.user}</div>
                         </div>
+                        
+                        {/* BUTTON ZUM ENTSIGNIEREN (Nur für Manager sichtbar) */}
                         {isManager && (
-                           <div className="text-[10px] bg-red-100 text-red-600 px-2 py-1 rounded font-bold">ADMIN MODE</div>
+                            <button 
+                                onClick={unsign}
+                                className="z-10 bg-white text-red-500 p-3 rounded-xl shadow-sm hover:bg-red-500 hover:text-white transition-all border border-red-100 ml-2"
+                                title="Unterschrift entfernen und Protokoll öffnen"
+                            >
+                                <Trash2 size={18} />
+                            </button>
+                        )}
+
+                        {/* Hintergrund-Indikator für Admins */}
+                        {isManager && (
+                           <div className="absolute right-0 top-0 bg-red-500/5 text-red-600 text-[10px] px-2 py-0.5 rounded-bl-lg font-bold">ADMIN</div>
                         )}
                     </div>
                 ) : (
@@ -3794,6 +3828,7 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
         </div>
     ); 
 };
+
 const Editor = ({ type, data, close, appId, showToast, btnStyle }) => { 
             const [form, setForm] = useState({...data}); 
             const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); 
