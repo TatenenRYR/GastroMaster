@@ -3563,7 +3563,7 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
     );
 };
 //Fritteusenliste
-const Oil = ({ data, status, user, appId, showToast, lang }) => {
+const Oil = ({ data, status, user, appId, showToast, lang }) => { 
     const [inp, setInp] = useState({}); 
     const active = (data.fryers || []).filter(d => d.status!=='defekt'); 
     const signature = (status.signatures || {})['oil']; 
@@ -3571,35 +3571,49 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
     const oilLogs = status.oilLogs || {}; 
     const canSign = active.length > 0 && active.every(d => oilLogs[d.id]); 
 
-    // --- KORRIGIERTE LÖSCH-FUNKTION ---
-    const deleteLog = async (logId, devId) => { 
-        if(confirm("Eintrag wirklich löschen?")) { 
-            try {
-                // 1. ZUERST lokal die Felder leeren (damit sie leer sind, wenn sie gleich sichtbar werden)
-                setInp(prev => ({
-                    ...prev,
-                    [devId]: { t: '', p: '' }
-                }));
+    // --- SMARTE LÖSCH-FUNKTION V2.0 ---
+    // Jetzt mit Gerätenamen für bessere Logs und Audit-Trail
+    const deleteLog = async (logId, devId, devName) => { 
+        if(!confirm(`Möchtest du die Messung für "${devName}" wirklich unwiderruflich löschen?`)) return;
 
-                // 2. DANN aus der Datenbank löschen
-                if (logId) {
-                    await deleteDoc(doc(db,'artifacts',appId,'public', 'data', 'logs_oil', logId)); 
-                }
-                
-                showToast("Gelöscht."); 
-            } catch (e) {
-                console.error("Löschfehler:", e);
-                showToast("Fehler beim Löschen", "error");
+        try {
+            // 1. Audit-Log schreiben (Hintergrund-Protokollierung für Sicherheit)
+            // Das verhindert, dass Mitarbeiter heimlich schlechte Werte löschen, ohne dass es jemand merkt.
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'audit_logs'), {
+                user: user.name,
+                action: 'DELETE_OIL_LOG',
+                details: `Messung gelöscht für: ${devName} (ID: ${logId})`,
+                timestamp: serverTimestamp()
+            });
+
+            // 2. UI sofort bereinigen (Optimistic Update)
+            setInp(prev => ({
+                ...prev,
+                [devId]: { t: '', p: '' }
+            }));
+
+            // 3. Datenbank-Eintrag entfernen
+            if (logId) {
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_oil', logId)); 
             }
+            
+            showToast(`Messung für ${devName} entfernt.`, "success"); 
+
+        } catch (e) {
+            console.error("Critical Delete Error:", e);
+            // Fehler-Feedback
+            showToast("Fehler: Löschen fehlgeschlagen.", "error");
+            
+            // Optional: Falls das Löschen fehlschlägt, könnte man hier die Werte theoretisch wiederherstellen,
+            // aber in diesem Fall ist das Leeren der Felder das sicherere Fallback.
         }
     }; 
 
-    // --- KORRIGIERTE SPEICHER-FUNKTION (WICHTIG!) ---
     const save = async (dev) => { 
         const tempVal = inp[dev.id]?.t;
         const tpmVal = inp[dev.id]?.p; 
         
-        if(!tempVal || !tpmVal) return showToast("Werte fehlen!", "error"); 
+        if(!tempVal || !tpmVal) return showToast("Bitte beide Werte eingeben!", "error"); 
 
         try {
             await addDoc(collection(db,'artifacts',appId,'public','data','logs_oil'), { 
@@ -3607,63 +3621,67 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
                 user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() 
             }); 
 
-            // HIER WAR DER FEHLER: Felder müssen nach dem Speichern geleert werden!
+            // Felder leeren nach erfolgreichem Speichern
             setInp(prev => ({
                 ...prev,
                 [dev.id]: { t: '', p: '' }
             }));
 
-            showToast("Gespeichert"); 
+            showToast("Wert gespeichert."); 
         } catch(e) {
             console.error(e);
-            showToast("Fehler beim Speichern", "error");
+            showToast("Speicherfehler", "error");
         }
     }; 
 
     const sign = async () => { 
-        if(confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) { 
+        if(confirm(`Hiermit bestätige ich, ${user.name}, die korrekte Durchführung der Messungen.`)) { 
             await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_oil`), { 
                 module:'oil', user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() 
             }); 
-            showToast("Protokoll signiert!"); 
+            showToast("Protokoll erfolgreich signiert!", "success"); 
         } 
     }; 
 
     return (
         <div className="animate-in space-y-6">
-            <div><h2 className="text-3xl font-black text-inherit">{t.oil}</h2><p className="text-inherit opacity-60 text-sm font-medium">TPM Messung</p></div>
+            <div><h2 className="text-3xl font-black text-inherit">{t.oil}</h2><p className="text-inherit opacity-60 text-sm font-medium">TPM Qualitätssicherung</p></div>
             <div className="space-y-4">
                 {active.map(dev => { 
                     const l = oilLogs[dev.id]; 
+                    // Quality Logic: Grün (<20), Gelb (20-24), Rot (>=24)
                     const quality = l ? (l.tpm>=24?'bad':l.tpm>=20?'warn':'good') : null; 
                     const colors = { bad: 'bg-red-500 shadow-red-200', warn: 'bg-amber-500 shadow-amber-200', good: 'bg-emerald-500 shadow-emerald-200' }; 
-                    const labels = { bad: 'Wechseln', warn: 'Filtern', good: 'OK' }; 
+                    const labels = { bad: 'ÖL WECHSELN', warn: 'BALD WECHSELN', good: 'OK' }; 
                     
                     return (
-                        <div key={dev.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                        <div key={dev.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm transition-all hover:shadow-md">
                             <div className="flex justify-between items-center mb-6">
                                 <span className="font-bold text-lg text-slate-700">{dev.name}</span>
                                 {l ? (
                                     <div className="flex items-center gap-2">
-                                        <span className={`text-white text-xs font-black px-3 py-1.5 rounded-xl uppercase shadow-lg ${colors[quality]}`}>{labels[quality]}</span>
-                                        <button onClick={() => deleteLog(l.id, dev.id)} className="p-2 bg-slate-100 rounded-full hover:bg-red-100 hover:text-red-500 transition-colors">
-                                            <Trash2 size={14}/>
+                                        <span className={`text-white text-[10px] font-black px-3 py-1.5 rounded-xl uppercase shadow-lg tracking-wider ${colors[quality]}`}>
+                                            {labels[quality]}
+                                        </span>
+                                        {/* UPDATE: dev.name wird jetzt mit übergeben */}
+                                        <button onClick={() => deleteLog(l.id, dev.id, dev.name)} className="p-2 bg-slate-50 rounded-full hover:bg-red-50 hover:text-red-500 transition-colors border border-slate-100">
+                                            <Trash2 size={16}/>
                                         </button>
                                     </div>
                                 ) : (
-                                    <span className="bg-slate-100 text-slate-400 text-xs font-bold px-2 py-1 rounded-lg">Messung offen</span>
+                                    <span className="bg-slate-100 text-slate-400 text-[10px] uppercase font-bold px-3 py-1 rounded-lg tracking-wide">Offen</span>
                                 )}
                             </div>
                             
                             {!l ? (
                                 <div className="flex gap-3">
                                     <div className="flex-1 space-y-1">
-                                        <div className="text-[10px] uppercase font-bold text-slate-400 ml-1">Temp</div>
+                                        <div className="text-[10px] uppercase font-bold text-slate-400 ml-1">Temp °C</div>
                                         <Input 
                                             type="number" 
                                             inputMode="decimal" 
-                                            placeholder="°C" 
-                                            className="text-center h-14 font-bold text-xl" 
+                                            placeholder="000" 
+                                            className="text-center h-14 font-bold text-xl bg-slate-50 focus:bg-white transition-colors" 
                                             value={inp[dev.id]?.t || ''} 
                                             onChange={e => setInp({...inp, [dev.id]: {...inp[dev.id], t: e.target.value}})} 
                                         />
@@ -3673,23 +3691,29 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
                                         <Input 
                                             type="number" 
                                             inputMode="decimal" 
-                                            placeholder="%" 
-                                            className="text-center h-14 font-bold text-xl" 
+                                            placeholder="00" 
+                                            className="text-center h-14 font-bold text-xl bg-slate-50 focus:bg-white transition-colors" 
                                             value={inp[dev.id]?.p || ''} 
                                             onChange={e => setInp({...inp, [dev.id]: {...inp[dev.id], p: e.target.value}})} 
                                         />
                                     </div>
                                     <div className="space-y-1">
                                         <div className="h-[17px]"></div>
-                                        <button onClick={() => save(dev)} className="bg-slate-900 text-white h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg">
+                                        <button onClick={() => save(dev)} className="bg-slate-900 text-white h-14 w-14 rounded-2xl flex items-center justify-center shadow-xl shadow-slate-200 active:scale-95 transition-all">
                                             <Save size={24}/>
                                         </button>
                                     </div>
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Temp</div><div className="font-black text-xl text-slate-700">{l.temp}°C</div></div>
-                                    <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">TPM</div><div className="font-black text-xl text-slate-700">{l.tpm}%</div></div>
+                                    <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100">
+                                        <div className="text-[9px] uppercase font-bold text-slate-400 mb-1">Temperatur</div>
+                                        <div className="font-black text-xl text-slate-700">{l.temp}°C</div>
+                                    </div>
+                                    <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100">
+                                        <div className="text-[9px] uppercase font-bold text-slate-400 mb-1">TPM Wert</div>
+                                        <div className={`font-black text-xl ${l.tpm >= 24 ? 'text-red-500' : 'text-slate-700'}`}>{l.tpm}%</div>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -3698,14 +3722,26 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
             </div>
             <div className="mt-8 pt-6 border-t border-slate-200">
                 {signature ? (
-                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold"><PenTool size={20}/><div className="flex-1"><div className="text-xs uppercase opacity-70">Digital Signiert von</div><div className="text-lg">{signature.user}</div></div></div>
+                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-4 text-emerald-900 shadow-sm">
+                        <div className="bg-emerald-100 p-2 rounded-xl"><PenTool size={20}/></div>
+                        <div className="flex-1">
+                            <div className="text-[10px] uppercase font-bold opacity-60">Verantwortlich geprüft von</div>
+                            <div className="text-lg font-black">{signature.user}</div>
+                        </div>
+                        <div className="text-emerald-400"><CheckCircle size={24}/></div>
+                    </div>
                 ) : (
-                    <div className="space-y-2"><Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18}/> {t.sign}</Button></div>
+                    <div className="space-y-2">
+                        <Button onClick={sign} disabled={!canSign} className="bg-slate-900 shadow-xl shadow-slate-200 h-16 text-lg">
+                            <PenTool size={20}/> {t.sign}
+                        </Button>
+                        {!canSign && <p className="text-center text-xs text-slate-400 font-bold mt-2">Alle aktiven Fritteusen müssen gemessen sein.</p>}
+                    </div>
                 )}
             </div>
         </div>
     ); 
-}; 
+};
 const Editor = ({ type, data, close, appId, showToast, btnStyle }) => { 
             const [form, setForm] = useState({...data}); 
             const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); 
