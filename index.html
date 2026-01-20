@@ -175,7 +175,7 @@
             Users, Languages, Ticket, ListChecks, Clock, PlayCircle, StopCircle, Palette, Megaphone, Power, Monitor, Check,
             MessageCircle, LayoutGrid, ToggleLeft, ToggleRight, Brush, ClipboardCheck, Utensils,
             Palmtree, Wrench, Link, Sun, Cloud, BookOpen,
-            Euro, Video, Coins, Wallet, Calculator, Briefcase, HelpCircle, Mail
+            Euro, Video, Coins, Wallet, Calculator, Briefcase, HelpCircle, Mail, PowerOff
         } from "https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0";
         const { useState, useEffect, useRef, useMemo } = React;
 
@@ -3953,9 +3953,9 @@ const Inventory = ({ data, status, user, appId, showToast, lang }) => {
 };
 
 //Kühlgeräte
- const Cooling = ({ data, status, user, appId, showToast, lang }) => {
+const Cooling = ({ data, status, user, appId, showToast, lang }) => {
     const [val, setVal] = useState({});
-    const [measures, setMeasures] = useState({}); // NEU: Speichert Maßnahmen pro Gerät
+    const [measures, setMeasures] = useState({}); // Für Korrekturmaßnahmen
     const [editingId, setEditingId] = useState(null);
     const [infoItem, setInfoItem] = useState(null);
 
@@ -3963,6 +3963,8 @@ const Inventory = ({ data, status, user, appId, showToast, lang }) => {
     const t = DICTIONARY[lang];
     const signature = (status.signatures || {})['cooling'];
     const tempLogs = status.tempLogs || [];
+    
+    // Prüfen, ob alle Geräte erledigt sind
     const canSign = active.length > 0 && active.every(d => tempLogs.find(l => l.deviceId === d.id));
 
     const checkCritical = (value, dev) => {
@@ -3976,10 +3978,9 @@ const Inventory = ({ data, status, user, appId, showToast, lang }) => {
         if(signature) return showToast("Bereits unterschrieben!", "error");
         setEditingId(dev.id);
         setVal(prev => ({ ...prev, [dev.id]: currentLog.temp }));
-        // Falls bereits eine Maßnahme existierte, könnte man sie hier laden, 
-        // aber meistens ist das Ändern nur für Tippfehler gedacht.
     };
 
+    // --- SPEICHERN MIT HACCP PRÜFUNG ---
     const save = async (dev) => {
         const inputVal = val[dev.id];
         if (!inputVal) return;
@@ -3987,8 +3988,7 @@ const Inventory = ({ data, status, user, appId, showToast, lang }) => {
         const isCritical = checkCritical(inputVal, dev);
         const measure = measures[dev.id] || '';
 
-        // --- HACCP SICHERHEITS-CHECK ---
-        // Wenn Wert kritisch ist, MUSS eine Maßnahme eingetragen werden
+        // WICHTIG: Maßnahme erzwingen bei kritischem Wert
         if (isCritical && measure.length < 3) {
             return showToast("HACCP: Bitte Maßnahme eingeben!", "error");
         }
@@ -4001,12 +4001,11 @@ const Inventory = ({ data, status, user, appId, showToast, lang }) => {
             dateStr: getTodayStr(), 
             createdAt: serverTimestamp(), 
             isCritical: isCritical,
-            correctiveAction: isCritical ? measure : null // Maßnahme speichern
+            correctiveAction: isCritical ? measure : null 
         };
         
         try {
             if (isCritical) {
-                // Alarm mit Maßnahme im System-Log
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), { 
                     text: `🚨 ALARM KÜHLUNG: ${dev.name} hat ${inputVal}°C! Maßnahme: ${measure}`, 
                     user: "SYSTEM-ALARM", 
@@ -4026,18 +4025,25 @@ const Inventory = ({ data, status, user, appId, showToast, lang }) => {
             }
             
             showToast("Gespeichert");
-            
-            // Felder leeren
             setVal(p => ({ ...p, [dev.id]: '' }));
             setMeasures(p => { const n = {...p}; delete n[dev.id]; return n; });
 
         } catch (e) { showToast("Fehler", "error"); }
     };
 
+    // --- RECHTSSICHERE UNTERSCHRIFT ---
     const sign = async () => {
-        if (confirm(`Hiermit bestätige ich, ${user.name}, die Prüfung.`)) {
-            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_signatures', `${getTodayStr()}_cooling`), { module: 'cooling', user: user.name, dateStr: getTodayStr(), createdAt: serverTimestamp() });
-            showToast("Unterschrieben!");
+        // Der Text hier ist wichtig für die Rechtsgültigkeit
+        if (confirm(`HACCP BESTÄTIGUNG:\n\nHiermit bestätige ich, ${user.name}, dass alle eingetragenen Werte korrekt ermittelt wurden und die Kontrollen ordnungsgemäß durchgeführt wurden.\n\nDies gilt als elektronische Unterschrift.`)) {
+            
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs_signatures', `${getTodayStr()}_cooling`), { 
+                module: 'cooling', 
+                user: user.name, 
+                userId: user.id, // ID zur eindeutigen Zuordnung
+                dateStr: getTodayStr(), 
+                timestamp: serverTimestamp() // Exakte Serverzeit
+            });
+            showToast("Elektronisch signiert!");
         }
     };
 
@@ -4057,12 +4063,13 @@ const Inventory = ({ data, status, user, appId, showToast, lang }) => {
             )}
 
             <div><h2 className="text-3xl font-black text-inherit">{t.temp}</h2><p className="opacity-60 text-sm font-medium">Bereichskontrolle</p></div>
+            
             <div className="grid gap-4">
                 {active.map(dev => {
                     const done = tempLogs.find(l => l.deviceId === dev.id);
                     const isEditing = editingId === dev.id;
                     const v = val[dev.id] || '';
-                    const m = measures[dev.id] || ''; // Aktuelle Maßnahme Eingabe
+                    const m = measures[dev.id] || ''; 
                     
                     const isCriticalInput = checkCritical(v, dev);
                     const isCriticalSaved = done && checkCritical(done.temp, dev);
@@ -4117,7 +4124,6 @@ const Inventory = ({ data, status, user, appId, showToast, lang }) => {
                                 </div>
                             )}
 
-                            {/* GESPEICHERTE WARNUNG & MAßNAHME ANZEIGEN */}
                             {isCriticalSaved && !isEditing && (
                                 <div className="mt-3 bg-white/60 p-3 rounded-xl border border-red-100">
                                     <div className="text-red-500 text-xs font-bold flex items-center gap-1 mb-1">
@@ -4138,18 +4144,40 @@ const Inventory = ({ data, status, user, appId, showToast, lang }) => {
             
             <div className="mt-8 pt-6 border-t border-slate-200">
                 {signature ? (
-                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold"><PenTool size={20} /><div className="flex-1"><div className="text-xs uppercase opacity-70">Signiert von</div><div className="text-lg">{signature.user}</div></div></div>
+                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 shadow-sm">
+                        <div className="bg-white p-2 rounded-full shadow-sm">
+                            <CheckCircle size={24} className="text-emerald-600"/>
+                        </div>
+                        <div className="flex-1">
+                            <div className="text-[10px] uppercase opacity-70 tracking-wider font-bold">
+                                Elektronisch signiert
+                            </div>
+                            <div className="text-lg font-black leading-tight">
+                                {signature.user}
+                            </div>
+                            {/* Timestamp anzeigen, wenn vorhanden */}
+                            {signature.timestamp && (
+                                <div className="text-xs opacity-80 font-mono mt-1">
+                                    {new Date(signature.timestamp.seconds * 1000).toLocaleString('de-DE')}
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 ) : (
-                    <Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18} /> {t.sign}</Button>
+                    <Button onClick={sign} disabled={!canSign} className="shadow-indigo-200 w-full py-4 text-lg">
+                        <PenTool size={18} className="mr-2" /> 
+                        Tagesabschluss unterschreiben
+                    </Button>
                 )}
             </div>
         </div>
     );
 };
-        //Fritteusenliste
+
+//Fritteusenliste
 const Oil = ({ data, status, user, appId, showToast, lang }) => { 
     const [inp, setInp] = useState({}); 
-    const [infoItem, setInfoItem] = useState(null); // NEU: Info State
+    const [infoItem, setInfoItem] = useState(null); 
 
     const active = (data.fryers || []).filter(d => d.status !== 'defekt'); 
     const signature = (status.signatures || {})['oil']; 
@@ -4173,18 +4201,53 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
 
     const save = async (dev) => { 
         if (signature && !isManager) return showToast("Protokoll ist abgeschlossen.", "error");
-        const tempVal = inp[dev.id]?.t; const tpmVal = inp[dev.id]?.p; 
+        
+        const tempVal = inp[dev.id]?.t; 
+        const tpmVal = inp[dev.id]?.p; 
+        
         if(!tempVal || !tpmVal) return showToast("Werte fehlen!", "error"); 
+
         try {
-            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_oil'), { deviceId: dev.id, deviceName: dev.name, temp: tempVal, tpm: tpmVal, user: user.name, dateStr: getTodayStr(), createdAt: serverTimestamp() }); 
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_oil'), { 
+                deviceId: dev.id, 
+                deviceName: dev.name, 
+                temp: tempVal, 
+                tpm: tpmVal, 
+                user: user.name, 
+                dateStr: getTodayStr(), 
+                status: 'measured', // Standard Status
+                createdAt: serverTimestamp() 
+            }); 
             setInp(prev => { const newState = { ...prev }; delete newState[dev.id]; return newState; });
             showToast("Gespeichert"); 
         } catch(e) { showToast("Speicherfehler", "error"); }
     }; 
 
+    // NEU: Funktion für "Nicht benutzt"
+    const setNotUsed = async (dev) => {
+        if (signature && !isManager) return showToast("Protokoll ist abgeschlossen.", "error");
+        if(!confirm(`${dev.name} heute nicht benutzt?`)) return;
+
+        try {
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs_oil'), { 
+                deviceId: dev.id, 
+                deviceName: dev.name, 
+                temp: 0, 
+                tpm: 0, 
+                user: user.name, 
+                dateStr: getTodayStr(), 
+                status: 'not_used', // Spezieller Status
+                createdAt: serverTimestamp() 
+            }); 
+            showToast("Als 'Nicht benutzt' markiert"); 
+        } catch(e) { showToast("Fehler", "error"); }
+    };
+
     const sign = async () => { 
-        if(confirm(`Ich, ${user.name}, bestätige die Richtigkeit.`)) { 
-            await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_oil`), { module:'oil', user:user.name, dateStr:getTodayStr(), createdAt:serverTimestamp() }); 
+        if(confirm(`HACCP BESTÄTIGUNG:\n\nHiermit bestätige ich, ${user.name}, die Richtigkeit der Angaben.\nDies gilt als elektronische Unterschrift.`)) { 
+            await setDoc(doc(db,'artifacts',appId,'public','data','logs_signatures',`${getTodayStr()}_oil`), { 
+                module:'oil', user:user.name, userId: user.id, dateStr:getTodayStr(), createdAt:serverTimestamp() 
+            }); 
             showToast("Protokoll signiert!"); 
         } 
     }; 
@@ -4219,37 +4282,68 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
             <div className="space-y-4">
                 {active.map(dev => { 
                     const l = oilLogs[dev.id]; 
-                    const quality = l ? (l.tpm>=24?'bad':l.tpm>=20?'warn':'good') : null; 
+                    
+                    // Status Bestimmung
+                    const isNotUsed = l && l.status === 'not_used';
+                    let quality = null;
+                    if(l && !isNotUsed) {
+                        quality = l.tpm >= 24 ? 'bad' : l.tpm >= 20 ? 'warn' : 'good';
+                    }
+
                     const colors = { bad: 'bg-red-500 shadow-red-200', warn: 'bg-amber-500 shadow-amber-200', good: 'bg-emerald-500 shadow-emerald-200' }; 
                     const labels = { bad: 'Wechseln', warn: 'Filtern', good: 'OK' }; 
                     
                     return (
-                        <div key={dev.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                        <div key={dev.id} className={`bg-white p-6 rounded-[2rem] border shadow-sm transition-all ${isNotUsed ? 'opacity-60 border-dashed bg-slate-50' : 'border-slate-100'}`}>
                             <div className="flex justify-between items-center mb-6">
                                 <span className="font-bold text-lg text-slate-700 flex items-center gap-2">
                                     {dev.name}
-                                    {/* INFO BUTTON */}
                                     {dev.info && <button onClick={()=>setInfoItem(dev)} className="text-indigo-400 hover:text-indigo-600 transition-colors"><HelpCircle size={18}/></button>}
                                 </span>
                                 {l ? (
                                     <div className="flex items-center gap-2">
-                                        <span className={`text-white text-xs font-black px-3 py-1.5 rounded-xl uppercase shadow-lg ${colors[quality]}`}>{labels[quality]}</span>
+                                        {isNotUsed ? (
+                                            <span className="bg-slate-200 text-slate-500 text-xs font-black px-3 py-1.5 rounded-xl uppercase">Nicht benutzt</span>
+                                        ) : (
+                                            <span className={`text-white text-xs font-black px-3 py-1.5 rounded-xl uppercase shadow-lg ${colors[quality]}`}>{labels[quality]}</span>
+                                        )}
+                                        
                                         {(!signature || isManager) ? <button onClick={() => deleteLog(l.id, dev.id, dev.name)} className="p-2 rounded-full bg-slate-100 hover:text-red-500"><Trash2 size={14}/></button> : <div className="p-2 text-slate-300"><Lock size={14}/></div>}
                                     </div>
                                 ) : <span className="bg-slate-100 text-slate-400 text-xs font-bold px-2 py-1 rounded-lg">Messung offen</span>}
                             </div>
                             
                             {!l ? (
-                                <div className="flex gap-3">
+                                <div className="flex gap-3 items-end">
                                     <div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">Temp °C</div><Input type="number" inputMode="decimal" placeholder="000" className="text-center h-14 font-bold text-xl" value={inp[dev.id]?.t || ''} onChange={e => setInp({...inp, [dev.id]: {...inp[dev.id], t: e.target.value}})} disabled={signature && !isManager} /></div>
                                     <div className="flex-1 space-y-1"><div className="text-[10px] uppercase font-bold text-slate-400 ml-1">TPM %</div><Input type="number" inputMode="decimal" placeholder="00" className="text-center h-14 font-bold text-xl" value={inp[dev.id]?.p || ''} onChange={e => setInp({...inp, [dev.id]: {...inp[dev.id], p: e.target.value}})} disabled={signature && !isManager}/></div>
-                                    <div className="space-y-1"><div className="h-[17px]"></div>{(signature && !isManager) ? <div className="h-14 w-14 flex items-center justify-center text-slate-300"><Lock/></div> : <button onClick={() => save(dev)} className="bg-slate-900 text-white h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg active:scale-95 transition-all"><Save size={24}/></button>}</div>
+                                    
+                                    {/* ACTIONS */}
+                                    <div className="flex gap-2">
+                                        <button onClick={() => save(dev)} className="bg-slate-900 text-white h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg active:scale-95 transition-all"><Save size={24}/></button>
+                                        
+                                        {/* NICHT BENUTZT BUTTON */}
+                                        <button 
+                                            onClick={() => setNotUsed(dev)} 
+                                            className="bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600 h-14 w-14 rounded-2xl flex items-center justify-center transition-all"
+                                            title="Heute nicht benutzt"
+                                        >
+                                            <PowerOff size={20}/>
+                                        </button>
+                                    </div>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Temp</div><div className="font-black text-xl text-slate-700">{l.temp}°C</div></div>
-                                    <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">TPM</div><div className="font-black text-xl text-slate-700">{l.tpm}%</div></div>
-                                </div>
+                                // ANZEIGE NACH DEM SPEICHERN
+                                isNotUsed ? (
+                                    <div className="bg-slate-100 p-4 rounded-2xl text-center text-slate-400 text-sm font-medium italic border border-slate-200">
+                                        Gerät heute nicht in Betrieb genommen.
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Temp</div><div className="font-black text-xl text-slate-700">{l.temp}°C</div></div>
+                                        <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100"><div className="text-[10px] uppercase font-bold text-slate-400 mb-1">TPM</div><div className="font-black text-xl text-slate-700">{l.tpm}%</div></div>
+                                    </div>
+                                )
                             )}
                         </div>
                     ); 
@@ -4259,15 +4353,20 @@ const Oil = ({ data, status, user, appId, showToast, lang }) => {
             <div className="mt-8 pt-6 border-t border-slate-200">
                 {signature ? (
                     <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold shadow-sm relative overflow-hidden">
-                        <div className="bg-white p-2 rounded-full shadow-sm z-10"><PenTool size={20}/></div>
-                        <div className="flex-1 z-10"><div className="text-[10px] uppercase opacity-70 tracking-wider">Verantwortlich geprüft von</div><div className="text-lg leading-tight">{signature.user}</div></div>
+                        <div className="bg-white p-2 rounded-full shadow-sm z-10"><CheckCircle size={20}/></div>
+                        <div className="flex-1 z-10">
+                            <div className="text-[10px] uppercase opacity-70 tracking-wider">Elektronisch signiert</div>
+                            <div className="text-lg leading-tight">{signature.user}</div>
+                            {signature.timestamp && <div className="text-xs opacity-80 font-mono mt-1">{new Date(signature.timestamp.seconds * 1000).toLocaleString('de-DE')}</div>}
+                        </div>
                         {isManager && <button onClick={unsign} className="z-10 bg-white text-red-500 p-3 rounded-xl shadow-sm hover:bg-red-500 hover:text-white transition-all ml-2"><Trash2 size={18} /></button>}
                     </div>
-                ) : <Button onClick={sign} disabled={!canSign} className="shadow-indigo-200"><PenTool size={18}/> {t.sign}</Button>}
+                ) : <Button onClick={sign} disabled={!canSign} className="shadow-indigo-200 w-full py-4 text-lg"><PenTool size={18} className="mr-2"/> Tagesabschluss unterschreiben</Button>}
             </div>
         </div>
     ); 
 };
+
 const Editor = ({ type, data, close, appId, showToast, btnStyle }) => { 
     const [form, setForm] = useState({...data}); 
     const [sched, setSched] = useState(data.schedule || {Mo:true,Di:true,Mi:true,Do:true,Fr:true,Sa:true,So:true}); 
