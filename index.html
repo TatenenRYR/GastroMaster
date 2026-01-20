@@ -4189,74 +4189,6 @@ const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView, onLog
     const initDeleteBranch = () => { const a=Math.floor(Math.random()*10)+1; const b=Math.floor(Math.random()*10)+1; setDeleteMath({q:`${a} + ${b}`, a:a+b}); };
     const confirmDeleteBranch = async () => { if(parseInt(deleteInput) === deleteMath.a) { deleteBranch(); } else { showToast("Rechnung falsch!", "error"); } };
 
-    //Einstellungsmöglichkeiten:
-    const ModuleConfigurator = ({ data, appId, showToast, btnStyle }) => {
-    // Falls noch keine Daten da sind, leeres Objekt nutzen
-    const [config, setConfig] = useState(data || { 
-        inventory: { targetEmail: '' },
-        cleaning: { active: true },
-        cooling: { active: true }
-    });
-
-    const save = async () => {
-        try {
-            // Wir speichern das im 'settings' Dokument unter dem Feld 'modules'
-            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings'), { 
-                modules: config,
-                updatedAt: serverTimestamp() 
-            }, { merge: true });
-            
-            showToast("Einstellungen gespeichert", "success");
-        } catch (e) {
-            console.error(e);
-            showToast("Fehler beim Speichern", "error");
-        }
-    };
-
-    return (
-        <div className="animate-in space-y-6">
-            <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex items-start gap-3">
-                <div className="bg-white p-2 rounded-full text-indigo-600 shadow-sm"><Settings size={20}/></div>
-                <div>
-                    <h3 className="font-bold text-indigo-900">Modul Konfiguration</h3>
-                    <p className="text-xs text-indigo-700 mt-1">Hier können Sie spezielle Einstellungen für die einzelnen Bereiche vornehmen.</p>
-                </div>
-            </div>
-
-            {/* --- EINKAUFSLISTE (INVENTORY) --- */}
-            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
-                <div className="flex items-center gap-2 border-b border-slate-50 pb-3">
-                    <ShoppingBag className="text-slate-400" size={20}/>
-                    <h3 className="font-bold text-lg text-slate-700">Einkaufsliste</h3>
-                </div>
-                
-                <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase text-slate-400 ml-1">Automatische Ziel-Email Adresse</label>
-                    <Input 
-                        type="email" 
-                        placeholder="z.B. einkauf@mein-restaurant.de" 
-                        value={config.inventory?.targetEmail || ''} 
-                        onChange={e => setConfig({
-                            ...config, 
-                            inventory: { ...config.inventory, targetEmail: e.target.value }
-                        })} 
-                    />
-                    <p className="text-[10px] text-slate-400 ml-1">
-                        Wenn hier eine Email steht, wird die Einkaufsliste direkt an diese Adresse gesendet, ohne nachzufragen. 
-                        Bleibt das Feld leer, wird die Firmen-Email genutzt oder gefragt.
-                    </p>
-                </div>
-            </div>
-
-            {/* --- PLATZHALTER FÜR SPÄTERE MODULE --- */}
-            {/* Hier könnten später Schalter für "Putzplan deaktivieren" etc. hin */}
-            
-            <Button onClick={save} className="mt-4 shadow-xl shadow-slate-900/10" style={btnStyle}>
-                <Save size={18} className="mr-2"/> Einstellungen speichern
-            </Button>
-        </div>
-    );
-};
     // --- GENERIC EXCEL IMPORTER ---
     const handleExcelImport = async (e, collectionName, mapRowToPayload) => {
         const file = e.target.files[0];
@@ -4560,26 +4492,186 @@ const ItemList = ({ items, onEdit, onDelete, subText }) => (
     </div>
 );
         const ModuleConfigurator = ({ data, appId, showToast, btnStyle }) => {
-            // HIER IST DER FIX: Wir laden Standards UND gespeicherte Daten zusammen
-            const [modules, setModules] = useState({ ...DEFAULT_MODULES_CONFIG, ...(data || {}) });
+    // Standard-Werte mit gespeicherten Daten mischen
+    const [modules, setModules] = useState({ ...DEFAULT_MODULES_CONFIG, ...(data || {}) });
+    
+    // State für das geöffnete Einstellungs-Popup (speichert den Key des Moduls, z.B. 'inventory')
+    const [configModal, setConfigModal] = useState(null);
+    
+    const handleToggle = (key) => setModules(p => ({...p, [key]: { ...p[key], enabled: !p[key].enabled } }));
+    const handleNameChange = (key, val) => setModules(p => ({...p, [key]: { ...p[key], name: val } }));
+    const handleIconChange = (key, val) => setModules(p => ({...p, [key]: { ...p[key], icon: val } }));
+    
+    // Neue Funktion: Speichert spezifische Einstellungen (z.B. targetEmail) innerhalb des Moduls
+    const handleSettingChange = (moduleKey, settingKey, value) => {
+        setModules(prev => ({
+            ...prev,
+            [moduleKey]: {
+                ...prev[moduleKey],
+                // Wir speichern das direkt im Modul-Objekt oder in einem Unterobjekt 'settings'
+                [settingKey]: value 
+            }
+        }));
+    };
+    
+    const save = async () => { 
+        // Wir speichern das gesamte modules Objekt in settings/global
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), { modules }, { merge: true }); 
+        showToast("Einstellungen gespeichert!"); 
+        setConfigModal(null); // Popup schließen falls offen
+    };
+    
+    return (
+        <div className="space-y-6 animate-in relative">
             
-            const handleToggle = (key) => setModules(p => ({...p, [key]: { ...p[key], enabled: !p[key].enabled } }));
-            const handleNameChange = (key, val) => setModules(p => ({...p, [key]: { ...p[key], name: val } }));
-            const handleIconChange = (key, val) => setModules(p => ({...p, [key]: { ...p[key], icon: val } }));
+            {/* --- HEADER --- */}
+            <div>
+                <h3 className="font-bold text-lg">Module & Funktionen</h3>
+                <p className="text-slate-400 text-sm">Aktiviere Module und konfiguriere Details.</p>
+            </div>
+
+            {/* --- MODUL LISTE --- */}
+            <div className="space-y-4">
+                {Object.entries(modules).map(([key, config]) => (
+                    <div key={key} className={`p-4 rounded-2xl border transition-all ${config.enabled ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
+                        
+                        <div className="flex justify-between items-center mb-3">
+                            <div className="flex items-center gap-3">
+                                {/* Icon Box */}
+                                <div className={`p-2 rounded-lg ${config.enabled ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-400'}`}>
+                                    {ICON_MAP[config.icon] || <CheckCircle size={20}/>}
+                                </div>
+                                
+                                <div>
+                                    <div className="font-bold uppercase text-xs text-slate-500">{key}</div>
+                                    {config.enabled && <div className="font-bold text-slate-800">{config.name}</div>}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                                {/* ZAHNRAD BUTTON (Nur wenn aktiviert) */}
+                                {config.enabled && (
+                                    <button 
+                                        onClick={() => setConfigModal(key)} 
+                                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
+                                        title="Erweiterte Einstellungen"
+                                    >
+                                        <Settings size={20}/>
+                                    </button>
+                                )}
+
+                                {/* TOGGLE SWITCH */}
+                                <div className="relative inline-block w-12 align-middle select-none transition duration-200 ease-in">
+                                    <input type="checkbox" name={`toggle-${key}`} id={`toggle-${key}`} checked={config.enabled} onChange={()=>handleToggle(key)} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer border-slate-300 transition-all duration-300"/>
+                                    <label htmlFor={`toggle-${key}`} className={`toggle-label block overflow-hidden h-6 rounded-full cursor-pointer bg-slate-300 transition-colors duration-300 ${config.enabled ? 'bg-emerald-400' : ''}`}></label>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Standard Felder (Name & Icon) direkt sichtbar lassen oder ins Popup verschieben? 
+                            Ich lasse sie hier für schnellen Zugriff, das Popup ist für Details. */}
+                        {config.enabled && (
+                            <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-50">
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase text-slate-400">Anzeigename</label>
+                                    <Input value={config.name || ''} onChange={e=>handleNameChange(key, e.target.value)} className="py-1 text-sm h-8" />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase text-slate-400">Icon</label>
+                                    <Select value={config.icon || 'CheckCircle'} onChange={e=>handleIconChange(key, e.target.value)} className="py-1 text-sm h-8">
+                                        {Object.keys(ICON_MAP).map(i=><option key={i} value={i}>{i}</option>)}
+                                    </Select>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
             
-            const save = async () => { 
-                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), { modules }, { merge: true }); 
-                showToast("Module gespeichert! Bitte neuladen."); 
-            };
-            
-            return (
-                <div className="space-y-6 animate-in">
-                    <div><h3 className="font-bold text-lg">Module & Funktionen</h3><p className="text-slate-400 text-sm">Aktiviere, was du brauchst.</p></div>
-                    <div className="space-y-4">{Object.entries(modules).map(([key, config]) => (<div key={key} className={`p-4 rounded-2xl border transition-all ${config.enabled ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-100 opacity-60'}`}><div className="flex justify-between items-center mb-3"><div className="flex items-center gap-3"><div className={`p-2 rounded-lg ${config.enabled ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-400'}`}>{ICON_MAP[config.icon] || <CheckCircle size={20}/>}</div><div className="font-bold uppercase text-xs text-slate-500">{key}</div></div><div className="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in"><input type="checkbox" name={`toggle-${key}`} id={`toggle-${key}`} checked={config.enabled} onChange={()=>handleToggle(key)} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer border-slate-300 transition-all duration-300"/><label htmlFor={`toggle-${key}`} className={`toggle-label block overflow-hidden h-6 rounded-full cursor-pointer bg-slate-300 transition-colors duration-300 ${config.enabled ? 'bg-emerald-400' : ''}`}></label></div></div>{config.enabled && (<div className="grid grid-cols-2 gap-2"><div><label className="text-[10px] font-bold uppercase text-slate-400">Name in App</label><Input value={config.name || ''} onChange={e=>handleNameChange(key, e.target.value)} className="py-2 text-sm" /></div><div><label className="text-[10px] font-bold uppercase text-slate-400">Icon</label><Select value={config.icon || 'CheckCircle'} onChange={e=>handleIconChange(key, e.target.value)} className="py-2 text-sm">{Object.keys(ICON_MAP).map(i=><option key={i} value={i}>{i}</option>)}</Select></div></div>)}</div>))}</div>
-                    <Button onClick={save} style={btnStyle}>Speichern & Anwenden</Button>
+            <Button onClick={save} style={btnStyle} className="w-full py-4 shadow-xl">Speichern & Anwenden</Button>
+
+
+            {/* --- EINSTELLUNGS POPUP (MODAL) --- */}
+            {configModal && (
+                <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setConfigModal(null)}>
+                    <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                        
+                        {/* Modal Header */}
+                        <div className="bg-slate-50 p-6 border-b border-slate-100 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-indigo-100 text-indigo-600 p-2 rounded-xl">
+                                    {ICON_MAP[modules[configModal].icon] || <Settings size={20}/>}
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-xl text-slate-800">{modules[configModal].name}</h3>
+                                    <p className="text-xs font-bold uppercase text-slate-400">Einstellungen</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setConfigModal(null)} className="p-2 hover:bg-slate-200 rounded-full text-slate-400"><X size={24}/></button>
+                        </div>
+
+                        {/* Modal Body - HIER SIND DIE SPEZIFISCHEN FELDER */}
+                        <div className="p-6 space-y-6">
+                            
+                            {/* FALL 1: EINKAUFSLISTE (Inventory) */}
+                            {configModal === 'inventory' && (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                                            <Mail size={16}/> Automatische Ziel-Email
+                                        </label>
+                                        <Input 
+                                            type="email" 
+                                            placeholder="z.B. bestellung@chef.de" 
+                                            value={modules.inventory.targetEmail || ''} 
+                                            onChange={e => handleSettingChange('inventory', 'targetEmail', e.target.value)}
+                                        />
+                                        <p className="text-xs text-slate-500 bg-slate-50 p-3 rounded-xl">
+                                            Wenn ausgefüllt, wird die Einkaufsliste direkt an diese Adresse gesendet, ohne dass nachgefragt wird.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* FALL 2: KÜHLUNG (Beispiel) */}
+                            {configModal === 'cooling' && (
+                                <div className="space-y-4">
+                                     <div className="p-4 bg-sky-50 text-sky-800 rounded-xl text-sm font-medium">
+                                        Hier könnten später Grenzwerte oder Alarm-Emails für die Kühlung stehen. Aktuell keine Einstellungen.
+                                     </div>
+                                </div>
+                            )}
+
+                            {/* FALL 3: PUTZPLAN (Beispiel) */}
+                            {configModal === 'cleaning' && (
+                                <div className="space-y-4">
+                                     <div className="p-4 bg-emerald-50 text-emerald-800 rounded-xl text-sm font-medium">
+                                        Der Putzplan wird über den Reiter "Putzplan" konfiguriert (Aufgaben anlegen). Hier keine globalen Settings.
+                                     </div>
+                                </div>
+                            )}
+
+                            {/* FALLBACK: Keine Einstellungen */}
+                            {!['inventory', 'cooling', 'cleaning'].includes(configModal) && (
+                                <div className="text-center py-8 text-slate-400">
+                                    <Settings size={48} className="mx-auto mb-2 opacity-20"/>
+                                    <p>Für dieses Modul sind keine erweiterten Einstellungen verfügbar.</p>
+                                </div>
+                            )}
+
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                            <Button onClick={() => setConfigModal(null)} style={btnStyle} className="px-8 shadow-lg">OK</Button>
+                        </div>
+                    </div>
                 </div>
-            );
-        };
+            )}
+
+        </div>
+    );
+};
 
         const DesignEditor = ({ data, appId, showToast, btnStyle }) => {
             const [d, setD] = useState(data || { primaryColor: '#0f172a', backgroundColor: '#f8fafc', textColor: '#1e293b', headerColor: '#0f172a', logoUrl: '' });
