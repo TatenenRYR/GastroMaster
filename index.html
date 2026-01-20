@@ -3626,7 +3626,7 @@ const Inventory = ({ data, status, user, appId, showToast, lang }) => {
                             value={newQty} 
                             onChange={e=>setNewQty(e.target.value)} 
                             placeholder="Menge" 
-                            className="h-12 text-center font-bold"
+                            className="h-15 text-center font-bold"
                             inputMode="decimal"
                         />
                     </div>
@@ -3634,7 +3634,7 @@ const Inventory = ({ data, status, user, appId, showToast, lang }) => {
                         <Select 
                             value={newUnit} 
                             onChange={e=>setNewUnit(e.target.value)}
-                            className="h-12 font-bold text-center"
+                            className="h-15 font-bold text-center"
                         >
                             {units.map(u => <option key={u} value={u}>{u}</option>)}
                         </Select>
