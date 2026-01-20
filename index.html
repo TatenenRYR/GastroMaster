@@ -664,10 +664,8 @@ const PinPad = ({ title, onClose, onSuccess, targetPin }) => {
     const getCardValue = (id) => {
         if (id === 'time') return status.myTimeLog && !status.myTimeLog.end ? (status.myTimeLog.status === 'break' ? 'PAUSE' : 'LÄUFT') : 'STARTEN';
         if (id === 'cleaning') return (data.tasks || []).filter(i => !status.cleaningLogs[i.id]).length;
-        // Kasse Status: Wurde heute Abend schon abgeschlossen?
+        // Kasse Status
         if (id === 'cash') {
-            // Wir prüfen ob ein Evening-Log für heute existiert (Status wird über props übergeben oder müsste hier geholt werden)
-            // Da wir hier keinen direkten Zugriff auf cashLogs haben, lassen wir es neutral oder zeigen "OFFEN"
             return null; 
         }
         const day = ['So','Mo','Di','Mi','Do','Fr','Sa'][new Date().getDay()];
@@ -4604,7 +4602,7 @@ const ModuleConfigurator = ({ data, appId, showToast, btnStyle }) => {
     const [configModal, setConfigModal] = useState(null);
     
     // HIER: 'cash' hinzufügen, damit das Zahnrad auch beim Kassenbuch erscheint
-    const configurableModules = ['inventory', 'cash']; 
+    const configurableModules = ['inventory', 'cash', 'time']; 
     
     const handleToggle = (key) => setModules(p => ({...p, [key]: { ...p[key], enabled: !p[key].enabled } }));
     const handleNameChange = (key, val) => setModules(p => ({...p, [key]: { ...p[key], name: val } }));
@@ -4687,7 +4685,7 @@ const ModuleConfigurator = ({ data, appId, showToast, btnStyle }) => {
                                     </div>
                                 </div>
                             )}
-                            
+
                             {/* KASSENBUCH */}
                             {configModal === 'cash' && (
                                 <div className="space-y-4">
