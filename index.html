@@ -2489,7 +2489,12 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
     return (
         <div className="p-4 space-y-6 pb-32 animate-in">
             <div className="flex justify-between items-end pt-6 px-2">
-                <h1 className="text-3xl font-black italic tracking-tighter text-slate-800">BESTELLUNGEN</h1>
+                <h1 className="text-3xl font-black italic tracking-tighter text-slate-800">
+                    B.O.S.
+                </h1>
+                <p className="text-xs text-slate-400 font-bold tracking-widest uppercase mb-4">
+                    Bestell-Organisations-System (Powered by Marvin)
+                </p>
                 <div className="flex gap-2">
                     <button onClick={()=>setView('checks')} className="bg-white text-slate-900 border border-slate-200 p-3 rounded-2xl shadow-lg relative hover:bg-slate-50">
                         <SafeIcon name="ClipboardList" size={24}/>
