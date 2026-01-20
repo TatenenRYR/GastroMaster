@@ -175,7 +175,7 @@
             Users, Languages, Ticket, ListChecks, Clock, PlayCircle, StopCircle, Palette, Megaphone, Power, Monitor, Check,
             MessageCircle, LayoutGrid, ToggleLeft, ToggleRight, Brush, ClipboardCheck, Utensils,
             Palmtree, Wrench, Link, Sun, Cloud, BookOpen,
-            Euro, Video, Coins, Wallet, Calculator, Briefcase, HelpCircle, Mail
+            Euro, Video, Coins, Wallet, Calculator, Briefcase, HelpCircle, Mail, Euro
         } from "https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0";
         const { useState, useEffect, useRef, useMemo } = React;
 
@@ -229,6 +229,7 @@
             cooling: { enabled: true, name: "Kühlung", icon: "Snowflake" },
             ordering: { enabled: true, name: "Bestellen", icon: "Truck" },
             oil: { enabled: true, name: "Fett & Öl", icon: "Droplet" },
+            cash: { enabled: true, name: "Kassenbuch", icon: "Euro" },
             inventory: { enabled: true, name: "Einkauf", icon: "Truck" },
             waste: { enabled: false, name: "Schwund", icon: "Trash2" },
             shiftplan: { enabled: true, name: "Dienstplan", icon: "Calendar" },
@@ -623,12 +624,13 @@ const PinPad = ({ title, onClose, onSuccess, targetPin }) => {
                 </div>
             );
         };
-        const Dashboard = ({ user, status, data, setView, modulesConfig, lang, showToast, appId }) => {
+     const Dashboard = ({ user, status, data, setView, modulesConfig, lang, showToast, appId }) => {
     const t = DICTIONARY[lang];
     
-    // Definition aller verfügbaren Dashboard-Elemente
+    // 1. KASSENBUCH ZUR LISTE HINZUFÜGEN
     const allCards = [
         { id: 'time', title: t.time, sub: "Zeiterfassung", icon: <Clock/>, col: "bg-violet-500" },
+        { id: 'cash', title: "Kassenbuch", sub: "Abrechnung & Zählung", icon: <Euro/>, col: "bg-emerald-600", dept: 'service' }, // NEU
         { id: 'prep', title: t.prep, sub: "Mise en place", icon: <ClipboardList/>, col: "bg-indigo-500" },
         { id: 'cleaning', title: t.clean, sub: "Hygienekonzept", icon: <Sparkles/>, col: "bg-emerald-500" },
         { id: 'wiki', title: "Wissen", sub: "Wiki & Videos", icon: <BookOpen/>, col: "bg-amber-500" },
@@ -637,40 +639,37 @@ const PinPad = ({ title, onClose, onSuccess, targetPin }) => {
         { id: 'inventory', title: t.inventory, sub: "Bestellliste", icon: <Truck/>, col: "bg-slate-500" }
     ];
 
-    // Reihenfolge aus dem LocalStorage laden (spezifisch für diesen User)
     const storageKey = `gastro_order_${user.id}`;
     const [order, setOrder] = useState(() => {
         const saved = localStorage.getItem(storageKey);
-        return saved ? JSON.parse(saved) : allCards.map(c => c.id);
+        // Falls neue Module dazukommen, diese anhängen
+        const initial = saved ? JSON.parse(saved) : allCards.map(c => c.id);
+        const missing = allCards.map(c => c.id).filter(id => !initial.includes(id));
+        return [...initial, ...missing];
     });
 
     const [draggedItem, setDraggedItem] = useState(null);
 
-    // Drag & Drop Funktionen
-    const onDragStart = (e, id) => {
-        setDraggedItem(id);
-        e.dataTransfer.effectAllowed = "move";
-    };
-
+    const onDragStart = (e, id) => { setDraggedItem(id); e.dataTransfer.effectAllowed = "move"; };
     const onDragOver = (idx) => {
         const draggedIdx = order.indexOf(draggedItem);
         if (draggedIdx === idx) return;
-        
         const newOrder = [...order];
         newOrder.splice(draggedIdx, 1);
         newOrder.splice(idx, 0, draggedItem);
         setOrder(newOrder);
     };
+    const onDragEnd = () => { setDraggedItem(null); localStorage.setItem(storageKey, JSON.stringify(order)); };
 
-    const onDragEnd = () => {
-        setDraggedItem(null);
-        localStorage.setItem(storageKey, JSON.stringify(order));
-    };
-
-    // Hilfsfunktion für die Status-Werte (Zähler)
     const getCardValue = (id) => {
         if (id === 'time') return status.myTimeLog && !status.myTimeLog.end ? (status.myTimeLog.status === 'break' ? 'PAUSE' : 'LÄUFT') : 'STARTEN';
         if (id === 'cleaning') return (data.tasks || []).filter(i => !status.cleaningLogs[i.id]).length;
+        // Kasse Status: Wurde heute Abend schon abgeschlossen?
+        if (id === 'cash') {
+            // Wir prüfen ob ein Evening-Log für heute existiert (Status wird über props übergeben oder müsste hier geholt werden)
+            // Da wir hier keinen direkten Zugriff auf cashLogs haben, lassen wir es neutral oder zeigen "OFFEN"
+            return null; 
+        }
         const day = ['So','Mo','Di','Mi','Do','Fr','Sa'][new Date().getDay()];
         if (id === 'prep') return (data.prep || []).filter(i => i.schedule?.[day] && !status.prepLogs[i.id]).length;
         if (id === 'cooling') return (data.cooling || []).filter(d => d.status !== 'defekt' && !status.tempLogs.find(l => l.deviceId === d.id)).length;
@@ -686,35 +685,24 @@ const PinPad = ({ title, onClose, onSuccess, targetPin }) => {
                    <h2 className="text-3xl font-black text-slate-800">Hi, {user.name}</h2>
                    <p className="opacity-60 text-sm font-bold uppercase tracking-[0.2em]">{t.dash}</p>
                </div>
-               <div className="bg-indigo-50 p-2 rounded-xl text-indigo-400" title="Karten zum Sortieren gedrückt halten">
-                    <LayoutGrid size={20}/>
-               </div>
+               <div className="bg-indigo-50 p-2 rounded-xl text-indigo-400"><LayoutGrid size={20}/></div>
             </div>
 
             <TeamBoard messages={data.messages || []} user={user} appId={appId} showToast={showToast} />
 
-            {/* Kassen-Button bleibt fest oben fixiert */}
-            {(['admin', 'service_lead'].includes(user.role) || (user.departments || []).includes('service')) && (
-                <button onClick={() => setView('cash')} className="w-full bg-slate-900 text-white p-5 rounded-[2rem] shadow-xl flex items-center justify-between group active:scale-95 transition-transform mb-4">
-                    <div className="flex items-center gap-4">
-                        <div className="bg-white/20 p-3 rounded-2xl"><Euro size={24}/></div>
-                        <div className="text-left">
-                            <div className="font-black text-lg">Kassenbuch</div>
-                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Abrechnung & Zählung</div>
-                        </div>
-                    </div>
-                    <ChevronRight className="opacity-50"/>
-                </button>
-            )}
+            {/* HIER WURDE DER FESTE BUTTON ENTFERNT */}
 
-            {/* Sortierbares Raster */}
             <div className="grid grid-cols-2 gap-4 pb-20">
                 {order.map((cardId, index) => {
                     const card = allCards.find(c => c.id === cardId);
+                    if(!card) return null; // Falls ID nicht mehr existiert
+                    
                     const config = modulesConfig[cardId];
                     
-                    // Filter: Modul aktiviert + Rollen-Berechtigung
+                    // Modul deaktiviert?
                     if (!config?.enabled) return null;
+                    
+                    // Berechtigung prüfen (Admin sieht alles, sonst Abteilungs-Check)
                     if (card.dept && user.role !== 'admin' && !user.role.includes('lead') && !(user.departments || []).includes(card.dept)) return null;
 
                     const statusVal = getCardValue(cardId);
@@ -744,7 +732,6 @@ const PinPad = ({ title, onClose, onSuccess, targetPin }) => {
         </div>
     );
 };
-
 
         // --- BEZIRKSLEITUNG / MULTI-STORE MANAGEMENT ---
 
@@ -4293,7 +4280,7 @@ const Admin = ({ data, appId, showToast, debugMode, setDebugMode, setView, onLog
     
     let availableTabs = {};
     if(role === 'admin') { 
-        availableTabs = { staff: t.login, design: 'Design', modules: 'Module', settings: 'Setup', audit: 'Audit', cash: 'Kasse', prep: t.prep, tasks: t.clean, cooling: t.temp, fryers: t.oil, suppliers: 'Lief', company: 'Firma', system: 'Sys' }; 
+        availableTabs = { staff: t.login, design: 'Design', modules: 'Module', settings: 'Setup', audit: 'Audit', cash: 'Kasse', prep: t.prep, tasks: t.clean, cooling: t.temp, fryers: t.oil, suppliers: 'Lieferant', company: 'Firma', system: 'System' }; 
     } else { 
         availableTabs = { prep: t.prep, tasks: t.clean, cooling: t.temp, fryers: t.oil, suppliers: 'Lief' }; 
     }
@@ -4610,16 +4597,14 @@ const ItemList = ({ items, onEdit, onDelete, subText }) => (
         ))}
     </div>
 );
-       const ModuleConfigurator = ({ data, appId, showToast, btnStyle }) => {
+//Module Konfigurationen
+const ModuleConfigurator = ({ data, appId, showToast, btnStyle }) => {
     // Standard-Werte mit gespeicherten Daten mischen
     const [modules, setModules] = useState({ ...DEFAULT_MODULES_CONFIG, ...(data || {}) });
-    
-    // State für das geöffnete Einstellungs-Popup
     const [configModal, setConfigModal] = useState(null);
     
-    // LISTE DER MODULE, DIE EINSTELLUNGEN HABEN
-    // Nur bei diesen Schlüsseln wird das Zahnrad angezeigt!
-    const configurableModules = ['inventory']; 
+    // HIER: 'cash' hinzufügen, damit das Zahnrad auch beim Kassenbuch erscheint
+    const configurableModules = ['inventory', 'cash']; 
     
     const handleToggle = (key) => setModules(p => ({...p, [key]: { ...p[key], enabled: !p[key].enabled } }));
     const handleNameChange = (key, val) => setModules(p => ({...p, [key]: { ...p[key], name: val } }));
@@ -4628,10 +4613,7 @@ const ItemList = ({ items, onEdit, onDelete, subText }) => (
     const handleSettingChange = (moduleKey, settingKey, value) => {
         setModules(prev => ({
             ...prev,
-            [moduleKey]: {
-                ...prev[moduleKey],
-                [settingKey]: value 
-            }
+            [moduleKey]: { ...prev[moduleKey], [settingKey]: value }
         }));
     };
     
@@ -4643,70 +4625,24 @@ const ItemList = ({ items, onEdit, onDelete, subText }) => (
     
     return (
         <div className="space-y-6 animate-in relative">
-            
-            {/* --- HEADER --- */}
-            <div>
-                <h3 className="font-bold text-lg">Module & Funktionen</h3>
-                <p className="text-slate-400 text-sm">Aktiviere Module und konfiguriere Details.</p>
-            </div>
+            <div><h3 className="font-bold text-lg">Module & Funktionen</h3><p className="text-slate-400 text-sm">Aktiviere Module und konfiguriere Details.</p></div>
 
-            {/* --- MODUL LISTE --- */}
             <div className="space-y-4">
                 {Object.entries(modules).map(([key, config]) => {
-                    // Prüfen, ob dieses Modul konfigurierbar ist
                     const hasSettings = configurableModules.includes(key);
-
                     return (
                         <div key={key} className={`p-4 rounded-2xl border transition-all ${config.enabled ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
-                            
                             <div className="flex justify-between items-center mb-3">
                                 <div className="flex items-center gap-3">
-                                    {/* Icon Box */}
-                                    <div className={`p-2 rounded-lg ${config.enabled ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-400'}`}>
-                                        {ICON_MAP[config.icon] || <CheckCircle size={20}/>}
-                                    </div>
-                                    
-                                    <div>
-                                        <div className="font-bold uppercase text-xs text-slate-500">{key}</div>
-                                        {config.enabled && <div className="font-bold text-slate-800">{config.name}</div>}
-                                    </div>
+                                    <div className={`p-2 rounded-lg ${config.enabled ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-400'}`}>{ICON_MAP[config.icon] || <CheckCircle size={20}/>}</div>
+                                    <div><div className="font-bold uppercase text-xs text-slate-500">{key}</div>{config.enabled && <div className="font-bold text-slate-800">{config.name}</div>}</div>
                                 </div>
-
                                 <div className="flex items-center gap-3">
-                                    {/* ZAHNRAD BUTTON (Nur wenn aktiviert UND in configurableModules Liste) */}
-                                    {config.enabled && hasSettings && (
-                                        <button 
-                                            onClick={() => setConfigModal(key)} 
-                                            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
-                                            title="Erweiterte Einstellungen"
-                                        >
-                                            <Settings size={20}/>
-                                        </button>
-                                    )}
-
-                                    {/* TOGGLE SWITCH */}
-                                    <div className="relative inline-block w-12 align-middle select-none transition duration-200 ease-in">
-                                        <input type="checkbox" name={`toggle-${key}`} id={`toggle-${key}`} checked={config.enabled} onChange={()=>handleToggle(key)} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer border-slate-300 transition-all duration-300"/>
-                                        <label htmlFor={`toggle-${key}`} className={`toggle-label block overflow-hidden h-6 rounded-full cursor-pointer bg-slate-300 transition-colors duration-300 ${config.enabled ? 'bg-emerald-400' : ''}`}></label>
-                                    </div>
+                                    {config.enabled && hasSettings && <button onClick={() => setConfigModal(key)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"><Settings size={20}/></button>}
+                                    <div className="relative inline-block w-12 align-middle select-none transition duration-200 ease-in"><input type="checkbox" checked={config.enabled} onChange={()=>handleToggle(key)} className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer border-slate-300 transition-all duration-300"/><label onClick={()=>handleToggle(key)} className={`toggle-label block overflow-hidden h-6 rounded-full cursor-pointer bg-slate-300 transition-colors duration-300 ${config.enabled ? 'bg-emerald-400' : ''}`}></label></div>
                                 </div>
                             </div>
-
-                            {/* Standard Felder (Name & Icon) */}
-                            {config.enabled && (
-                                <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-50">
-                                    <div>
-                                        <label className="text-[10px] font-bold uppercase text-slate-400">Anzeigename</label>
-                                        <Input value={config.name || ''} onChange={e=>handleNameChange(key, e.target.value)} className="py-1 text-sm h-8" />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-bold uppercase text-slate-400">Icon</label>
-                                        <Select value={config.icon || 'CheckCircle'} onChange={e=>handleIconChange(key, e.target.value)} className="py-1 text-sm h-8">
-                                            {Object.keys(ICON_MAP).map(i=><option key={i} value={i}>{i}</option>)}
-                                        </Select>
-                                    </div>
-                                </div>
-                            )}
+                            {config.enabled && (<div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-50"><div><label className="text-[10px] font-bold uppercase text-slate-400">Name</label><Input value={config.name || ''} onChange={e=>handleNameChange(key, e.target.value)} className="py-1 text-sm h-8" /></div><div><label className="text-[10px] font-bold uppercase text-slate-400">Icon</label><Select value={config.icon || 'CheckCircle'} onChange={e=>handleIconChange(key, e.target.value)} className="py-1 text-sm h-8">{Object.keys(ICON_MAP).map(i=><option key={i} value={i}>{i}</option>)}</Select></div></div>)}
                         </div>
                     );
                 })}
@@ -4714,63 +4650,43 @@ const ItemList = ({ items, onEdit, onDelete, subText }) => (
             
             <Button onClick={save} style={btnStyle} className="w-full py-4 shadow-xl">Speichern & Anwenden</Button>
 
-
-            {/* --- EINSTELLUNGS POPUP (MODAL) --- */}
             {configModal && (
                 <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setConfigModal(null)}>
                     <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-                        
-                        {/* Modal Header */}
                         <div className="bg-slate-50 p-6 border-b border-slate-100 flex justify-between items-center">
-                            <div className="flex items-center gap-3">
-                                <div className="bg-indigo-100 text-indigo-600 p-2 rounded-xl">
-                                    {ICON_MAP[modules[configModal].icon] || <Settings size={20}/>}
-                                </div>
-                                <div>
-                                    <h3 className="font-black text-xl text-slate-800">{modules[configModal].name}</h3>
-                                    <p className="text-xs font-bold uppercase text-slate-400">Einstellungen</p>
-                                </div>
-                            </div>
+                            <div className="flex items-center gap-3"><div className="bg-indigo-100 text-indigo-600 p-2 rounded-xl">{ICON_MAP[modules[configModal].icon] || <Settings size={20}/>}</div><div><h3 className="font-black text-xl text-slate-800">{modules[configModal].name}</h3><p className="text-xs font-bold uppercase text-slate-400">Einstellungen</p></div></div>
                             <button onClick={() => setConfigModal(null)} className="p-2 hover:bg-slate-200 rounded-full text-slate-400"><X size={24}/></button>
                         </div>
-
-                        {/* Modal Body */}
                         <div className="p-6 space-y-6">
                             
-                            {/* EINKAUFSLISTE (Inventory) */}
+                            {/* EINKAUFSLISTE */}
                             {configModal === 'inventory' && (
+                                <div className="space-y-4">
+                                    <div className="space-y-2"><label className="text-sm font-bold text-slate-700 flex items-center gap-2"><Mail size={16}/> Automatische Ziel-Email</label><Input type="email" placeholder="z.B. bestellung@chef.de" value={modules.inventory.targetEmail || ''} onChange={e => handleSettingChange('inventory', 'targetEmail', e.target.value)}/><p className="text-xs text-slate-500 bg-slate-50 p-3 rounded-xl">Empfänger für die Einkaufsliste.</p></div>
+                                </div>
+                            )}
+
+                            {/* KASSENBUCH (NEU HINZUGEFÜGT) */}
+                            {configModal === 'cash' && (
                                 <div className="space-y-4">
                                     <div className="space-y-2">
                                         <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                                            <Mail size={16}/> Automatische Ziel-Email
+                                            <Euro size={16}/> Wechselgeld Soll-Bestand (€)
                                         </label>
-                                        <Input 
-                                            type="email" 
-                                            placeholder="z.B. bestellung@chef.de" 
-                                            value={modules.inventory.targetEmail || ''} 
-                                            onChange={e => handleSettingChange('inventory', 'targetEmail', e.target.value)}
-                                        />
-                                        <p className="text-xs text-slate-500 bg-slate-50 p-3 rounded-xl">
-                                            Wenn ausgefüllt, wird die Einkaufsliste direkt an diese Adresse gesendet.
-                                        </p>
+                                        <Input type="number" placeholder="500" value={modules.cash.targetFloat || 500} onChange={e => handleSettingChange('cash', 'targetFloat', e.target.value)}/>
+                                        <p className="text-xs text-slate-500 bg-slate-50 p-3 rounded-xl">Der Betrag, der morgens in der Kasse sein muss. Alles darüber wird als Abschöpfung berechnet.</p>
                                     </div>
                                 </div>
                             )}
 
                         </div>
-
-                        {/* Modal Footer */}
-                        <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
-                            <Button onClick={() => setConfigModal(null)} style={btnStyle} className="px-8 shadow-lg">OK</Button>
-                        </div>
+                        <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end"><Button onClick={() => setConfigModal(null)} style={btnStyle} className="px-8 shadow-lg">OK</Button></div>
                     </div>
                 </div>
             )}
-
         </div>
     );
 };
-
 
         const DesignEditor = ({ data, appId, showToast, btnStyle }) => {
             const [d, setD] = useState(data || { primaryColor: '#0f172a', backgroundColor: '#f8fafc', textColor: '#1e293b', headerColor: '#0f172a', logoUrl: '' });
