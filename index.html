@@ -29,19 +29,25 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <script>
+       // Wir ermitteln die aktuelle URL Basis für absolute Pfade
+        const basePath = window.location.href.replace(/\/index\.html$/, "").replace(/\/$/, "");
+
         const pwaManifest = {
             "name": "Gastromaster",
             "short_name": "GM System",
-            "start_url": ".",
+            // FIX: Absolute URL statt "." nutzen, da Blobs relative Pfade oft nicht verstehen
+            "start_url": basePath + "/",
             "display": "standalone",
             "background_color": "#0f172a",
             "theme_color": "#0f172a",
             "orientation": "portrait",
             "icons": [
                 {
-                    "src": "./images/app_icon.png",
+                    // FIX: Externes Icon nutzen, um Pfad-Probleme sicher auszuschließen
+                    "src": ".images/app_icon.png",
                     "sizes": "512x512",
-                    "type": "image/png"
+                    "type": "image/png",
+                    "purpose": "any maskable"
                 }
             ]
         };
@@ -92,7 +98,7 @@
 
 
 <script>
-(function() {
+window.addEventListener('DOMContentLoaded', function() {
     // UI Elemente erstellen
     var btn = document.createElement("button");
     var panel = document.createElement("div");
@@ -110,6 +116,7 @@
     clearBtn.innerHTML = "🗑️";
     clearBtn.style.cssText = "position:absolute; top:10px; right:10px; background:#333; border:none; padding:5px 10px; border-radius:5px; cursor:pointer;";
     
+    // JETZT ist es sicher, appendChild aufzurufen
     document.body.appendChild(btn);
     document.body.appendChild(panel);
     panel.appendChild(clearBtn);
@@ -143,7 +150,6 @@
         line.innerHTML = `<span style="opacity:0.5">[${time}]</span> ${msg}`;
         
         panel.appendChild(line);
-        // Auto-Scroll nach unten
         panel.scrollTop = panel.scrollHeight;
     }
 
@@ -156,18 +162,11 @@
     console.warn = function() { logToScreen('warn', arguments); originalWarn.apply(console, arguments); };
     console.error = function() { logToScreen('error', arguments); originalError.apply(console, arguments); };
 
-    // --- GLOBALE FEHLER ABFANGEN (Wichtig für weißen Bildschirm!) ---
     window.onerror = function(message, source, lineno, colno, error) {
         logToScreen('error', ["CRASH:", message, "\nZeile:", lineno]);
-        // Öffnet die Konsole automatisch bei einem Crash
         if(!isOpen) btn.click(); 
     };
-    
-    window.addEventListener('unhandledrejection', function(event) {
-        logToScreen('error', ["PROMISE ERROR:", event.reason]);
-    });
-
-})();
+});
 </script>
 
 
