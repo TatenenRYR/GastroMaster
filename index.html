@@ -5656,39 +5656,17 @@ const SettingsEditor = ({ data, appId, showToast, btnStyle, deleteBranch, lang }
         
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
-        
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    // FIX: Ein valider Service Worker, der Fetch-Events korrekt behandelt
-    const swContent = `
-      const CACHE_NAME = 'gastromaster-cache-v4';
-      
-      self.addEventListener('install', (event) => {
-        // Sofort aktivieren, nicht warten
-        self.skipWaiting();
+    // Hier wird nun die echte Datei geladen, kein Blob mehr
+    navigator.serviceWorker.register('./sw.js')
+      .then((reg) => {
+        console.log('Service Worker erfolgreich registriert:', reg.scope);
+      })
+      .catch((err) => {
+        console.error('Service Worker Fehler:', err);
       });
-
-      self.addEventListener('activate', (event) => {
-        // Kontrolle über alle Tabs übernehmen
-        event.waitUntil(self.clients.claim());
-      });
-
-      self.addEventListener('fetch', (event) => {
-        // Einfacher Network-First Ansatz oder Fallback, damit PWA-Kriterien erfüllt sind
-        event.respondWith(
-          fetch(event.request).catch(() => {
-            return new Response("Sie sind offline.");
-          })
-        );
-      });
-    `;
-    
-    const blob = new Blob([swContent], {type: 'application/javascript'});
-    const swUrl = URL.createObjectURL(blob);
-    
-    navigator.serviceWorker.register(swUrl)
-      .then((reg) => console.log('Service Worker registriert:', reg.scope))
-      .catch((err) => console.log('SW Fehler:', err));
   });
 }
 </script>
