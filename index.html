@@ -2591,37 +2591,34 @@ const InstallBanner = () => {
     const [showBanner, setShowBanner] = useState(false);
     const [deferredPrompt, setDeferredPrompt] = useState(null);
     const [isIOS, setIsIOS] = useState(false);
+    const [debugMsg, setDebugMsg] = useState(''); // Zum Testen
 
     useEffect(() => {
-        // 1. Prüfen ob bereits installiert (Standalone Mode)
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
-                             window.navigator.standalone || 
-                             document.referrer.includes('android-app://');
-
+        // 1. Prüfen ob schon installiert
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
         if (isStandalone) {
-            console.log("App ist bereits im Standalone-Modus.");
-            return; 
+            console.log("App läuft bereits als PWA.");
+            return;
         }
 
-        // 2. iOS Erkennung
-        const userAgent = window.navigator.userAgent.toLowerCase();
-        const ios = /iphone|ipad|ipod/.test(userAgent);
+        // 2. iOS Check
+        const ios = /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
         setIsIOS(ios);
 
-        // 3. Android / Chrome Event Handler
+        // 3. Android/Chrome Event Listener
         const handler = (e) => {
-            // Verhindern, dass Chrome den Standard-Dialog sofort zeigt (und dann ignoriert)
-            e.preventDefault();
-            console.log("Install Prompt gefeuert!");
+            e.preventDefault(); // Standard-Banner von Chrome unterdrücken
+            console.log("PWA Install Event gefeuert!");
             setDeferredPrompt(e);
             setShowBanner(true);
+            setDebugMsg("Event gefeuert!");
         };
 
         window.addEventListener('beforeinstallprompt', handler);
 
-        // 4. iOS Fallback: Zeige Banner nach 2 Sekunden, da iOS kein Event feuert
+        // iOS Fallback (zeigt Banner immer an, wenn nicht installiert)
         if (ios) {
-            setTimeout(() => setShowBanner(true), 2000);
+            setTimeout(() => setShowBanner(true), 1000);
         }
 
         return () => window.removeEventListener('beforeinstallprompt', handler);
@@ -2629,21 +2626,12 @@ const InstallBanner = () => {
 
     const handleInstall = async () => {
         if (!deferredPrompt) {
-            // Fallback, falls kein Prompt da ist (z.B. Desktop debug)
-            alert("Installation wird vom Browser nicht direkt unterstützt. Bitte nutzen Sie das Browser-Menü 'Zum Startbildschirm hinzufügen'.");
+            alert("Installation momentan nicht möglich. Bitte nutzen Sie das Browsermenü (Drei Punkte -> App installieren).");
             return;
         }
-        
-        // Prompt anzeigen
         deferredPrompt.prompt();
-        
-        // Warten auf User-Entscheidung
         const { outcome } = await deferredPrompt.userChoice;
-        console.log(`User choice: ${outcome}`);
-        
-        if (outcome === 'accepted') {
-            setShowBanner(false);
-        }
+        if (outcome === 'accepted') setShowBanner(false);
         setDeferredPrompt(null);
     };
 
@@ -2652,37 +2640,19 @@ const InstallBanner = () => {
     return (
         <div className="fixed bottom-0 left-0 right-0 z-[9999] p-4 slide-up">
             <div className="bg-slate-900/95 backdrop-blur-md shadow-2xl rounded-2xl p-4 border border-slate-700 text-white flex items-center gap-4 max-w-md mx-auto relative">
-                <button 
-                    onClick={() => setShowBanner(false)} 
-                    className="absolute -top-3 -right-3 bg-slate-700 p-1 rounded-full border border-slate-600 shadow-sm text-slate-300 hover:bg-slate-600"
-                >
-                    <X size={16} />
-                </button>
-
-                <div className="w-14 h-14 bg-white rounded-xl flex-shrink-0 p-1 overflow-hidden">
-                    {/* WICHTIG: Stelle sicher, dass dieses Bild existiert! */}
-                    <img src="./images/app_icon.png" onError={(e) => e.target.src='https://cdn-icons-png.flaticon.com/512/3448/3448609.png'} alt="App" className="w-full h-full object-contain rounded-lg" />
-                </div>
-
+                <button onClick={() => setShowBanner(false)} className="absolute -top-3 -right-3 bg-slate-700 p-1 rounded-full border border-slate-600 shadow-sm text-slate-300"><X size={16}/></button>
+                
+                <img src=".images/app_icon.png" className="w-14 h-14 bg-white rounded-xl p-1" />
+                
                 <div className="flex-1">
-                    <h4 className="font-bold text-base leading-tight">App installieren</h4>
-                    <p className="text-xs text-slate-400 mt-1 leading-snug">
-                        {isIOS 
-                            ? "Für Vollbildmodus & Offline-Support." 
-                            : "Zum Startbildschirm hinzufügen."}
-                    </p>
+                    <h4 className="font-bold text-base">App installieren</h4>
+                    <p className="text-xs text-slate-400 mt-1">{isIOS ? "Teilen -> Zum Home-Bildschirm" : "Für Vollbild & Offline."}</p>
+                    {/* Debug Info anzeigen, falls Event da ist */}
+                    {deferredPrompt && <p className="text-[9px] text-emerald-400 mt-1">Bereit zur Installation</p>}
                 </div>
 
-                {isIOS ? (
-                    <div className="text-right text-[10px] font-medium text-indigo-300 leading-tight">
-                        Teilen <span className="inline-block align-middle bg-slate-800 p-1 rounded mx-0.5"><Share size={10}/></span><br/>
-                        & "Zum Home-Bildschirm"
-                    </div>
-                ) : (
-                    <button 
-                        onClick={handleInstall} 
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-lg shadow-indigo-500/20 active:scale-95 transition-all"
-                    >
+                {!isIOS && (
+                    <button onClick={handleInstall} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-lg">
                         Installieren
                     </button>
                 )}
@@ -2690,6 +2660,7 @@ const InstallBanner = () => {
         </div>
     );
 };
+
 // --- APP CONTROLLER ---
         function App() {
             // --- STATE DEFINITIONS ---
