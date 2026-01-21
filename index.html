@@ -3958,6 +3958,7 @@ const Inventory = ({ data, status, user, appId, showToast, lang }) => {
 };
 
 //Kühlgeräte
+//Kühlgeräte (Finaler Fix: Grid entfernt + Platzoptimierung)
 const Cooling = ({ data, status, user, appId, showToast, lang }) => {
     const [val, setVal] = useState({});
     const [measures, setMeasures] = useState({}); 
@@ -4063,7 +4064,8 @@ const Cooling = ({ data, status, user, appId, showToast, lang }) => {
 
             <div><h2 className="text-3xl font-black text-inherit">{t.temp}</h2><p className="opacity-60 text-sm font-medium">Bereichskontrolle</p></div>
             
-            <div className="grid gap-4">
+            {/* FIX: 'grid gap-4' geändert zu 'flex flex-col gap-4' damit min-w-0 greift */}
+            <div className="flex flex-col gap-4 w-full min-w-0">
                 {active.map(dev => {
                     const done = tempLogs.find(l => l.deviceId === dev.id);
                     const isEditing = editingId === dev.id;
@@ -4074,10 +4076,11 @@ const Cooling = ({ data, status, user, appId, showToast, lang }) => {
                     const isCriticalSaved = done && checkCritical(done.temp, dev);
 
                     return (
-                        <div key={dev.id} className={`p-6 rounded-[2rem] border shadow-sm transition-all ${done && !isEditing ? (isCriticalSaved ? 'bg-red-50 border-red-200' : 'bg-emerald-50/50 border-emerald-100') : 'bg-white border-slate-100'}`}>
+                        // FIX: Padding von p-6 auf p-5 reduziert, w-full hinzugefügt
+                        <div key={dev.id} className={`w-full p-5 rounded-[2rem] border shadow-sm transition-all ${done && !isEditing ? (isCriticalSaved ? 'bg-red-50 border-red-200' : 'bg-emerald-50/50 border-emerald-100') : 'bg-white border-slate-100'}`}>
                             <div className="flex justify-between mb-4 font-black text-lg text-slate-700 items-center">
                                 <div className="flex items-center gap-2">
-                                    <span>{dev.name}</span>
+                                    <span className="truncate max-w-[180px]">{dev.name}</span>
                                     {dev.info && <button onClick={()=>setInfoItem(dev)} className="text-indigo-400 hover:text-indigo-600 transition-colors"><HelpCircle size={18}/></button>}
                                 </div>
                                 {done && !isEditing ? (
@@ -4085,36 +4088,35 @@ const Cooling = ({ data, status, user, appId, showToast, lang }) => {
                                         <span className={`px-3 py-1 rounded-xl text-sm shadow-sm font-bold ${isCriticalSaved ? 'bg-red-500 text-white animate-pulse' : 'bg-emerald-100 text-emerald-600'}`}>{done.temp}°C</span>
                                         {!signature && <button onClick={() => startEdit(dev, done)} className="bg-white border p-2 rounded-full text-slate-400 hover:text-indigo-600"><PenTool size={14} /></button>}
                                     </div>
-                                ) : <Thermometer size={20} className="text-slate-300" />}
+                                ) : <Thermometer size={20} className="text-slate-300 shrink-0" />}
                             </div>
                             
                             {(!done || isEditing) && (
-                                <div className="space-y-3">
-                                    {/* FIX: items-center für Ausrichtung */}
-                                    <div className="flex items-center gap-3">
+                                <div className="space-y-3 w-full">
+                                    {/* FIX: gap-3 auf gap-2 reduziert für mehr Platz */}
+                                    <div className="flex items-center gap-2 w-full">
                                         
-                                        {/* FIX: min-w-0 verhindert, dass der Input das Layout sprengt. h-14 für feste Höhe. */}
+                                        {/* FIX: min-w-0 ist entscheidend! */}
                                         <input 
                                             type="number" 
                                             inputMode="decimal" 
                                             value={v} 
                                             onChange={e => setVal({ ...val, [dev.id]: e.target.value })} 
                                             placeholder={isEditing?"Korrektur...":"Temp..."} 
-                                            className={`h-14 flex-1 min-w-0 rounded-2xl border-2 font-black text-2xl text-center outline-none transition-colors ${isCriticalInput ? 'border-red-300 bg-red-50 text-red-600' : 'border-slate-100 focus:border-indigo-500'}`} 
+                                            className={`h-14 flex-1 min-w-0 w-full rounded-2xl border-2 font-black text-2xl text-center outline-none transition-colors ${isCriticalInput ? 'border-red-300 bg-red-50 text-red-600' : 'border-slate-100 focus:border-indigo-500'}`} 
                                         />
                                         
-                                        {/* FIX: shrink-0 verhindert, dass der Button gedrückt wird */}
+                                        {/* FIX: shrink-0 verhindert Quetschen */}
                                         <button onClick={() => save(dev)} className={`shrink-0 text-white h-14 w-16 rounded-2xl flex items-center justify-center shadow-lg transition-colors ${isCriticalInput ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-900 hover:bg-slate-800'}`}>
                                             <Save size={24} />
                                         </button>
                                         
-                                        {/* FIX: shrink-0 auch hier */}
                                         {isEditing && <button onClick={() => setEditingId(null)} className="shrink-0 h-14 w-14 rounded-2xl border text-slate-400 hover:bg-slate-50 flex items-center justify-center"><X size={24}/></button>}
                                     </div>
 
                                     {/* HACCP MAßNAHME EINGABE */}
                                     {isCriticalInput && (
-                                        <div className="animate-in">
+                                        <div className="animate-in w-full">
                                             <div className="text-[10px] font-bold uppercase text-red-500 mb-1 ml-1 flex items-center gap-1">
                                                 <AlertTriangle size={10}/> Korrekturmaßnahme erforderlich
                                             </div>
@@ -4122,7 +4124,7 @@ const Cooling = ({ data, status, user, appId, showToast, lang }) => {
                                                 type="text" 
                                                 value={m}
                                                 onChange={e => setMeasures({...measures, [dev.id]: e.target.value})}
-                                                placeholder="z.B. Ware entsorgt, Techniker gerufen..." 
+                                                placeholder="z.B. Ware entsorgt..." 
                                                 className="w-full p-3 rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm font-bold placeholder-red-300 outline-none focus:ring-2 focus:ring-red-500/20"
                                             />
                                         </div>
