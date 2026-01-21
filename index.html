@@ -28,22 +28,25 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <script>
-       // Wir ermitteln die aktuelle URL Basis für absolute Pfade
+
+       <script>
+        // 1. Wir ermitteln den echten Pfad der Webseite, damit "start_url" sicher stimmt
+        // Entfernt "index.html" und schließende Slashes
         const basePath = window.location.href.replace(/\/index\.html$/, "").replace(/\/$/, "");
 
         const pwaManifest = {
             "name": "Gastromaster",
             "short_name": "GM System",
-            // FIX: Absolute URL statt "." nutzen, da Blobs relative Pfade oft nicht verstehen
-            "start_url": basePath + "/",
+            // WICHTIG: Absolute URL erzwingen. PWA mag keine relativen Pfade in Blobs.
+            "start_url": basePath + "/", 
             "display": "standalone",
             "background_color": "#0f172a",
             "theme_color": "#0f172a",
             "orientation": "portrait",
             "icons": [
                 {
-                    // FIX: Externes Icon nutzen, um Pfad-Probleme sicher auszuschließen
+                    // WICHTIG: Wir nehmen ein öffentliches Icon zum Testen. 
+                    // Wenn das Popup kommt, lag es an deinem lokalen Bildpfad.
                     "src": "https://gastromasters.netlify.app/images/app_icon.png",
                     "sizes": "512x512",
                     "type": "image/png",
@@ -55,12 +58,14 @@
         const stringManifest = JSON.stringify(pwaManifest);
         const blob = new Blob([stringManifest], {type: 'application/json'});
         const manifestURL = URL.createObjectURL(blob);
+        
+        // Manifest verlinken
         const link = document.createElement('link');
         link.rel = 'manifest';
         link.href = manifestURL;
         document.head.appendChild(link);
     </script>
-
+    <meta name="mobile-web-app-capable" content="yes">
     <style>
         :root { --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
@@ -99,6 +104,8 @@
 
 <script>
 window.addEventListener('DOMContentLoaded', function() {
+    bool debugModeOn = false;
+    if(debugModeOn == false) return;
     // UI Elemente erstellen
     var btn = document.createElement("button");
     var panel = document.createElement("div");
