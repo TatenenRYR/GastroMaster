@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Gastromaster">
     
-    <link rel="apple-touch-icon" href="./images/app_icon.png">
+    <link rel="apple-touch-icon" href="https://gastromasters.netlify.app/images/app_icon.png">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -44,7 +44,7 @@
             "icons": [
                 {
                     // FIX: Externes Icon nutzen, um Pfad-Probleme sicher auszuschließen
-                    "src": ".images/app_icon.png",
+                    "src": "https://gastromasters.netlify.app/images/app_icon.png",
                     "sizes": "512x512",
                     "type": "image/png",
                     "purpose": "any maskable"
@@ -2641,7 +2641,7 @@ const InstallBanner = () => {
             <div className="bg-slate-900/95 backdrop-blur-md shadow-2xl rounded-2xl p-4 border border-slate-700 text-white flex items-center gap-4 max-w-md mx-auto relative">
                 <button onClick={() => setShowBanner(false)} className="absolute -top-3 -right-3 bg-slate-700 p-1 rounded-full border border-slate-600 shadow-sm text-slate-300"><X size={16}/></button>
                 
-                <img src=".images/app_icon.png" className="w-14 h-14 bg-white rounded-xl p-1" />
+                <img src="https://gastromasters.netlify.app/images/app_icon.png" className="w-14 h-14 bg-white rounded-xl p-1" />
                 
                 <div className="flex-1">
                     <h4 className="font-bold text-base">App installieren</h4>
