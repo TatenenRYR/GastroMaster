@@ -3958,7 +3958,6 @@ const Inventory = ({ data, status, user, appId, showToast, lang }) => {
 };
 
 //Kühlgeräte
-//Kühlgeräte (UI Fix: Ausrichtung Input/Button)
 const Cooling = ({ data, status, user, appId, showToast, lang }) => {
     const [val, setVal] = useState({});
     const [measures, setMeasures] = useState({}); 
@@ -4091,23 +4090,26 @@ const Cooling = ({ data, status, user, appId, showToast, lang }) => {
                             
                             {(!done || isEditing) && (
                                 <div className="space-y-3">
-                                    {/* FIX: items-center hinzugefügt, h-14 vom Parent entfernt */}
+                                    {/* FIX: items-center für Ausrichtung */}
                                     <div className="flex items-center gap-3">
-                                        {/* FIX: h-14 explizit auf Input */}
+                                        
+                                        {/* FIX: min-w-0 verhindert, dass der Input das Layout sprengt. h-14 für feste Höhe. */}
                                         <input 
                                             type="number" 
                                             inputMode="decimal" 
                                             value={v} 
                                             onChange={e => setVal({ ...val, [dev.id]: e.target.value })} 
                                             placeholder={isEditing?"Korrektur...":"Temp..."} 
-                                            className={`h-14 flex-1 rounded-2xl border-2 font-black text-2xl text-center outline-none transition-colors ${isCriticalInput ? 'border-red-300 bg-red-50 text-red-600' : 'border-slate-100 focus:border-indigo-500'}`} 
+                                            className={`h-14 flex-1 min-w-0 rounded-2xl border-2 font-black text-2xl text-center outline-none transition-colors ${isCriticalInput ? 'border-red-300 bg-red-50 text-red-600' : 'border-slate-100 focus:border-indigo-500'}`} 
                                         />
-                                        {/* FIX: h-14 explizit auf Button */}
-                                        <button onClick={() => save(dev)} className={`text-white h-14 w-16 rounded-2xl flex items-center justify-center shadow-lg transition-colors ${isCriticalInput ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-900 hover:bg-slate-800'}`}>
+                                        
+                                        {/* FIX: shrink-0 verhindert, dass der Button gedrückt wird */}
+                                        <button onClick={() => save(dev)} className={`shrink-0 text-white h-14 w-16 rounded-2xl flex items-center justify-center shadow-lg transition-colors ${isCriticalInput ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-900 hover:bg-slate-800'}`}>
                                             <Save size={24} />
                                         </button>
                                         
-                                        {isEditing && <button onClick={() => setEditingId(null)} className="h-14 w-14 rounded-2xl border text-slate-400 hover:bg-slate-50 flex items-center justify-center"><X size={24}/></button>}
+                                        {/* FIX: shrink-0 auch hier */}
+                                        {isEditing && <button onClick={() => setEditingId(null)} className="shrink-0 h-14 w-14 rounded-2xl border text-slate-400 hover:bg-slate-50 flex items-center justify-center"><X size={24}/></button>}
                                     </div>
 
                                     {/* HACCP MAßNAHME EINGABE */}
