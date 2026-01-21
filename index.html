@@ -2586,70 +2586,103 @@ const SmartOrdering = ({ data, appId, showToast, user }) => {
         </div>
     );
 };
-// Install Banner Component
+// --- FIX: Install Banner Component ---
 const InstallBanner = () => {
     const [showBanner, setShowBanner] = useState(false);
     const [deferredPrompt, setDeferredPrompt] = useState(null);
     const [isIOS, setIsIOS] = useState(false);
 
     useEffect(() => {
-        // Prüfen ob bereits installiert (Standalone)
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-        if (isStandalone) return; 
+        // 1. Prüfen ob bereits installiert (Standalone Mode)
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+                             window.navigator.standalone || 
+                             document.referrer.includes('android-app://');
 
-        const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+        if (isStandalone) {
+            console.log("App ist bereits im Standalone-Modus.");
+            return; 
+        }
+
+        // 2. iOS Erkennung
+        const userAgent = window.navigator.userAgent.toLowerCase();
+        const ios = /iphone|ipad|ipod/.test(userAgent);
         setIsIOS(ios);
 
-        // Android Event
+        // 3. Android / Chrome Event Handler
         const handler = (e) => {
+            // Verhindern, dass Chrome den Standard-Dialog sofort zeigt (und dann ignoriert)
             e.preventDefault();
+            console.log("Install Prompt gefeuert!");
             setDeferredPrompt(e);
             setShowBanner(true);
         };
+
         window.addEventListener('beforeinstallprompt', handler);
 
-        // iOS Fallback (zeigt Banner nach 3 Sekunden)
+        // 4. iOS Fallback: Zeige Banner nach 2 Sekunden, da iOS kein Event feuert
         if (ios) {
-            setTimeout(() => setShowBanner(true), 3000);
+            setTimeout(() => setShowBanner(true), 2000);
         }
 
         return () => window.removeEventListener('beforeinstallprompt', handler);
     }, []);
 
     const handleInstall = async () => {
-        if (!deferredPrompt) return;
+        if (!deferredPrompt) {
+            // Fallback, falls kein Prompt da ist (z.B. Desktop debug)
+            alert("Installation wird vom Browser nicht direkt unterstützt. Bitte nutzen Sie das Browser-Menü 'Zum Startbildschirm hinzufügen'.");
+            return;
+        }
+        
+        // Prompt anzeigen
         deferredPrompt.prompt();
+        
+        // Warten auf User-Entscheidung
         const { outcome } = await deferredPrompt.userChoice;
-        if (outcome === 'accepted') setShowBanner(false);
+        console.log(`User choice: ${outcome}`);
+        
+        if (outcome === 'accepted') {
+            setShowBanner(false);
+        }
+        setDeferredPrompt(null);
     };
 
     if (!showBanner) return null;
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 z-[100] p-4 slide-up">
+        <div className="fixed bottom-0 left-0 right-0 z-[9999] p-4 slide-up">
             <div className="bg-slate-900/95 backdrop-blur-md shadow-2xl rounded-2xl p-4 border border-slate-700 text-white flex items-center gap-4 max-w-md mx-auto relative">
-                <button onClick={() => setShowBanner(false)} className="absolute -top-3 -right-3 bg-slate-700 p-1 rounded-full border border-slate-600 shadow-sm text-slate-300">
+                <button 
+                    onClick={() => setShowBanner(false)} 
+                    className="absolute -top-3 -right-3 bg-slate-700 p-1 rounded-full border border-slate-600 shadow-sm text-slate-300 hover:bg-slate-600"
+                >
                     <X size={16} />
                 </button>
 
                 <div className="w-14 h-14 bg-white rounded-xl flex-shrink-0 p-1 overflow-hidden">
-                    <img src="./images/app_icon.png" alt="App" className="w-full h-full object-contain rounded-lg" />
+                    {/* WICHTIG: Stelle sicher, dass dieses Bild existiert! */}
+                    <img src="./images/app_icon.png" onError={(e) => e.target.src='https://cdn-icons-png.flaticon.com/512/3448/3448609.png'} alt="App" className="w-full h-full object-contain rounded-lg" />
                 </div>
 
                 <div className="flex-1">
                     <h4 className="font-bold text-base leading-tight">App installieren</h4>
-                    <p className="text-xs text-slate-400 mt-1">
-                        {isIOS ? "Für Vollbild & besseren Zugriff." : "Zum Startbildschirm hinzufügen."}
+                    <p className="text-xs text-slate-400 mt-1 leading-snug">
+                        {isIOS 
+                            ? "Für Vollbildmodus & Offline-Support." 
+                            : "Zum Startbildschirm hinzufügen."}
                     </p>
                 </div>
 
                 {isIOS ? (
                     <div className="text-right text-[10px] font-medium text-indigo-300 leading-tight">
-                        Teilen <span className="inline-block align-middle bg-slate-800 p-0.5 rounded"><Share size={10}/></span> drücken<br/>
+                        Teilen <span className="inline-block align-middle bg-slate-800 p-1 rounded mx-0.5"><Share size={10}/></span><br/>
                         & "Zum Home-Bildschirm"
                     </div>
                 ) : (
-                    <button onClick={handleInstall} className="bg-indigo-500 hover:bg-indigo-400 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-lg shadow-indigo-500/20">
+                    <button 
+                        onClick={handleInstall} 
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-lg shadow-indigo-500/20 active:scale-95 transition-all"
+                    >
                         Installieren
                     </button>
                 )}
@@ -5623,17 +5656,39 @@ const SettingsEditor = ({ data, appId, showToast, btnStyle, deleteBranch, lang }
         
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
-    </script>
-    <script>
+        
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
+    // FIX: Ein valider Service Worker, der Fetch-Events korrekt behandelt
     const swContent = `
-      self.addEventListener('install', (e) => self.skipWaiting());
-      self.addEventListener('fetch', (e) => e.respondWith(fetch(e.request).catch(() => e.default)));
+      const CACHE_NAME = 'gastromaster-cache-v4';
+      
+      self.addEventListener('install', (event) => {
+        // Sofort aktivieren, nicht warten
+        self.skipWaiting();
+      });
+
+      self.addEventListener('activate', (event) => {
+        // Kontrolle über alle Tabs übernehmen
+        event.waitUntil(self.clients.claim());
+      });
+
+      self.addEventListener('fetch', (event) => {
+        // Einfacher Network-First Ansatz oder Fallback, damit PWA-Kriterien erfüllt sind
+        event.respondWith(
+          fetch(event.request).catch(() => {
+            return new Response("Sie sind offline.");
+          })
+        );
+      });
     `;
+    
     const blob = new Blob([swContent], {type: 'application/javascript'});
     const swUrl = URL.createObjectURL(blob);
-    navigator.serviceWorker.register(swUrl).catch(err => console.log('SW error', err));
+    
+    navigator.serviceWorker.register(swUrl)
+      .then((reg) => console.log('Service Worker registriert:', reg.scope))
+      .catch((err) => console.log('SW Fehler:', err));
   });
 }
 </script>
